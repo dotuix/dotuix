@@ -7,20 +7,44 @@
 import initSqlJs from "sql.js";
 import type { Database as SqlDatabase, SqlJsStatic } from "sql.js";
 import { readFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
 import { unpackBuffer } from "./unpack.js";
 import { parseManifest } from "./manifest.js";
 import type { Manifest, UIXRecord, FindQuery } from "./types.js";
+
+// Universal UUID — Web Crypto API works in Node.js 19+ and all modern browsers
+const randomUUID = (): string => globalThis.crypto.randomUUID();
 
 // ---------------------------------------------------------------------------
 // sql.js initialisation — lazy, cached, shared across all DB operations
 // ---------------------------------------------------------------------------
 
 let _sql: SqlJsStatic | null = null;
+let _sqlConfig: Parameters<typeof initSqlJs>[0] | undefined;
+
+/**
+ * Configure sql.js initialisation options.
+ * Must be called **before** any DB operation.
+ *
+ * In Node.js this is optional — sql.js locates its WASM automatically.
+ * In the browser you must point it at the WASM file:
+ *
+ * ```ts
+ * import { configureSqlJs } from '@dotuix/core';
+ * configureSqlJs({ locateFile: () => '/sql-wasm.wasm' });
+ * ```
+ */
+export function configureSqlJs(config: Parameters<typeof initSqlJs>[0]): void {
+  if (_sql) {
+    throw new Error(
+      "@dotuix/core: sql.js is already initialised — call configureSqlJs() before any DB operation",
+    );
+  }
+  _sqlConfig = config;
+}
 
 async function getSql(): Promise<SqlJsStatic> {
   if (_sql) return _sql;
-  _sql = await initSqlJs();
+  _sql = await initSqlJs(_sqlConfig);
   return _sql;
 }
 

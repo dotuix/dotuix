@@ -8,6 +8,7 @@ export {
   openDataBuffer,
   openStateFromFile,
   createState,
+  configureSqlJs,
   UIXDataDB,
   UIXStateDB,
 } from "./db.js";

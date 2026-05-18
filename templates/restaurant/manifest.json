@@ -1,7 +1,7 @@
 {
   "uix": "1.0",
   "id": "com.dotuix.template.restaurant",
-  "name": "Restaurant Menu",
+  "name": "مطعم المدينة",
   "version": "1.0.0",
   "entry": "index.html",
   "mode": "kiosk",
@@ -15,7 +15,7 @@
   },
   "author": "dotuix",
   "state": {
-    "seed": true
+    "seed": false
   },
   "signature": null
 }

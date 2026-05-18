@@ -1,76 +1,214 @@
 /**
- * Restaurant template — app.js
+ * مطعم المدينة — app.js
  *
  * Uses the window.__uix bridge injected by the dotuix viewer.
- * When the bridge is absent (plain browser preview), falls back to DEMO_DATA.
+ * Falls back to DEMO_DATA when running outside a viewer (plain browser preview).
  */
 
 // ---------------------------------------------------------------------------
-// Demo data — replaces live DB when running outside a viewer
+// Demo data — full Gulf restaurant menu
 // ---------------------------------------------------------------------------
 const DEMO_DATA = [
+  // ── رئيسية ────────────────────────────────────────────────────────────────
   {
-    id: "p1",
+    id: "p:01",
+    type: "product",
+    body: JSON.stringify({
+      name: "كبسة لحم",
+      description: "لحم ضأن طازج مع أرز بسمتي مُتبَّل بالزعفران والهيل",
+      price: 65,
+      category: "رئيسية",
+      badge: "الأكثر طلباً",
+    }),
+  },
+  {
+    id: "p:02",
     type: "product",
     body: JSON.stringify({
       name: "مندي الدجاج",
-      description: "دجاج مطهو ببطء مع الأرز البسمتي والتوابل اليمنية",
-      price: 45,
-      category: "رئيسية",
-      image: null,
-    }),
-  },
-  {
-    id: "p2",
-    type: "product",
-    body: JSON.stringify({
-      name: "كبسة اللحم",
-      description: "لحم ضأن طازج مع أرز بسمتي مُتبَّل بالزعفران",
-      price: 65,
+      description: "دجاج مطهو ببطء على الجمر مع الأرز البسمتي والتوابل اليمنية",
+      price: 48,
       category: "رئيسية",
     }),
   },
   {
-    id: "p3",
+    id: "p:03",
     type: "product",
     body: JSON.stringify({
-      name: "سلطة فتوش",
-      description: "خضروات طازجة مع خبز محمص وصلصة الرمان",
-      price: 18,
-      category: "مقبلات",
+      name: "مظبي الضأن",
+      description: "ضأن مشوي على الفحم مع الأرز والصلصة الحارة",
+      price: 72,
+      category: "رئيسية",
     }),
   },
   {
-    id: "p4",
+    id: "p:04",
+    type: "product",
+    body: JSON.stringify({
+      name: "برياني الدجاج",
+      description: "أرز بسمتي طويل الحبة مع الدجاج والبهارات الهندية",
+      price: 42,
+      category: "رئيسية",
+    }),
+  },
+  {
+    id: "p:05",
+    type: "product",
+    body: JSON.stringify({
+      name: "جريش بالدجاج",
+      description: "جريش قمح مطهو ببطء مع الدجاج المشوي والتمر",
+      price: 38,
+      category: "رئيسية",
+      badge: "طبق الموسم",
+    }),
+  },
+  // ── مشويات ────────────────────────────────────────────────────────────────
+  {
+    id: "p:06",
+    type: "product",
+    body: JSON.stringify({
+      name: "شاورما لحم",
+      description: "لحم عجل مشوي على الأسياخ مع الثوم والتوم والخيار المخلل",
+      price: 28,
+      category: "مشويات",
+    }),
+  },
+  {
+    id: "p:07",
+    type: "product",
+    body: JSON.stringify({
+      name: "كفتة مشكلة",
+      description: "كفتة لحم وكفتة دجاج مع الأرز والسلطة",
+      price: 35,
+      category: "مشويات",
+    }),
+  },
+  {
+    id: "p:08",
+    type: "product",
+    body: JSON.stringify({
+      name: "مشاوي مشكلة — للشخصين",
+      description: "تشكيلة من الكفتة والشيش والأجنحة مع الأرز والمقبلات",
+      price: 95,
+      category: "مشويات",
+      badge: "للشخصين",
+    }),
+  },
+  {
+    id: "p:09",
+    type: "product",
+    body: JSON.stringify({
+      name: "شيش طاووق",
+      description: "دجاج متبل بالليمون والثوم مشوي على الأسياخ",
+      price: 30,
+      category: "مشويات",
+    }),
+  },
+  // ── مقبلات ────────────────────────────────────────────────────────────────
+  {
+    id: "p:10",
     type: "product",
     body: JSON.stringify({
       name: "حمص بالطحينة",
-      description: "حمص كريمي مع زيت الزيتون والبابريكا",
+      description: "حمص كريمي مع زيت الزيتون البكر والبابريكا المدخنة",
       price: 15,
       category: "مقبلات",
     }),
   },
   {
-    id: "p5",
+    id: "p:11",
     type: "product",
     body: JSON.stringify({
-      name: "عصير المانجو",
-      description: "مانجو طازجة معصورة",
+      name: "فتوش",
+      description: "خضروات طازجة مع خبز محمص ودبس الرمان",
+      price: 18,
+      category: "مقبلات",
+    }),
+  },
+  {
+    id: "p:12",
+    type: "product",
+    body: JSON.stringify({
+      name: "شوربة عدس",
+      description: "عدس أحمر مع الكمون والليمون، تُقدَّم مع الخبز",
       price: 14,
+      category: "مقبلات",
+    }),
+  },
+  {
+    id: "p:13",
+    type: "product",
+    body: JSON.stringify({
+      name: "متبل",
+      description: "باذنجان مشوي مهروس مع الطحينة والثوم والليمون",
+      price: 14,
+      category: "مقبلات",
+    }),
+  },
+  // ── مشروبات ──────────────────────────────────────────────────────────────
+  {
+    id: "p:14",
+    type: "product",
+    body: JSON.stringify({
+      name: "قهوة عربية",
+      description: "قهوة خفيفة بالهيل والزعفران — تُقدَّم مع التمر",
+      price: 10,
+      category: "مشروبات",
+    }),
+  },
+  {
+    id: "p:15",
+    type: "product",
+    body: JSON.stringify({
+      name: "شاي كرك",
+      description: "شاي هندي بالهيل والزنجبيل والحليب المكثف",
+      price: 8,
+      category: "مشروبات",
+    }),
+  },
+  {
+    id: "p:16",
+    type: "product",
+    body: JSON.stringify({
+      name: "عصير مانجو",
+      description: "مانجو ألفونسو طازجة — بدون إضافات",
+      price: 14,
+      category: "مشروبات",
+    }),
+  },
+  {
+    id: "p:17",
+    type: "product",
+    body: JSON.stringify({
+      name: "لبن عيران",
+      description: "لبن مثلج بالنعناع — منعش ومفيد",
+      price: 8,
+      category: "مشروبات",
+    }),
+  },
+  {
+    id: "p:18",
+    type: "product",
+    body: JSON.stringify({
+      name: "ماء معدني",
+      description: "500 مل",
+      price: 3,
       category: "مشروبات",
     }),
   },
 ];
 
 // ---------------------------------------------------------------------------
-// Bridge setup
+// Bridge — use __uix if available, otherwise fall back to demo data
 // ---------------------------------------------------------------------------
 const bridge = window.__uix ?? null;
 
 async function fetchProducts() {
-  if (bridge) {
+  if (bridge?.data) {
     const records = await bridge.data.find({ type: "product" });
-    return records.map((r) => ({ ...r, body: JSON.parse(r.body) }));
+    if (records.length > 0) {
+      return records.map((r) => ({ ...r, body: JSON.parse(r.body) }));
+    }
   }
   return DEMO_DATA.map((r) => ({ ...r, body: JSON.parse(r.body) }));
 }
@@ -78,22 +216,21 @@ async function fetchProducts() {
 // ---------------------------------------------------------------------------
 // Cart state
 // ---------------------------------------------------------------------------
-const cart = []; // { product, qty }
+const cart = []; // [{ product, qty }]
 
-function cartTotal() {
-  return cart.reduce(
-    (sum, item) => sum + item.product.body.price * item.qty,
-    0,
-  );
-}
+const cartTotal = () =>
+  cart.reduce((sum, item) => sum + item.product.body.price * item.qty, 0);
 
 function addToCart(product) {
   const existing = cart.find((i) => i.product.id === product.id);
-  if (existing) {
-    existing.qty += 1;
-  } else {
-    cart.push({ product, qty: 1 });
-  }
+  if (existing) existing.qty += 1;
+  else cart.push({ product, qty: 1 });
+  renderCart();
+}
+
+function removeFromCart(productId) {
+  const idx = cart.findIndex((i) => i.product.id === productId);
+  if (idx !== -1) cart.splice(idx, 1);
   renderCart();
 }
 
@@ -104,16 +241,18 @@ let allProducts = [];
 let activeCategory = null;
 
 function renderCategories(products) {
-  const cats = [...new Set(products.map((p) => p.body.category))];
+  const cats = ["الكل", ...new Set(products.map((p) => p.body.category))];
   const nav = document.getElementById("categories");
   nav.innerHTML = "";
 
   for (const cat of cats) {
     const btn = document.createElement("button");
     btn.textContent = cat;
-    if (activeCategory === cat) btn.classList.add("active");
+    const isActive =
+      (cat === "الكل" && activeCategory === null) || activeCategory === cat;
+    if (isActive) btn.classList.add("active");
     btn.addEventListener("click", () => {
-      activeCategory = activeCategory === cat ? null : cat;
+      activeCategory = cat === "الكل" ? null : cat;
       renderCategories(allProducts);
       renderMenu(allProducts);
     });
@@ -130,22 +269,24 @@ function renderMenu(products) {
   menu.innerHTML = "";
 
   if (visible.length === 0) {
-    menu.innerHTML = '<p class="empty">لا توجد عناصر</p>';
+    menu.innerHTML = '<p class="empty">لا توجد عناصر في هذا القسم</p>';
     return;
   }
 
   for (const product of visible) {
-    const { name, description, price, image } = product.body;
+    const { name, description, price, badge } = product.body;
     const card = document.createElement("div");
     card.className = "product-card";
     card.innerHTML = `
-      ${image ? `<img src="${image}" alt="${name}" loading="lazy" />` : ""}
       <div class="info">
-        <span class="name">${name}</span>
+        <div class="name-row">
+          <span class="name">${name}</span>
+          ${badge ? `<span class="badge">${badge}</span>` : ""}
+        </div>
         <span class="desc">${description ?? ""}</span>
         <div class="footer">
-          <span class="price">${price} ر.س</span>
-          <button class="btn-add" data-id="${product.id}">أضف</button>
+          <span class="price">${price} ر.ق</span>
+          <button class="btn-add" data-id="${product.id}">+ أضف</button>
         </div>
       </div>
     `;
@@ -158,40 +299,63 @@ function renderMenu(products) {
 
 function renderCart() {
   const list = document.getElementById("cart-items");
-  const total = document.getElementById("cart-total-price");
+  const totalEl = document.getElementById("cart-total-price");
 
   list.innerHTML = "";
-  for (const { product, qty } of cart) {
-    const li = document.createElement("li");
-    li.innerHTML = `<span>${product.body.name} × ${qty}</span><span>${product.body.price * qty} ر.س</span>`;
-    list.appendChild(li);
-  }
 
   if (cart.length === 0) {
     list.innerHTML = '<li class="empty">السلة فارغة</li>';
+  } else {
+    for (const { product, qty } of cart) {
+      const li = document.createElement("li");
+      li.className = "cart-item";
+      li.innerHTML = `
+        <span class="ci-name">${product.body.name} × ${qty}</span>
+        <span class="ci-price">${product.body.price * qty} ر.ق</span>
+        <button class="ci-remove" title="إزالة">✕</button>
+      `;
+      li.querySelector(".ci-remove").addEventListener("click", () =>
+        removeFromCart(product.id),
+      );
+      list.appendChild(li);
+    }
   }
 
-  total.textContent = `${cartTotal()} ر.س`;
+  totalEl.textContent = `${cartTotal()} ر.ق`;
 }
 
+// ---------------------------------------------------------------------------
+// Order submission
+// ---------------------------------------------------------------------------
 async function handleOrder() {
   if (cart.length === 0) return;
 
-  if (bridge) {
+  if (bridge?.state) {
     await bridge.state.insert({
       type: "order",
-      body: JSON.stringify({
+      body: {
         items: cart.map((i) => ({ productId: i.product.id, qty: i.qty })),
         total: cartTotal(),
         placedAt: new Date().toISOString(),
-      }),
+      },
     });
   }
 
-  // Reset cart
   cart.length = 0;
   renderCart();
-  alert("تم إرسال طلبك بنجاح!");
+  showToast("تم إرسال طلبك بنجاح! شكراً لاختيارك مطعم المدينة ✓");
+}
+
+// ---------------------------------------------------------------------------
+// Toast notification
+// ---------------------------------------------------------------------------
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("visible");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("visible"), 3500);
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +366,5 @@ async function handleOrder() {
   renderCategories(allProducts);
   renderMenu(allProducts);
   renderCart();
-
   document.getElementById("btn-order").addEventListener("click", handleOrder);
 })();

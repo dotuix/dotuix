@@ -1,0 +1,1 @@
+UriSchemeContext<'_, tauri_runtime_wry::Wry<EventLoopMessage>>

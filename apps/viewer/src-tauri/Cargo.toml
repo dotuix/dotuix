@@ -1,0 +1,25 @@
+[package]
+name = "dotuix-viewer"
+version = "0.1.0"
+description = "dotuix viewer — open .uix files in kiosk mode"
+authors = []
+edition = "2021"
+rust-version = "1.77.2"
+
+[[bin]]
+name = "dotuix-viewer"
+path = "src/main.rs"
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2" }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zip = "2"

@@ -1,0 +1,20 @@
+{
+  "name": "@dotuix/web-viewer",
+  "version": "0.1.0",
+  "description": "Web viewer — viewer.dotuix.com (Vite + React)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@dotuix/core": "workspace:*",
+    "@dotuix/viewer-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vite": "^6.0.0"
+  }
+}

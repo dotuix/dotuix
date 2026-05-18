@@ -1,0 +1,23 @@
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# dotuix runtime artefacts
+*.uix.lock
+~*.uix
+*.uix.tmp
+*.uix.bak
+~/.dotuix/
+
+# Project-local files
+docs/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/

@@ -1,0 +1,11 @@
+{
+  "uix": "1.0",
+  "id": "com.test.validapp",
+  "name": "Test App",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "mode": "window",
+  "permissions": [],
+  "network": "blocked",
+  "author": "test"
+}

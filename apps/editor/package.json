@@ -1,0 +1,17 @@
+{
+  "name": "@dotuix/editor",
+  "version": "0.1.0",
+  "description": "Developer editor — Electron + React + Monaco",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron .",
+    "build": "electron-builder"
+  },
+  "dependencies": {
+    "@dotuix/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

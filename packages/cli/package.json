@@ -1,0 +1,29 @@
+{
+  "name": "@dotuix/cli",
+  "version": "0.1.0",
+  "description": "CLI for packing, unpacking, and validating .uix files",
+  "type": "module",
+  "bin": {
+    "dotuix": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@dotuix/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}

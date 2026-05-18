@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>قائمة الطعام</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="header">
+      <h1 class="restaurant-name">اسم المطعم</h1>
+      <p class="tagline">أصالة الطعم العربي</p>
+    </header>
+
+    <nav class="categories" id="categories">
+      <!-- Populated by app.js -->
+    </nav>
+
+    <main class="menu" id="menu">
+      <!-- Populated by app.js -->
+    </main>
+
+    <aside class="cart" id="cart" aria-label="سلة الطلبات">
+      <h2>طلبك</h2>
+      <ul class="cart-items" id="cart-items"></ul>
+      <div class="cart-total">
+        <span>المجموع</span>
+        <span id="cart-total-price">0 ر.س</span>
+      </div>
+      <button class="btn-order" id="btn-order">إرسال الطلب</button>
+    </aside>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "uix": "1",
+  "id": "com.example.testappcli",
+  "name": "test-app-cli",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "mode": "kiosk",
+  "permissions": ["local-storage"],
+  "network": "blocked",
+  "state": { "seed": false },
+  "theme": { "color": "#c8a96e", "background": "#1a1a1a" }
+}

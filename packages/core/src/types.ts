@@ -43,3 +43,19 @@ export interface ValidateResult {
   errors: string[];
   warnings: string[];
 }
+
+/** Query parameters for the bridge find() method. */
+export interface FindQuery {
+  type: string;
+  /**
+   * Field-level filters applied via json_extract on the body column.
+   * Keys must be alphanumeric (underscores allowed). Values are compared with =.
+   */
+  where?: Record<string, unknown>;
+  /**
+   * Sort by a top-level column ('id' | 'type' | 'created_at' | 'updated_at')
+   * or a body field name (applied via json_extract).
+   */
+  orderBy?: string;
+  limit?: number;
+}

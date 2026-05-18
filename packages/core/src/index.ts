@@ -1,7 +1,17 @@
 export { pack, packBuffer } from "./pack.js";
 export { unpack, unpackBuffer } from "./unpack.js";
 export { validate, validateBuffer } from "./validate.js";
-export { readManifest, readManifestFromBuffer } from "./db.js";
+export {
+  readManifest,
+  readManifestFromBuffer,
+  openData,
+  openDataBuffer,
+  openStateFromFile,
+  createState,
+  UIXDataDB,
+  UIXStateDB,
+} from "./db.js";
+export type { CreateStateOptions } from "./db.js";
 export {
   parseManifest,
   safeParseManifest,
@@ -12,12 +22,19 @@ export type {
   UIXRecord,
   ValidateResult,
   Permission,
+  FindQuery,
 } from "./types.js";
 
 import { pack, packBuffer } from "./pack.js";
 import { unpack, unpackBuffer } from "./unpack.js";
 import { validate, validateBuffer } from "./validate.js";
-import { readManifest, readManifestFromBuffer } from "./db.js";
+import {
+  readManifest,
+  readManifestFromBuffer,
+  openData,
+  openDataBuffer,
+  createState,
+} from "./db.js";
 
 /**
  * The `UIX` namespace provides the primary API for working with `.uix` archives.
@@ -48,4 +65,10 @@ export const UIX = {
   manifest: readManifest,
   /** Read the manifest from a `.uix` buffer (universal). */
   manifestFromBuffer: readManifestFromBuffer,
+  /** Open data.db from a .uix archive on disk — read-only (Node.js). */
+  openData,
+  /** Open data.db from a .uix buffer — read-only (universal). */
+  openDataBuffer,
+  /** Create or load state.db in memory — read-write. */
+  createState,
 } as const;

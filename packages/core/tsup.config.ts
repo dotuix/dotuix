@@ -7,6 +7,6 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   target: "es2022",
-  // Node built-ins are external by default for CJS; make explicit for ESM too
-  external: ["node:fs", "node:path", "node:os", "node:crypto"],
+  // Node built-ins + sql.js (WASM binary must stay in its own node_modules dir)
+  external: ["node:fs", "node:path", "node:os", "node:crypto", "sql.js"],
 });

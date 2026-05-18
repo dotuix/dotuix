@@ -3,21 +3,25 @@ import react from "@vitejs/plugin-react";
 import { copyFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 
 export default defineConfig({
   plugins: [
     react(),
-    // Copy sql.js WASM to public/ so the browser can load it at /sql-wasm.wasm
+    // Copy sql.js WASM to public/ so the browser can load it at /sql-wasm.wasm.
+    // Use require.resolve so pnpm hoisting (monorepo) doesn't break the path.
     {
       name: "copy-sql-wasm",
       buildStart() {
-        mkdirSync(resolve(__dirname, "public"), { recursive: true });
-        copyFileSync(
-          resolve(__dirname, "node_modules/sql.js/dist/sql-wasm.wasm"),
-          resolve(__dirname, "public/sql-wasm.wasm"),
+        const wasmSrc = resolve(
+          dirname(require.resolve("sql.js")),
+          "sql-wasm.wasm",
         );
+        mkdirSync(resolve(__dirname, "public"), { recursive: true });
+        copyFileSync(wasmSrc, resolve(__dirname, "public/sql-wasm.wasm"));
       },
     },
   ],

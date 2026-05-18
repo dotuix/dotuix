@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 type ViewerState =
@@ -9,6 +9,37 @@ type ViewerState =
 
 export default function App() {
   const [state, setState] = useState<ViewerState>({ status: "idle" });
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Relay postMessages from the uix:// iframe to Tauri commands and back.
+  // The iframe is cross-origin so it cannot call window.__TAURI_INTERNALS__ directly.
+  useEffect(() => {
+    if (state.status !== "loaded") return;
+
+    const handler = async (e: MessageEvent) => {
+      if (!e.data?.__dotuix) return;
+      const { id, cmd, payload } = e.data as {
+        id: number;
+        cmd: string;
+        payload: Record<string, unknown>;
+      };
+      try {
+        const result = await invoke(cmd, payload ?? {});
+        iframeRef.current?.contentWindow?.postMessage(
+          { __dotuix_reply: true, id, result },
+          "*",
+        );
+      } catch (err) {
+        iframeRef.current?.contentWindow?.postMessage(
+          { __dotuix_reply: true, id, error: String(err) },
+          "*",
+        );
+      }
+    };
+
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [state.status]);
 
   const openFile = useCallback(async () => {
     setState({ status: "loading" });
@@ -41,6 +72,7 @@ export default function App() {
           </button>
         </div>
         <iframe
+          ref={iframeRef}
           src="uix://index.html"
           className="kiosk-frame"
           title={state.manifestName}

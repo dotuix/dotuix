@@ -214,23 +214,46 @@ async function fetchProducts() {
 }
 
 // ---------------------------------------------------------------------------
-// Cart state
+// Cart state — persisted to state.db via the __uix bridge
 // ---------------------------------------------------------------------------
-const cart = []; // [{ product, qty }]
+
+let cart = []; // [{ product, qty, stateId: string|null }]
 
 const cartTotal = () =>
   cart.reduce((sum, item) => sum + item.product.body.price * item.qty, 0);
 
-function addToCart(product) {
+async function addToCart(product) {
   const existing = cart.find((i) => i.product.id === product.id);
-  if (existing) existing.qty += 1;
-  else cart.push({ product, qty: 1 });
+  if (existing) {
+    existing.qty += 1;
+    if (bridge?.state && existing.stateId) {
+      await bridge.state.update(
+        existing.stateId,
+        JSON.stringify({ product_id: product.id, qty: existing.qty }),
+      );
+    }
+  } else {
+    let stateId = null;
+    if (bridge?.state) {
+      const rec = await bridge.state.insert({
+        type: "cart_item",
+        body: JSON.stringify({ product_id: product.id, qty: 1 }),
+      });
+      stateId = rec?.id ?? null;
+    }
+    cart.push({ product, qty: 1, stateId });
+  }
   renderCart();
 }
 
-function removeFromCart(productId) {
+async function removeFromCart(productId) {
   const idx = cart.findIndex((i) => i.product.id === productId);
-  if (idx !== -1) cart.splice(idx, 1);
+  if (idx === -1) return;
+  const item = cart[idx];
+  if (bridge?.state && item.stateId) {
+    await bridge.state.delete(item.stateId);
+  }
+  cart.splice(idx, 1);
   renderCart();
 }
 
@@ -333,12 +356,16 @@ async function handleOrder() {
   if (bridge?.state) {
     await bridge.state.insert({
       type: "order",
-      body: {
+      body: JSON.stringify({
         items: cart.map((i) => ({ productId: i.product.id, qty: i.qty })),
         total: cartTotal(),
         placedAt: new Date().toISOString(),
-      },
+      }),
     });
+    // Remove all cart_item records from state.db
+    for (const item of cart) {
+      if (item.stateId) await bridge.state.delete(item.stateId);
+    }
   }
 
   cart.length = 0;
@@ -363,6 +390,21 @@ function showToast(msg) {
 // ---------------------------------------------------------------------------
 (async () => {
   allProducts = await fetchProducts();
+
+  // Restore cart from state.db (persisted across viewer sessions)
+  if (bridge?.state) {
+    const savedItems = await bridge.state.find({ type: "cart_item" });
+    for (const rec of savedItems) {
+      try {
+        const data = JSON.parse(rec.body);
+        const product = allProducts.find((p) => p.id === data.product_id);
+        if (product) cart.push({ product, qty: data.qty, stateId: rec.id });
+      } catch {
+        // malformed record — skip
+      }
+    }
+  }
+
   renderCategories(allProducts);
   renderMenu(allProducts);
   renderCart();

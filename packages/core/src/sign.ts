@@ -56,7 +56,7 @@ function buildPayload(
 ): Uint8Array {
   const manifestJson = JSON.stringify(sortKeys(manifestWithoutSig));
   const sortedPaths = Object.keys(files)
-    .filter((p) => p !== "manifest.json")
+    .filter((p) => p !== "manifest.json" && p !== "state.db")
     .sort();
 
   const lines = [

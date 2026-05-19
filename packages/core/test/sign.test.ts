@@ -112,6 +112,22 @@ describe("signBuffer / verifyBuffer", () => {
     expect(verifyBuffer(tampered).valid).toBe(false);
   });
 
+  it("remains valid after state.db is updated (viewer repack)", () => {
+    // state.db is user-owned data — the viewer rewrites it on every close.
+    // The signature must stay valid after state.db changes.
+    const { privateKey } = generateKeyPair();
+    const signed = signBuffer(
+      makeUix({ "state.db": "seed-state-bytes" }),
+      Buffer.from(privateKey, "base64url"),
+    );
+    const repacked = tamperZip(signed, (files) => {
+      files["state.db"] = new TextEncoder().encode(
+        "updated-state-after-user-session",
+      );
+    });
+    expect(verifyBuffer(repacked).valid).toBe(true);
+  });
+
   it("detects tampered manifest (non-signature field)", () => {
     const { privateKey } = generateKeyPair();
     const signed = signBuffer(makeUix(), Buffer.from(privateKey, "base64url"));

@@ -62,6 +62,7 @@ Open [viewer.dotuix.com](https://viewer.dotuix.com) (or run the web viewer local
 | [`apps/viewer`](apps/viewer)                             | Desktop viewer — Tauri + Rust, full `window.__uix` bridge, signature verification, PIN decryption, state persistence     | —                                                                                            | ✅ Stable                   |
 | [`apps/editor`](apps/editor)                             | Developer editor — Electron + Monaco, file tree, live preview, DB records browser, no-code Simple mode (template wizard) | —                                                                                            | ✅ Stable                   |
 | [`apps/web-viewer`](apps/web-viewer)                     | Browser viewer — drag-and-drop, runs in any modern browser                                                               | —                                                                                            | ✅ Built · not yet deployed |
+| [`apps/website`](apps/website)                           | dotuix.com — public landing page (Vite + React + Tailwind)                                                               | [dotuix.com](https://dotuix.com)                                                             | ✅ Built · deploy pending   |
 
 ---
 

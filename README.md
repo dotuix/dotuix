@@ -1,7 +1,7 @@
 # dotuix
 
-> `.uix` — A single-file format for interactive, offline UI experiences.
-> Like PDF, but navigatable. Like an app, but one file.
+> `.uix` — the executable document format.
+> Interactive, offline, tamper-evident. Distributed as a single file.
 
 [![npm @dotuix/core](https://img.shields.io/npm/v/%40dotuix%2Fcore?label=%40dotuix%2Fcore)](https://www.npmjs.com/package/@dotuix/core)
 [![npm @dotuix/cli](https://img.shields.io/npm/v/%40dotuix%2Fcli?label=%40dotuix%2Fcli)](https://www.npmjs.com/package/@dotuix/cli)
@@ -12,7 +12,9 @@
 
 ## What is this?
 
-A `.uix` file is a ZIP archive containing an HTML app, assets, and optional SQLite databases. You open it in a viewer (browser or desktop) and it runs fully offline, with no install, no URL, and no server.
+`.uix` is a **portable executable document format**. Like PDF — but it runs.
+
+A `.uix` file is a ZIP archive containing an HTML app, assets, and optional SQLite databases. You open it in a viewer (browser or desktop) and it runs fully offline, with no install, no URL, and no server. The viewer enforces a sandboxed runtime, an optional Ed25519 signature, and optional AES-256-GCM encryption — making `.uix` suitable for anything from a restaurant kiosk to a classified government briefing.
 
 | Format       | Interactive | Offline | One File | No Install                          |
 | ------------ | ----------- | ------- | -------- | ----------------------------------- |
@@ -22,25 +24,25 @@ A `.uix` file is a ZIP archive containing an HTML app, assets, and optional SQLi
 | Raw HTML     | Yes         | Yes     | No       | Yes (but no kiosk, no distribution) |
 | **`.uix`**   | **Yes**     | **Yes** | **Yes**  | **Yes (once viewer is installed)**  |
 
-**Target use cases:** any interactive experience that needs to be self-contained, offline, and distributable as a single file.
+**Target use cases:** any interactive experience that needs to be self-contained, offline, and distributable as a single file — from government briefings to restaurant kiosks.
 
 ---
 
 ## Use cases
 
-`.uix` is a general-purpose container for offline interactive experiences built on web technology. Its scope is not limited to kiosks or menus — any HTML/JS application that benefits from portability, offline operation, or tamper-evident distribution is a candidate.
+`.uix` is a general-purpose executable document format. The scope is not limited to kiosks — any HTML/JS application that benefits from portability, offline operation, or tamper-evident distribution is a candidate.
 
-| Domain                        | What a `.uix` file delivers                                                                                                                                                 |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Digital publishing**        | Interactive books, textbooks, and reference works with full JavaScript, SQLite search, and correct Arabic/RTL typography — everything EPUB cannot do                        |
-| **Legal and regulatory**      | A jurisdiction's statutes, regulations, and precedents in one file — full-text search via SQLite FTS5, cross-referenced, bilingual, no server required                      |
-| **Government and compliance** | Offline forms with embedded validation rules; citizen fills and submits when connectivity is available — no paper, no always-on server                                      |
-| **Classified briefings**      | Encrypted, signed, expiry-limited documents for air-gapped environments — interactive maps, timelines, and data; viewer enforces access controls before any content runs    |
-| **Healthcare**                | Drug-interaction references, dosage calculators, and treatment-protocol databases for remote or low-connectivity clinics — offline, no account, no app install              |
-| **Audit and reporting**       | Interactive audit reports: drill-down charts, compliance checklists the recipient marks as resolved, frozen and signed findings the auditor cannot modify after delivery    |
-| **Education**                 | Self-contained simulations, exercises, and quizzes with progress tracked in `state.db` — works on any device, distributable on a USB drive                                  |
-| **Sales and tendering**       | Business proposals with live budget calculators, interactive Gantt charts, and embedded annexes — signed and frozen on submission, interaction analytics included           |
-| **Extreme remote operations** | Procedure manuals, emergency checklists, and crew-training simulations for spacecraft, deep-sea stations, and polar expeditions — fully air-gapped, signed before departure |
+| Domain                        | What a `.uix` file delivers                                                                                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Classified briefings**      | Encrypted, signed, expiry-limited documents for air-gapped environments — interactive maps, timelines, and data; viewer enforces access controls before any content runs |
+| **Legal and regulatory**      | A jurisdiction's statutes, regulations, and precedents in one file — full-text search via SQLite FTS5, cross-referenced, bilingual, no server required                   |
+| **Government and compliance** | Offline forms with embedded validation rules; citizen fills and submits when connectivity is available — no paper, no always-on server                                   |
+| **Healthcare**                | Drug-interaction references, dosage calculators, and treatment-protocol databases for remote or low-connectivity clinics — offline, no account, no app install           |
+| **Audit and reporting**       | Interactive audit reports: drill-down charts, compliance checklists the recipient marks as resolved, frozen and signed findings the auditor cannot modify after delivery |
+| **Education**                 | Self-contained simulations, exercises, and quizzes with progress tracked in `state.db` — works on any device, distributable on a USB drive                               |
+| **Sales and tendering**       | Business proposals with live budget calculators, interactive Gantt charts, and embedded annexes — signed and frozen on submission, interaction analytics included        |
+| **Digital publishing**        | Interactive books, textbooks, and reference works with full JavaScript, SQLite search, and correct Arabic/RTL typography — everything EPUB cannot do                     |
+| **Restaurant & retail**       | Kiosk menus, product catalogues, and showroom experiences — offline, no WiFi, no app install; the included restaurant template ships ready to customize                  |
 
 ---
 

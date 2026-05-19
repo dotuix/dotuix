@@ -251,7 +251,7 @@ export function App() {
         </div>
 
         {/* headline */}
-        <h1 className="text-5xl sm:text-6xl font-bold tracking-tight mb-6 leading-[1.1]">
+        <h1 className="text-5xl sm:text-6xl font-bold tracking-tight mb-4 leading-[1.1]">
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400">
             .uix
           </span>{" "}
@@ -260,12 +260,21 @@ export function App() {
           offline. interactive.
         </h1>
 
+        {/* category */}
+        <p className="text-base text-gray-500 mb-5 tracking-wide">
+          The{" "}
+          <span className="text-gray-300 font-medium">
+            executable document format
+          </span>{" "}
+          — like PDF, but it runs.
+        </p>
+
         {/* subtext */}
         <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
           Pack any HTML/JS app into a single portable file.
           <br className="hidden sm:block" />
-          No server. No URL. No install. Runs fully offline — on a kiosk, a
-          clinic laptop, or a tablet in a remote camp.
+          No server. No URL. No install. Runs fully offline — in a clinic, a
+          courtroom, an air-gapped datacenter, or a kiosk in a remote camp.
         </p>
 
         {/* CTAs */}
@@ -451,15 +460,109 @@ export function App() {
                     tool.tag === "npm"
                       ? "border-red-500/30 text-red-400 bg-red-500/10"
                       : tool.tag === "ext"
-                        ? "border-blue-500/30 text-blue-400 bg-blue-500/10"
-                        : "border-white/15 text-gray-500 bg-white/5"
+                      ? "border-blue-500/30 text-blue-400 bg-blue-500/10"
+                      : "border-white/15 text-gray-500 bg-white/5"
                   }`}
                 >
                   {tool.tag}
                 </span>
               </div>
-              <p className="text-gray-400 text-sm leading-relaxed">{tool.desc}</p>
+              <p className="text-gray-400 text-sm leading-relaxed">
+                {tool.desc}
+              </p>
             </a>
+          ))}
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Security callout                                                    */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8">
+        <h2 className="text-3xl font-bold text-center mb-3">
+          Built-in trust model
+        </h2>
+        <p className="text-gray-400 text-center mb-10 max-w-xl mx-auto">
+          Regular apps omit the security block entirely and are unaffected. For
+          classified or access-controlled content, it’s all built in.
+        </p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
+          {[
+            {
+              icon: "🔐",
+              title: "PIN auth",
+              desc: "Viewer prompts before opening. Key derived with PBKDF2-SHA256. No server.",
+            },
+            {
+              icon: "🛡️",
+              title: "AES-256-GCM encryption",
+              desc: "Selected files encrypted at rest. Decrypted in memory after auth. Never written to disk.",
+            },
+            {
+              icon: "✏️",
+              title: "Ed25519 signatures",
+              desc: "Bundle signed over all file hashes. Viewer refuses tampered files before any content runs.",
+            },
+            {
+              icon: "⏱️",
+              title: "Expiry & open limits",
+              desc: "Files expire by date or after N opens. Tracked by the viewer locally — the file cannot bypass it.",
+            },
+          ].map((f) => (
+            <div
+              key={f.title}
+              className="rounded-xl border border-white/10 bg-white/3 p-5"
+            >
+              <div className="text-2xl mb-3">{f.icon}</div>
+              <h3 className="font-semibold text-sm mb-1.5">{f.title}</h3>
+              <p className="text-gray-400 text-sm leading-relaxed">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Security callout                                                    */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8">
+        <h2 className="text-3xl font-bold text-center mb-3">
+          Built-in trust model
+        </h2>
+        <p className="text-gray-400 text-center mb-10 max-w-xl mx-auto">
+          Regular apps omit the security block entirely and are unaffected. For
+          classified or access-controlled content, it's all built in.
+        </p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
+          {[
+            {
+              icon: "🔐",
+              title: "PIN auth",
+              desc: "Viewer prompts before opening. Key derived with PBKDF2-SHA256. No server involved.",
+            },
+            {
+              icon: "🛡️",
+              title: "AES-256-GCM encryption",
+              desc: "Selected files encrypted at rest. Decrypted in memory after auth. Never written to disk.",
+            },
+            {
+              icon: "✏️",
+              title: "Ed25519 signatures",
+              desc: "Bundle signed over all file hashes. Viewer refuses tampered files before any content runs.",
+            },
+            {
+              icon: "⏱️",
+              title: "Expiry & open limits",
+              desc: "Files expire by date or after N opens. Tracked by the viewer locally — the file cannot bypass it.",
+            },
+          ].map((f) => (
+            <div
+              key={f.title}
+              className="rounded-xl border border-white/10 bg-white/3 p-5"
+            >
+              <div className="text-2xl mb-3">{f.icon}</div>
+              <h3 className="font-semibold text-sm mb-1.5">{f.title}</h3>
+              <p className="text-gray-400 text-sm leading-relaxed">{f.desc}</p>
+            </div>
           ))}
         </div>
       </section>

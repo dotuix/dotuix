@@ -3,6 +3,11 @@
 > `.uix` — A single-file format for interactive, offline UI experiences.
 > Like PDF, but navigatable. Like an app, but one file.
 
+[![npm @dotuix/core](https://img.shields.io/npm/v/%40dotuix%2Fcore?label=%40dotuix%2Fcore)](https://www.npmjs.com/package/@dotuix/core)
+[![npm @dotuix/cli](https://img.shields.io/npm/v/%40dotuix%2Fcli?label=%40dotuix%2Fcli)](https://www.npmjs.com/package/@dotuix/cli)
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/intenttext.dotuix?label=VS%20Code)](https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 ---
 
 ## What is this?
@@ -47,15 +52,39 @@ Open [viewer.dotuix.com](https://viewer.dotuix.com) (or run the web viewer local
 
 ## Packages
 
-| Package                                        | Description                                                                                                              | Status         |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------- |
-| [`packages/core`](packages/core)               | Core library — pack, unpack, validate, sign, read/write SQLite                                                           | ✅ Stable      |
-| [`packages/cli`](packages/cli)                 | `dotuix` CLI — pack, unpack, validate, sign, verify, keygen, export, encrypt, init `--template`                          | ✅ Stable      |
-| [`packages/vite-plugin`](packages/vite-plugin) | Vite plugin — build React/Vue/Svelte/TS apps, outputs a `.uix` file                                                      | ✅ Stable      |
-| [`packages/viewer-core`](packages/viewer-core) | Shared viewer logic for web and desktop viewers                                                                          | 🔄 In progress |
-| [`apps/viewer`](apps/viewer)                   | Desktop viewer — Tauri + Rust, full `window.__uix` bridge, signature verification, PIN decryption, state persistence     | ✅ Stable      |
-| [`apps/editor`](apps/editor)                   | Developer editor — Electron + Monaco, file tree, live preview, DB records browser, no-code Simple mode (template wizard) | ✅ Stable      |
-| [`apps/web-viewer`](apps/web-viewer)           | Browser viewer — drag-and-drop, runs in any modern browser                                                               | 🔄 In progress |
+| Package                                                  | Description                                                                                                              | npm / download                                                                               | Status         |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- | -------------- |
+| [`packages/core`](packages/core)                         | Core library — pack, unpack, validate, sign, read/write SQLite                                                           | [`@dotuix/core`](https://www.npmjs.com/package/@dotuix/core)                                 | ✅ Published   |
+| [`packages/cli`](packages/cli)                           | `dotuix` CLI — pack, unpack, validate, sign, verify, keygen, export, encrypt, init `--template`                          | [`@dotuix/cli`](https://www.npmjs.com/package/@dotuix/cli)                                   | ✅ Published   |
+| [`packages/vscode-extension`](packages/vscode-extension) | VS Code extension — manifest IntelliSense, pack/validate/init commands, `.uix` file icon                                 | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix) | ✅ Published   |
+| [`packages/vite-plugin`](packages/vite-plugin)           | Vite plugin — build React/Vue/Svelte/TS apps, outputs a `.uix` file                                                      | —                                                                                            | ✅ Stable      |
+| [`packages/viewer-core`](packages/viewer-core)           | Shared viewer logic for web and desktop viewers                                                                          | —                                                                                            | 🔄 In progress |
+| [`apps/viewer`](apps/viewer)                             | Desktop viewer — Tauri + Rust, full `window.__uix` bridge, signature verification, PIN decryption, state persistence     | —                                                                                            | ✅ Stable      |
+| [`apps/editor`](apps/editor)                             | Developer editor — Electron + Monaco, file tree, live preview, DB records browser, no-code Simple mode (template wizard) | —                                                                                            | ✅ Stable      |
+| [`apps/web-viewer`](apps/web-viewer)                     | Browser viewer — drag-and-drop, runs in any modern browser                                                               | —                                                                                            | 🔄 In progress |
+
+---
+
+## Install
+
+```bash
+# Core library (Node.js / bundlers)
+npm install @dotuix/core
+
+# CLI (global)
+npm install -g @dotuix/cli
+dotuix --help
+
+# VS Code extension
+# Search "dotuix" in the Extensions panel, or:
+code --install-extension intenttext.dotuix
+```
+
+The VS Code extension adds:
+
+- JSON schema validation and autocomplete for `manifest.json`
+- File icon for `.uix` files in the explorer
+- Commands: **dotuix: Pack**, **dotuix: Validate**, **dotuix: Init** (with template picker)
 
 ---
 

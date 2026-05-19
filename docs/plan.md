@@ -660,7 +660,7 @@ The format spec itself will be published as an open document under Creative Comm
 | M7        | Editor simple mode (template wizard + no-code export)                                  | Week 20 | ✅ Complete         |
 | M8        | Catalog and portfolio starter templates + `dotuix init --template`                     | Week 21 | ✅ Complete         |
 | M9        | Publish `@dotuix/core` and `@dotuix/cli` to npm                                        | Week 22 | ✅ Complete         |
-| M10       | VS Code extension — manifest IntelliSense, pack/validate commands, `.uix` file support | Week 23 | 🔄 In progress      |
+| M10       | VS Code extension — manifest IntelliSense, pack/validate commands, `.uix` file support | Week 23 | ✅ Complete         |
 
 ---
 

@@ -60,6 +60,10 @@ A company submits a tender as a `.uix` file instead of a PDF: interactive presen
 
 A citizen downloads a building permit or residency renewal form once. Fills it offline. The form validates inputs against rules embedded in the file — tells them immediately if a document is missing or a field is wrong. Submission happens when connectivity is available. Paper forms have no validation. Online forms require connectivity throughout.
 
+### Space missions and extreme remote operations
+
+A spacecraft has no reliable internet. A deep-sea research station has no connectivity. A polar expedition has no cloud. Interactive procedure checklists, system reference manuals, crew training simulations, emergency protocols with decision trees — all as `.uix` files on an air-gapped device. Signed and frozen before launch so no file can be tampered with in transit. SQLite databases for telemetry references and fault trees that can be queried instantly. The sky is not the limit — it is just the beginning.
+
 ---
 
 > يا عماد — هذا مشروع يستاهل سنوات من البناء.

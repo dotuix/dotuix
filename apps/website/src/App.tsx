@@ -136,19 +136,23 @@ for Al Madina with 10 items."`,
   {
     n: "2",
     title: "AI generates the files",
-    desc: "The AI produces manifest.json, index.html, app.js, style.css — all correct .uix structure. Iterate in natural language until it's exactly what you want.",
-    code: `# AI output:
-├── manifest.json
-├── index.html
-├── app.js
-└── style.css`,
+    desc: "The AI produces manifest.json, index.html, app.js, style.css — all correct .uix structure. Via MCP (Claude Desktop, Cursor) the agent packs it for you automatically.",
+    code: `# Via MCP — one call:
+create({ manifest, files })
+✓ my-app.uix — ready
+
+# Or save files and:
+$ dotuix pack ./my-app`,
   },
   {
     n: "3",
-    title: "Pack and share",
-    desc: "One command turns the generated files into a distributable .uix file. Share over email, USB, or AirDrop — opens fully offline, no install.",
-    code: `$ dotuix pack ./my-app
-✓ my-app.uix — 847 KB`,
+    title: "Share and open offline",
+    desc: "Share the .uix file over email, USB, AirDrop, or any file transfer. The desktop viewer opens it fully offline — no internet, no install beyond the viewer.",
+    code: `$ dotuix validate my-menu.uix
+✓  manifest valid
+✓  entry index.html found
+✓  data.db schema correct
+✓  no external URLs`,
   },
 ];
 
@@ -251,7 +255,7 @@ export function App() {
         {/* badge */}
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/15 bg-white/5 text-xs text-gray-400 mb-8">
           <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
-          Open format · MIT · v0.1.0
+          Open format · MIT · v0.2.0
         </div>
 
         {/* headline */}
@@ -526,48 +530,56 @@ export function App() {
       </section>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Security callout                                                    */}
+      {/* Desktop viewer download                                             */}
       {/* ------------------------------------------------------------------ */}
       <section className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8">
-        <h2 className="text-3xl font-bold text-center mb-3">
-          Built-in trust model
-        </h2>
-        <p className="text-gray-400 text-center mb-10 max-w-xl mx-auto">
-          Regular apps omit the security block entirely and are unaffected. For
-          classified or access-controlled content, it's all built in.
-        </p>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
-          {[
-            {
-              icon: "🔐",
-              title: "PIN auth",
-              desc: "Viewer prompts before opening. Key derived with PBKDF2-SHA256. No server involved.",
-            },
-            {
-              icon: "🛡️",
-              title: "AES-256-GCM encryption",
-              desc: "Selected files encrypted at rest. Decrypted in memory after auth. Never written to disk.",
-            },
-            {
-              icon: "✏️",
-              title: "Ed25519 signatures",
-              desc: "Bundle signed over all file hashes. Viewer refuses tampered files before any content runs.",
-            },
-            {
-              icon: "⏱️",
-              title: "Expiry & open limits",
-              desc: "Files expire by date or after N opens. Tracked by the viewer locally — the file cannot bypass it.",
-            },
-          ].map((f) => (
-            <div
-              key={f.title}
-              className="rounded-xl border border-white/10 bg-white/3 p-5"
-            >
-              <div className="text-2xl mb-3">{f.icon}</div>
-              <h3 className="font-semibold text-sm mb-1.5">{f.title}</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">{f.desc}</p>
+        <div className="max-w-3xl mx-auto rounded-2xl border border-white/10 bg-white/3 p-10">
+          <div className="flex flex-col md:flex-row items-start md:items-center gap-8">
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold mb-3">Desktop viewer</h2>
+              <p className="text-gray-400 text-sm leading-relaxed mb-4">
+                The dotuix desktop app opens any{" "}
+                <code className="text-gray-300">.uix</code> file fully offline —
+                kiosk mode, PIN auth, Ed25519 signature verification, and a
+                built-in developer mode with live preview and DB browser.
+                Available for macOS, Windows, and Linux.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <a
+                  href="https://github.com/dotuix/dotuix/releases"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:opacity-90 transition-opacity text-sm font-medium"
+                >
+                  Download v0.2.0 →
+                </a>
+                <a
+                  href="https://github.com/dotuix/dotuix/tree/main/apps/viewer"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-white/15 bg-white/5 hover:bg-white/10 transition-colors text-sm font-medium text-gray-300"
+                >
+                  View source →
+                </a>
+              </div>
             </div>
-          ))}
+            <div className="text-gray-500 text-sm space-y-2 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-green-400">✓</span> macOS (Apple Silicon +
+                Intel)
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-green-400">✓</span> Windows
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-green-400">✓</span> Linux
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-green-400">✓</span> Developer mode built
+                in
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -676,6 +688,12 @@ export function App() {
               GitHub
             </a>
             <a
+              href="https://dotuix.com/llms.txt"
+              className="hover:text-gray-300 transition-colors"
+            >
+              llms.txt
+            </a>
+            <a
               href="https://www.npmjs.com/package/@dotuix/core"
               className="hover:text-gray-300 transition-colors"
             >
@@ -686,6 +704,12 @@ export function App() {
               className="hover:text-gray-300 transition-colors"
             >
               @dotuix/cli
+            </a>
+            <a
+              href="https://www.npmjs.com/package/@dotuix/mcp"
+              className="hover:text-gray-300 transition-colors"
+            >
+              @dotuix/mcp
             </a>
             <a
               href="https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix"

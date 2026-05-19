@@ -93,6 +93,41 @@ fn now_ms() -> i64 {
         .as_millis() as i64
 }
 
+/// Returns true if a process with the given PID is currently running.
+/// On Unix we send signal 0 (no-op) — succeeds iff the process exists.
+/// On Windows we open a handle with SYNCHRONIZE rights.
+fn pid_is_running(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::RawHandle;
+        const SYNCHRONIZE: u32 = 0x00100000;
+        let handle = unsafe { windows_sys::Win32::System::Threading::OpenProcess(SYNCHRONIZE, 0, pid) };
+        if handle == 0 { return false; }
+        unsafe { windows_sys::Win32::Foundation::CloseHandle(handle) };
+        true
+    }
+    #[cfg(not(any(unix, windows)))]
+    { let _ = pid; false }
+}
+
+/// Parse the PID from a lock file written by this app: {"pid":12345,...}
+fn lock_file_pid(lock_path: &str) -> Option<u32> {
+    std::fs::read_to_string(lock_path).ok()
+        .and_then(|s| s.split("\"pid\":").nth(1).map(str::to_string))
+        .and_then(|s| s.split([',', '}']).next().map(str::to_string))
+        .and_then(|s| s.trim().parse::<u32>().ok())
+}
+
 fn gen_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
@@ -437,13 +472,31 @@ fn complete_load(
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
         .unwrap_or_default();
 
+    // --- Close any previously open file first ---
+    {
+        let prev_path = state.uix_path.lock().unwrap().clone();
+        if !prev_path.is_empty() && prev_path != path {
+            let prev_state_db_path = state.state_db_path.lock().unwrap().clone();
+            { let _ = state.state_db.lock().unwrap().take(); }
+            { let _ = state.data_db.lock().unwrap().take(); }
+            if let Some(db_path) = prev_state_db_path {
+                if db_path.exists() { let _ = repack_uix(&prev_path, &db_path); }
+            }
+            let _ = std::fs::remove_file(format!("{prev_path}.lock"));
+        }
+    }
+
     // --- Lock file ---
     let lock_path = format!("{path}.lock");
     if std::path::Path::new(&lock_path).exists() {
-        return Err(format!(
-            "This file is already open in another viewer instance, or the previous session crashed.\n\
-             Delete '{lock_path}' to open it."
-        ));
+        let owner_running = lock_file_pid(&lock_path)
+            .map(pid_is_running)
+            .unwrap_or(false);
+        if owner_running {
+            return Err("This file is already open in another window.".into());
+        }
+        // Stale lock (crashed or force-quit) — remove and continue.
+        let _ = std::fs::remove_file(&lock_path);
     }
     std::fs::write(&lock_path, format!("{{\"pid\":{},\"opened_at\":{}}}", std::process::id(), now_ms()).as_bytes())
         .map_err(|e| format!("Cannot create lock file: {e}"))?;
@@ -542,9 +595,11 @@ fn repack_uix(uix_path: &str, state_db_path: &std::path::Path) -> Result<(), Str
 
     // Atomic rename sequence
     let bak_path = format!("{uix_path}.bak");
-    let _ = std::fs::rename(uix_path, &bak_path); // keep rolling backup (ignore error)
+    let _ = std::fs::rename(uix_path, &bak_path); // temporary backup during swap
     std::fs::rename(&tmp_path, uix_path)
         .map_err(|e| format!("Repack: atomic rename failed: {e}"))?;
+    // New file written successfully — remove the backup
+    let _ = std::fs::remove_file(&bak_path);
 
     Ok(())
 }
@@ -821,6 +876,22 @@ fn load_uix(
     state: State<'_, AppState>,
 ) -> Result<LoadResult, String> {
     probe_uix_inner(&path, &app, &state)
+}
+
+#[tauri::command]
+fn close_uix(state: State<'_, AppState>) {
+    let uix_path = state.uix_path.lock().unwrap().clone();
+    if uix_path.is_empty() { return; }
+    let state_db_path = state.state_db_path.lock().unwrap().clone();
+    { let _ = state.state_db.lock().unwrap().take(); }
+    { let _ = state.data_db.lock().unwrap().take(); }
+    if let Some(db_path) = state_db_path {
+        if db_path.exists() { let _ = repack_uix(&uix_path, &db_path); }
+    }
+    let _ = std::fs::remove_file(format!("{uix_path}.lock"));
+    *state.uix_path.lock().unwrap() = String::new();
+    *state.state_db_path.lock().unwrap() = None;
+    state.files.lock().unwrap().clear();
 }
 
 /// Returns (and clears) the .uix path that was passed as a CLI argument on launch.
@@ -1472,6 +1543,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             pick_and_load_uix,
             load_uix,
+            close_uix,
             unlock_with_pin,
             get_initial_file,
             get_manifest,

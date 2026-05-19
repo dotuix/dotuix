@@ -116,19 +116,33 @@ export default function App() {
     }).then((u) => unsubs.push(u));
 
     listen("menu-close-app", () => {
-      if (stateRef.current.status === "loaded") setState({ status: "idle" });
+      if (stateRef.current.status === "loaded") {
+        invoke("close_uix").catch(() => {});
+        setState({ status: "idle" });
+      }
     }).then((u) => unsubs.push(u));
 
     listen("menu-dev-mode", () => setState({ status: "developer" })).then((u) =>
       unsubs.push(u),
     );
 
-    listen<string>("uix-file-dropped", (event) => {
+    // Native file drag-drop (Tauri emits these automatically)
+    listen<{ paths?: string[] }>("tauri://drag-drop", (event) => {
+      const path = (event.payload.paths ?? []).find((p) => p.endsWith(".uix"));
+      if (!path) return;
+      setIsDragOver(false);
       setState({ status: "loading" });
-      invoke<LoadResult>("load_uix", { path: event.payload })
+      invoke<LoadResult>("load_uix", { path })
         .then((r) => setState(handleLoadResult(r)))
         .catch((err) => setState({ status: "error", message: String(err) }));
     }).then((u) => unsubs.push(u));
+
+    listen("tauri://drag-enter", () => setIsDragOver(true)).then((u) =>
+      unsubs.push(u),
+    );
+    listen("tauri://drag-leave", () => setIsDragOver(false)).then((u) =>
+      unsubs.push(u),
+    );
 
     // macOS file association: fired by RunEvent::Opened when a .uix is opened
     listen<string>("uix-file-opened", (event) => {
@@ -137,13 +151,6 @@ export default function App() {
         .then((r) => setState(handleLoadResult(r)))
         .catch((err) => setState({ status: "error", message: String(err) }));
     }).then((u) => unsubs.push(u));
-
-    listen("uix-drag-enter", () => setIsDragOver(true)).then((u) =>
-      unsubs.push(u),
-    );
-    listen("uix-drag-leave", () => setIsDragOver(false)).then((u) =>
-      unsubs.push(u),
-    );
 
     return () => unsubs.forEach((u) => u());
   }, []);

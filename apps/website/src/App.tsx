@@ -160,6 +160,12 @@ const TOOLS = [
     tag: "npm",
   },
   {
+    name: "@dotuix/ai",
+    desc: "One-function SDK for AI-generated code. createUIX({ manifest, files }) — handles everything and stamps AI provenance.",
+    href: "https://www.npmjs.com/package/@dotuix/ai",
+    tag: "npm",
+  },
+  {
     name: "@dotuix/core",
     desc: "Core library — pack, unpack, validate, sign, read/write SQLite.",
     href: "https://www.npmjs.com/package/@dotuix/core",
@@ -185,14 +191,8 @@ const TOOLS = [
   },
   {
     name: "Desktop Viewer",
-    desc: "Tauri app — kiosk mode, PIN auth, Ed25519 signature verification.",
+    desc: "Tauri app — viewer + developer mode, kiosk, PIN auth, Ed25519 signature verification.",
     href: "https://github.com/dotuix/dotuix/tree/main/apps/viewer",
-    tag: "github",
-  },
-  {
-    name: "Editor",
-    desc: "Electron + Monaco — developer mode and no-code simple mode.",
-    href: "https://github.com/dotuix/dotuix/tree/main/apps/editor",
     tag: "github",
   },
 ];
@@ -268,9 +268,9 @@ export function App() {
         <p className="text-base text-gray-500 mb-5 tracking-wide">
           The{" "}
           <span className="text-gray-300 font-medium">
-            executable document format
+            transport format for AI-generated software
           </span>{" "}
-          — like PDF, but it runs.
+          — and everything else that needs to run offline.
         </p>
 
         {/* subtext */}

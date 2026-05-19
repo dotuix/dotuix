@@ -83,6 +83,25 @@ export interface UIXSecurity {
 }
 
 // ---------------------------------------------------------------------------
+// AI provenance — optional block for AI-generated .uix files
+// ---------------------------------------------------------------------------
+
+/**
+ * Optional provenance metadata for AI-generated .uix files.
+ * Omit entirely for non-AI-generated files — it has no effect on viewers.
+ */
+export interface UIXAiMeta {
+  /** Model or tool that created this file, e.g. "claude-opus-4", "@dotuix/ai" */
+  generatedBy?: string;
+  /** ISO-8601 timestamp of generation */
+  generatedAt?: string;
+  /** Semantic capabilities this app exposes, e.g. ["search", "chat"] */
+  capabilities?: string[];
+  /** SHA-256 hex digest of the generation prompt, for reproducibility */
+  promptHash?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Manifest
 // ---------------------------------------------------------------------------
 
@@ -115,6 +134,8 @@ export interface Manifest {
    * viewer on load. Omit or null for unsigned files.
    */
   signature?: UIXSignature | null;
+  /** Optional AI provenance. Omit for non-AI-generated files. */
+  ai?: UIXAiMeta;
 }
 
 export interface UIXRecord {

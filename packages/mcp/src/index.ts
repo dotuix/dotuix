@@ -281,11 +281,129 @@ server.tool(
       written.push(file.path);
     }
 
+    // Auto-stamp ai provenance in manifest.json if the caller included one
+    // and it doesn't already have an ai block.
+    const manifestFile = files.find((f) => f.path === "manifest.json");
+    if (manifestFile) {
+      const manifestPath = join(dir, "manifest.json");
+      try {
+        const raw = JSON.parse(await readFile(manifestPath, "utf8"));
+        if (!raw.ai) {
+          raw.ai = {
+            generatedBy: "@dotuix/mcp",
+            generatedAt: new Date().toISOString(),
+          };
+          await writeFile(manifestPath, JSON.stringify(raw, null, 2), "utf8");
+        }
+      } catch {
+        // Not valid JSON — leave as-is, validation will catch it later
+      }
+    }
+
     return {
       content: [
         {
           type: "text",
           text: formatJsonResult({ success: true, written }),
+        },
+      ],
+    };
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool: create  (init + write_files + pack in one shot)
+// ---------------------------------------------------------------------------
+server.tool(
+  "create",
+  "Create a complete .uix file in one atomic step — ideal for AI-generated apps. " +
+    "Provide the manifest as a JSON object and all source files as { path, content } pairs. " +
+    "The tool initialises the project directory, writes your files, auto-stamps the ai provenance block, " +
+    "and packs everything into a ready-to-use .uix file. Returns the output path. " +
+    "Use this instead of chaining init → write_files → pack.",
+  {
+    name: z
+      .string()
+      .describe("App name, used as the directory and output filename."),
+    manifest: z
+      .record(z.unknown())
+      .describe(
+        "manifest.json content as a JSON object (without the ai block — it is stamped automatically).",
+      ),
+    files: z
+      .array(
+        z.object({
+          path: z
+            .string()
+            .describe("Relative path from project root, e.g. 'index.html'"),
+          content: z.string().describe("UTF-8 file content."),
+        }),
+      )
+      .describe(
+        "Source files (index.html, app.js, style.css, …). Do NOT include manifest.json here.",
+      ),
+    directory: z
+      .string()
+      .optional()
+      .describe(
+        "Parent directory for the project folder. Defaults to a temp directory.",
+      ),
+    generatedBy: z
+      .string()
+      .optional()
+      .describe(
+        "Override the ai.generatedBy stamp, e.g. 'claude-opus-4'. Defaults to '@dotuix/mcp'.",
+      ),
+  },
+  async ({ name, manifest, files, directory, generatedBy }) => {
+    const parent = directory
+      ? resolve(directory)
+      : join(tmpdir(), `dotuix-${randomUUID()}`);
+    await mkdir(parent, { recursive: true });
+    const projectDir = join(parent, name);
+    await mkdir(projectDir, { recursive: true });
+
+    // Stamp ai provenance
+    const stamped = {
+      ...manifest,
+      ai: {
+        ...(typeof manifest.ai === "object" && manifest.ai !== null
+          ? (manifest.ai as object)
+          : {}),
+        generatedBy: generatedBy ?? "@dotuix/mcp",
+        generatedAt: new Date().toISOString(),
+      },
+    };
+
+    // Write manifest
+    await writeFile(
+      join(projectDir, "manifest.json"),
+      JSON.stringify(stamped, null, 2),
+      "utf8",
+    );
+
+    // Write source files
+    for (const file of files) {
+      const fullPath = join(projectDir, file.path);
+      const fileParent = fullPath.substring(0, fullPath.lastIndexOf("/"));
+      await mkdir(fileParent, { recursive: true });
+      await writeFile(fullPath, file.content, "utf8");
+    }
+
+    // Pack
+    const outputPath = join(parent, `${name}.uix`);
+    const { stdout } = await runDotuix(["pack", projectDir, "-o", outputPath]);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: formatJsonResult({
+            success: true,
+            path: outputPath,
+            filesWritten: ["manifest.json", ...files.map((f) => f.path)],
+            output: stdout.trim(),
+          }),
         },
       ],
     };

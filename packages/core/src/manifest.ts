@@ -71,6 +71,15 @@ export const ManifestSchema = z.object({
   security: UIXSecuritySchema,
   // Optional — written by `dotuix sign`, verified by the viewer on load
   signature: UIXSignatureSchema.nullable().optional(),
+  // Optional — AI provenance, has no effect on non-AI viewers
+  ai: z
+    .object({
+      generatedBy: z.string().optional(),
+      generatedAt: z.string().optional(),
+      capabilities: z.array(z.string()).optional(),
+      promptHash: z.string().optional(),
+    })
+    .optional(),
 });
 
 export type ManifestInput = z.input<typeof ManifestSchema>;

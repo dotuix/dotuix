@@ -23,6 +23,7 @@ export type {
   UIXRecord,
   UIXSecurity,
   UIXSignature,
+  UIXAiMeta,
   ValidateResult,
   Permission,
   FindQuery,

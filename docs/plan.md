@@ -645,17 +645,20 @@ The format spec itself will be published as an open document under Creative Comm
 
 ## 9. Milestones
 
-| Milestone | Deliverable                                                                  | Target  | Status              |
-| --------- | ---------------------------------------------------------------------------- | ------- | ------------------- |
-| M1        | `@dotuix/core` published to npm with full test suite                         | Week 3  | ✅ Ready to publish |
-| M2        | Web fallback viewer live at `viewer.dotuix.com` + restaurant demo template   | Week 5  | ✅ Complete         |
-| M3        | `dotuix` CLI — pack, unpack, validate, init (ships with restaurant template) | Week 6  | ✅ Complete         |
-| M4        | Tauri viewer opens a `.uix` in kiosk mode                                    | Week 9  | ✅ Complete         |
-| M5        | Lock files, repack-on-close, file association, purge, minViewer, expires     | Week 12 | ✅ Complete         |
-| M5.1      | Bridge enhancements: where/orderBy/limit in find(), raw() SQL escape hatch   | Week 13 | ✅ Complete         |
-| M6        | Editor developer mode (code + live preview + DB editor)                      | Week 16 | 🔄 In progress      |
-| M7        | Editor simple mode (template + export)                                       | Week 20 | ⬜ Not started      |
-| M8        | Catalog and portfolio starter templates                                      | Week 20 | ⬜ Not started      |
+| Milestone | Deliverable                                                                | Target  | Status              |
+| --------- | -------------------------------------------------------------------------- | ------- | ------------------- |
+| M1        | `@dotuix/core` published to npm with full test suite                       | Week 3  | ✅ Ready to publish |
+| M2        | Web fallback viewer live at `viewer.dotuix.com` + restaurant demo template | Week 5  | ✅ Complete         |
+| M3        | `dotuix` CLI — pack, unpack, validate, init, sign, verify, keygen, encrypt | Week 6  | ✅ Complete         |
+| M3.1      | `@dotuix/vite-plugin` — build React/Vue/Svelte/TS apps, outputs `.uix`     | Week 7  | ✅ Complete         |
+| M4        | Tauri viewer opens a `.uix` in kiosk mode                                  | Week 9  | ✅ Complete         |
+| M5        | Lock files, repack-on-close, file association, purge, minViewer, expires   | Week 12 | ✅ Complete         |
+| M5.1      | Bridge enhancements: where/orderBy/limit in find(), raw() SQL escape hatch | Week 13 | ✅ Complete         |
+| M5.2      | Ed25519 signature signing in core + CLI; viewer verification (Rust)        | Week 14 | ✅ Complete         |
+| M5.3      | AES-256-GCM + PBKDF2 encryption: CLI `encrypt`, Tauri PIN unlock           | Week 15 | ✅ Complete         |
+| M6        | Editor developer mode (code + live preview + DB editor)                    | Week 16 | ✅ Complete         |
+| M7        | Editor simple mode (template wizard + no-code export)                      | Week 20 | ✅ Complete         |
+| M8        | Catalog and portfolio starter templates                                    | Week 21 | 🔄 In progress      |
 
 ---
 

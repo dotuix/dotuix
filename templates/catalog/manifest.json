@@ -1,0 +1,14 @@
+{
+  "uix": "1.0",
+  "id": "com.dotuix.template.catalog",
+  "name": "Product Catalog",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "mode": "kiosk",
+  "permissions": [],
+  "network": "blocked",
+  "theme": {
+    "color": "#111827",
+    "background": "#f9fafb"
+  }
+}

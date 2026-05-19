@@ -65,6 +65,97 @@ const TEMPLATES: TemplateDef[] = [
       },
     ],
   },
+  {
+    id: "catalog",
+    name: "Product Catalog",
+    description:
+      "Clean product showcase for showrooms and exhibitions — category filters, SKU, pricing",
+    icon: "📦",
+    recordType: "product",
+    fields: [
+      {
+        key: "name",
+        label: "Name",
+        placeholder: "e.g. Wireless Headphones",
+        type: "text",
+      },
+      {
+        key: "description",
+        label: "Description",
+        placeholder: "Short description",
+        type: "text",
+      },
+      { key: "price", label: "Price ($)", placeholder: "299", type: "number" },
+      {
+        key: "category",
+        label: "Category",
+        placeholder: "e.g. Audio",
+        type: "text",
+      },
+      { key: "sku", label: "SKU", placeholder: "e.g. AUD-001", type: "text" },
+    ],
+    defaultItems: [
+      {
+        name: "Wireless Headphones",
+        description: "Premium ANC headphones, 30h battery",
+        price: 349,
+        category: "Audio",
+        sku: "AUD-001",
+      },
+      {
+        name: "Mechanical Keyboard",
+        description: "TKL layout, hot-swap switches, RGB",
+        price: 159,
+        category: "Accessories",
+        sku: "ACC-001",
+      },
+    ],
+  },
+  {
+    id: "portfolio",
+    name: "Portfolio",
+    description:
+      "Dark showcase for creative work — projects organised by category and year",
+    icon: "✦",
+    recordType: "project",
+    fields: [
+      {
+        key: "title",
+        label: "Title",
+        placeholder: "e.g. Brand Identity — Acme",
+        type: "text",
+      },
+      {
+        key: "description",
+        label: "Description",
+        placeholder: "What you did and why it matters",
+        type: "text",
+      },
+      {
+        key: "category",
+        label: "Category",
+        placeholder: "e.g. Branding",
+        type: "text",
+      },
+      { key: "year", label: "Year", placeholder: "2025", type: "number" },
+    ],
+    defaultItems: [
+      {
+        title: "Brand Identity — My Client",
+        description:
+          "Logo, typography, and brand guidelines for a premium brand.",
+        category: "Branding",
+        year: 2025,
+      },
+      {
+        title: "Mobile App Redesign",
+        description:
+          "End-to-end UX redesign, reduced checkout from 7 to 3 steps.",
+        category: "UI/UX",
+        year: 2024,
+      },
+    ],
+  },
 ];
 
 type Item = Record<string, string | number>;
@@ -164,15 +255,6 @@ export default function SimpleMode({ onStatus }: Props) {
               </span>
             </button>
           ))}
-
-          {/* Placeholder card */}
-          <div className="flex flex-col items-start gap-2 p-5 rounded-lg border border-dashed border-[#2a2a2a] bg-surface-900 opacity-50 cursor-not-allowed text-left">
-            <span className="text-3xl">📋</span>
-            <span className="font-semibold text-[#555]">More templates</span>
-            <span className="text-xs text-[#444] leading-relaxed">
-              Catalogue, portfolio, briefing — coming soon
-            </span>
-          </div>
         </div>
       </div>
     );

@@ -2,7 +2,7 @@
   "name": "dotuix",
   "displayName": "dotuix",
   "description": "Language support, IntelliSense, and commands for .uix files",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "intenttext",
   "license": "MIT",
   "icon": "icons/icon.png",

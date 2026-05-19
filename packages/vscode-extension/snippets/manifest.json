@@ -44,5 +44,25 @@
       "  }",
       "}"
     ]
+  },
+  "Dotuix manifest (AI-generated)": {
+    "prefix": "dotuix-manifest-ai",
+    "description": "dotuix manifest.json for an AI-generated .uix — includes ai provenance block",
+    "body": [
+      "{",
+      "  \"uix\": \"1.0\",",
+      "  \"id\": \"com.${1:example}.${2:appname}\",",
+      "  \"name\": \"${3:My App}\",",
+      "  \"version\": \"1.0.0\",",
+      "  \"entry\": \"index.html\",",
+      "  \"mode\": \"${4|window,kiosk|}\",",
+      "  \"network\": \"blocked\",",
+      "  \"ai\": {",
+      "    \"generatedBy\": \"${5:claude-opus-4}\",",
+      "    \"generatedAt\": \"${6:2026-05-19T12:00:00Z}\",",
+      "    \"capabilities\": [\"${7:search}\"]",
+      "  }",
+      "}"
+    ]
   }
 }

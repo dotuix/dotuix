@@ -54,24 +54,24 @@ Open [viewer.dotuix.com](https://viewer.dotuix.com) (or run the web viewer local
 
 ## Packages
 
-| Package                                                  | Description                                                                                                              | npm / download                                                                               | Status                      |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- | --------------------------- |
-| [`packages/core`](packages/core)                         | Core library — pack, unpack, validate, sign, read/write SQLite                                                           | [`@dotuix/core`](https://www.npmjs.com/package/@dotuix/core)                                 | ✅ Published                |
-| [`packages/cli`](packages/cli)                           | `dotuix` CLI — pack, unpack, validate, sign, verify, keygen, export, encrypt, init `--template`                          | [`@dotuix/cli`](https://www.npmjs.com/package/@dotuix/cli)                                   | ✅ Published                |
-| [`packages/mcp`](packages/mcp)                           | MCP server — connects Claude Desktop, Cursor, VS Code Copilot; AI generates and packs `.uix` end-to-end                  | [`@dotuix/mcp`](https://www.npmjs.com/package/@dotuix/mcp)                                   | ✅ Published                |
-| [`packages/vscode-extension`](packages/vscode-extension) | VS Code extension — manifest IntelliSense, pack/validate/init commands, `.uix` file icon                                 | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix) | ✅ Published                |
-| [`packages/vite-plugin`](packages/vite-plugin)           | Vite plugin — build React/Vue/Svelte/TS apps, outputs a `.uix` file                                                      | —                                                                                            | ✅ Stable                   |
-| [`packages/viewer-core`](packages/viewer-core)           | Shared viewer logic for web and desktop viewers                                                                          | —                                                                                            | ⬜ Planned                  |
-| [`apps/viewer`](apps/viewer)                             | Desktop viewer — Tauri + Rust, full `window.__uix` bridge, signature verification, PIN decryption, state persistence     | —                                                                                            | ✅ Stable                   |
-| [`apps/editor`](apps/editor)                             | Developer editor — Electron + Monaco, file tree, live preview, DB records browser, no-code Simple mode (template wizard) | —                                                                                            | ✅ Stable                   |
-| [`apps/web-viewer`](apps/web-viewer)                     | Browser viewer — drag-and-drop, runs in any modern browser                                                               | —                                                                                            | ✅ Built · not yet deployed |
-| [`apps/website`](apps/website)                           | dotuix.com — public landing page (Vite + React + Tailwind)                                                               | [dotuix.com](https://dotuix.com)                                                             | ✅ Built · deploy pending   |
+| Package                                                  | Description                                                                                                                          | npm / download                                                                               | Status                      |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- | --------------------------- |
+| [`packages/core`](packages/core)                         | Core library — pack, unpack, validate, sign, read/write SQLite                                                                       | [`@dotuix/core`](https://www.npmjs.com/package/@dotuix/core)                                 | ✅ Published                |
+| [`packages/cli`](packages/cli)                           | `dotuix` CLI — pack, unpack, validate, sign, verify, keygen, export, encrypt, init `--template`                                      | [`@dotuix/cli`](https://www.npmjs.com/package/@dotuix/cli)                                   | ✅ Published                |
+| [`packages/mcp`](packages/mcp)                           | MCP server — connects Claude Desktop, Cursor, VS Code Copilot; AI generates and packs `.uix` end-to-end via `create` tool            | [`@dotuix/mcp`](https://www.npmjs.com/package/@dotuix/mcp)                                   | ✅ Published                |
+| [`packages/ai`](packages/ai)                             | `createUIX({ manifest, files })` — one-function SDK for AI-generated scripts; auto-stamps `ai` provenance                            | [`@dotuix/ai`](https://www.npmjs.com/package/@dotuix/ai)                                     | ✅ Published                |
+| [`packages/vscode-extension`](packages/vscode-extension) | VS Code extension — manifest IntelliSense, pack/validate/init commands, `.uix` file icon                                             | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix) | ✅ Published                |
+| [`packages/vite-plugin`](packages/vite-plugin)           | Vite plugin — build React/Vue/Svelte/TS apps, outputs a `.uix` file                                                                  | —                                                                                            | ✅ Stable                   |
+| [`packages/viewer-core`](packages/viewer-core)           | Shared viewer logic for web and desktop viewers                                                                                      | —                                                                                            | ⬜ Planned                  |
+| [`apps/viewer`](apps/viewer)                             | Desktop viewer — Tauri + Rust, full `window.__uix` bridge, signature verification, PIN decryption, state persistence, developer mode | —                                                                                            | ✅ Stable                   |
+| [`apps/web-viewer`](apps/web-viewer)                     | Browser viewer — drag-and-drop, runs in any modern browser                                                                           | —                                                                                            | ✅ Built · not yet deployed |
+| [`apps/website`](apps/website)                           | dotuix.com — public landing page (Vite + React + Tailwind)                                                                           | [dotuix.com](https://dotuix.com)                                                             | ✅ Built · deploy pending   |
 
 ---
 
 ## Create with AI (recommended)
 
-The fastest way to create a `.uix` file is to let an AI do it. Any LLM with web access (GPT, Gemini, Claude) can generate a complete, valid `.uix` project from a single prompt — because the full format spec lives at `dotuix.com/llms.txt`.
+The fastest way to create a `.uix` file is to let an AI do it. The full format spec lives at `dotuix.com/llms.txt` — any LLM can read it and generate a complete, valid `.uix` project from a single prompt.
 
 ### With any AI (GPT, Gemini, Claude.ai)
 
@@ -84,8 +84,8 @@ The fastest way to create a `.uix` file is to let an AI do it. Any LLM with web 
 
 Install the MCP server and the AI generates **and packs** the file for you in one conversation:
 
-```bash
-# Claude Desktop — add to ~/Library/Application Support/Claude/claude_desktop_config.json
+```json
+// Claude Desktop: ~/Library/Application Support/Claude/claude_desktop_config.json
 {
   "mcpServers": {
     "dotuix": { "command": "npx", "args": ["-y", "@dotuix/mcp"] }
@@ -93,11 +93,37 @@ Install the MCP server and the AI generates **and packs** the file for you in on
 }
 ```
 
-Then just say: _"Create a restaurant menu .uix for Al Madina with 10 items in QAR, pack it to ~/Desktop/menu.uix"_
+Then say: _"Create a restaurant menu .uix for Al Madina with 10 items in QAR, pack it to ~/Desktop/menu.uix"_
 
-The agent calls `get_spec` → `init` → `write_files` → `pack` and hands you a ready-to-open file.
+The agent calls `get_spec` → `create` and hands you a ready-to-open `.uix` file. The `ai.generatedBy` field is stamped in the manifest automatically.
 
 See [`packages/mcp`](packages/mcp) for Cursor and VS Code Copilot setup.
+
+### From AI-generated Node.js code (`@dotuix/ai`)
+
+When AI writes a script that needs to produce a `.uix` file programmatically:
+
+```typescript
+import { createUIX } from "@dotuix/ai";
+
+const path = await createUIX({
+  manifest: {
+    uix: "1.0",
+    id: "com.example.menu",
+    name: "My Menu",
+    version: "1.0.0",
+    entry: "index.html",
+    mode: "kiosk",
+  },
+  files: {
+    "index.html": "<html><body><h1>Menu</h1></body></html>",
+    "app.js": "/* ... */",
+  },
+});
+console.log(path); // absolute path to the packed .uix
+```
+
+`createUIX` handles temp dirs, auto-stamps `ai.generatedBy`, packs, and returns the path.
 
 ---
 

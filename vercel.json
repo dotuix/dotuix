@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm --filter @dotuix/core build && pnpm --filter @dotuix/web-viewer build",
-  "outputDirectory": "apps/web-viewer/dist",
+  "buildCommand": "pnpm --filter @dotuix/website build",
+  "outputDirectory": "apps/website/dist",
   "installCommand": "pnpm install"
 }

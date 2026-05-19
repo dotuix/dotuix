@@ -1,4 +1,20 @@
 import { useState } from "react";
+import {
+  Utensils,
+  Store,
+  Landmark,
+  Lock,
+  Stethoscope,
+  BookOpen,
+  Briefcase,
+  Rocket,
+  KeyRound,
+  ShieldCheck,
+  FileSignature,
+  Timer,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Small reusable components
@@ -80,75 +96,75 @@ const COMPARISONS = [
   },
 ];
 
-const USE_CASES = [
+const USE_CASES: { icon: LucideIcon; title: string; desc: string }[] = [
   {
-    icon: "🍽",
+    icon: Lock,
+    title: "Classified briefings",
+    desc: "Encrypted, signed, PIN-protected. Air-gapped delivery. The viewer refuses altered files before any content runs.",
+  },
+  {
+    icon: Stethoscope,
+    title: "Healthcare reference",
+    desc: "Drug protocols and triage guides for remote clinics. No account. No cloud. Works on a tablet with zero connectivity.",
+  },
+  {
+    icon: Landmark,
+    title: "Government & compliance",
+    desc: "Offline intake forms with built-in validation and local state. Signed audit trail. Submit on reconnect.",
+  },
+  {
+    icon: BookOpen,
+    title: "Interactive education",
+    desc: "AI-generated lessons, simulations, and quizzes. Progress tracked in SQLite. USB-distributable to schools with no internet.",
+  },
+  {
+    icon: Briefcase,
+    title: "Proposals & audits",
+    desc: "Live calculators, Gantt charts, editable scenarios. Signed and frozen on submission — proof of what was promised.",
+  },
+  {
+    icon: Rocket,
+    title: "Extreme remote",
+    desc: "Procedure manuals for spacecraft, polar expeditions, oil rigs. AI-generated on demand. One file. Zero connectivity required.",
+  },
+  {
+    icon: Utensils,
     title: "Restaurant kiosk",
     desc: "Gulf menu on a tablet — Arabic, QAR prices, working cart. No WiFi needed.",
   },
   {
-    icon: "🏪",
+    icon: Store,
     title: "Retail catalogue",
     desc: "Product showcase at exhibitions — category filters, SKU, pricing. No internet.",
-  },
-  {
-    icon: "🏛",
-    title: "Government forms",
-    desc: "Offline intake forms with built-in validation. Submit when connectivity returns.",
-  },
-  {
-    icon: "🔒",
-    title: "Classified briefing",
-    desc: "Encrypted, signed, expiry-limited. Air-gapped. PIN auth. Tamper-evident.",
-  },
-  {
-    icon: "🏥",
-    title: "Healthcare reference",
-    desc: "Drug interactions for remote clinics. No account, no app install required.",
-  },
-  {
-    icon: "📚",
-    title: "Education",
-    desc: "Self-contained exercises with progress tracked in state.db. USB-distributable.",
-  },
-  {
-    icon: "💼",
-    title: "Sales proposals",
-    desc: "Live budget calculators, Gantt charts. Signed and frozen on submission.",
-  },
-  {
-    icon: "🚀",
-    title: "Extreme remote",
-    desc: "Procedure manuals for spacecraft and polar expeditions. Fully air-gapped.",
   },
 ];
 
 const HOW_IT_WORKS = [
   {
     n: "1",
-    title: "Point your AI at the spec",
-    desc: "Share dotuix.com/llms.txt with GPT, Gemini, Claude, or any AI. It contains the full format: manifest fields, bridge API, SQLite schema, and code examples.",
+    title: "Give your AI the spec",
+    desc: "Share dotuix.com/llms.txt with any AI — GPT, Gemini, Claude. It contains the full format: manifest fields, bridge API, SQLite schema, and runnable examples. The AI knows exactly what to build.",
     code: `# Tell your AI:
 "Read dotuix.com/llms.txt and
-build a restaurant menu .uix
-for Al Madina with 10 items."`,
+build a feasibility study .uix
+for a restaurant in Doha."`,
   },
   {
     n: "2",
-    title: "AI generates the files",
-    desc: "The AI produces manifest.json, index.html, app.js, style.css — all correct .uix structure. Via MCP (Claude Desktop, Cursor) the agent packs it for you automatically.",
-    code: `# Via MCP — one call:
+    title: "AI builds and packs it",
+    desc: "The AI produces manifest.json, index.html, app.js, style.css — all valid .uix structure. Via MCP (Claude Desktop, Cursor) the agent packs and signs the bundle in one call.",
+    code: `# Via MCP — one conversation:
 create({ manifest, files })
-✓ my-app.uix — ready
+✓ feasibility-study.uix — ready
 
-# Or save files and:
+# Or pack manually:
 $ dotuix pack ./my-app`,
   },
   {
     n: "3",
-    title: "Share and open offline",
-    desc: "Share the .uix file over email, USB, AirDrop, or any file transfer. The desktop viewer opens it fully offline — no internet, no install beyond the viewer.",
-    code: `$ dotuix validate my-menu.uix
+    title: "Distribute. Open anywhere.",
+    desc: "Send the file over email, USB, AirDrop — any transfer method. The desktop viewer opens it fully offline: no internet, no server, no install beyond the viewer itself.",
+    code: `$ dotuix validate study.uix
 ✓  manifest valid
 ✓  entry index.html found
 ✓  data.db schema correct
@@ -159,13 +175,13 @@ $ dotuix pack ./my-app`,
 const TOOLS = [
   {
     name: "@dotuix/mcp",
-    desc: "MCP server — connects Claude Desktop, Cursor, and VS Code Copilot. Say what you want; the AI generates and packs the .uix for you.",
+    desc: "MCP server for Claude Desktop, Cursor, and VS Code Copilot. The canonical AI interface for creating .uix files — one conversation, one signed file.",
     href: "https://www.npmjs.com/package/@dotuix/mcp",
     tag: "npm",
   },
   {
     name: "@dotuix/ai",
-    desc: "One-function SDK for AI-generated code. createUIX({ manifest, files }) — handles everything and stamps AI provenance.",
+    desc: "One-function SDK for AI-generated code. createUIX({ manifest, files }) auto-stamps provenance and handles packaging. For agents building .uix programmatically.",
     href: "https://www.npmjs.com/package/@dotuix/ai",
     tag: "npm",
   },
@@ -270,19 +286,21 @@ export function App() {
 
         {/* category */}
         <p className="text-base text-gray-500 mb-5 tracking-wide">
-          The{" "}
           <span className="text-gray-300 font-medium">
-            transport format for AI-generated software
+            PDF for printable. EPUB for readable. .uix for executable.
           </span>{" "}
-          — and everything else that needs to run offline.
+          The portable format for AI-generated software and everything that must
+          run offline.
         </p>
 
         {/* subtext */}
         <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-          Pack any HTML/JS app into a single portable file.
+          AI can generate dashboards, forms, simulations — but where does the
+          output go?
           <br className="hidden sm:block" />
-          No server. No URL. No install. Runs fully offline — in a clinic, a
-          courtroom, an air-gapped datacenter, or a kiosk in a remote camp.
+          Not a URL. Not a deployment. One signed file. Open it like a PDF,
+          fully offline — in a clinic, a courtroom, an air-gapped datacenter, or
+          a kiosk in a remote camp.
         </p>
 
         {/* CTAs */}
@@ -329,7 +347,8 @@ export function App() {
       <section className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8">
         <h2 className="text-3xl font-bold text-center mb-3">Why .uix?</h2>
         <p className="text-gray-400 text-center mb-10 max-w-xl mx-auto">
-          No existing format covers all four properties at once.
+          PDF solved printable documents. EPUB solved readable documents. No
+          format solved <em>executable</em> documents — until now.
         </p>
 
         <div className="overflow-x-auto">
@@ -433,7 +452,7 @@ export function App() {
               key={u.title}
               className="rounded-xl border border-white/8 bg-white/3 p-5 hover:bg-white/6 hover:border-white/15 transition-all"
             >
-              <div className="text-2xl mb-3">{u.icon}</div>
+              <u.icon className="w-5 h-5 text-gray-400 mb-3" />
               <h3 className="font-semibold mb-1.5 text-sm">{u.title}</h3>
               <p className="text-gray-400 text-sm leading-relaxed">{u.desc}</p>
             </div>
@@ -488,40 +507,44 @@ export function App() {
       {/* ------------------------------------------------------------------ */}
       <section className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8">
         <h2 className="text-3xl font-bold text-center mb-3">
-          Built-in trust model
+          Immutable. Signed. Verifiable.
         </h2>
         <p className="text-gray-400 text-center mb-10 max-w-xl mx-auto">
-          Regular apps omit the security block entirely and are unaffected. For
-          classified or access-controlled content, it’s all built in.
+          Most software trusts a server. .uix files carry their own trust —
+          signatures, encryption, PIN auth, and open limits are part of the
+          format. No cloud required. Regular apps omit the security block
+          entirely and are unaffected.
         </p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
-          {[
-            {
-              icon: "🔐",
-              title: "PIN auth",
-              desc: "Viewer prompts before opening. Key derived with PBKDF2-SHA256. No server.",
-            },
-            {
-              icon: "🛡️",
-              title: "AES-256-GCM encryption",
-              desc: "Selected files encrypted at rest. Decrypted in memory after auth. Never written to disk.",
-            },
-            {
-              icon: "✏️",
-              title: "Ed25519 signatures",
-              desc: "Bundle signed over all file hashes. Viewer refuses tampered files before any content runs.",
-            },
-            {
-              icon: "⏱️",
-              title: "Expiry & open limits",
-              desc: "Files expire by date or after N opens. Tracked by the viewer locally — the file cannot bypass it.",
-            },
-          ].map((f) => (
+          {(
+            [
+              {
+                icon: KeyRound,
+                title: "PIN auth",
+                desc: "Viewer prompts before opening. Key derived with PBKDF2-SHA256. No server.",
+              },
+              {
+                icon: ShieldCheck,
+                title: "AES-256-GCM encryption",
+                desc: "Selected files encrypted at rest. Decrypted in memory after auth. Never written to disk.",
+              },
+              {
+                icon: FileSignature,
+                title: "Ed25519 signatures",
+                desc: "Bundle signed over all file hashes. Viewer refuses tampered files before any content runs.",
+              },
+              {
+                icon: Timer,
+                title: "Expiry & open limits",
+                desc: "Files expire by date or after N opens. Tracked by the viewer locally — the file cannot bypass it.",
+              },
+            ] as { icon: LucideIcon; title: string; desc: string }[]
+          ).map((f) => (
             <div
               key={f.title}
               className="rounded-xl border border-white/10 bg-white/3 p-5"
             >
-              <div className="text-2xl mb-3">{f.icon}</div>
+              <f.icon className="w-5 h-5 text-purple-400 mb-3" />
               <h3 className="font-semibold text-sm mb-1.5">{f.title}</h3>
               <p className="text-gray-400 text-sm leading-relaxed">{f.desc}</p>
             </div>
@@ -641,16 +664,19 @@ export function App() {
       <section className="max-w-6xl mx-auto px-6 py-16 border-t border-white/8">
         <div className="max-w-2xl mx-auto rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-900/20 to-blue-900/10 p-8 text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple-400/30 bg-purple-500/10 text-xs text-purple-300 mb-5">
-            ✦ Claude Desktop · Cursor · VS Code Copilot
+            <Sparkles className="w-3 h-3" /> Claude Desktop · Cursor · VS Code
+            Copilot
           </div>
           <h2 className="text-2xl font-bold mb-3">
-            Skip the manual step entirely
+            AI generates it. You receive a file.
           </h2>
           <p className="text-gray-400 mb-6 leading-relaxed text-sm">
-            Install <span className="text-white font-mono">@dotuix/mcp</span>{" "}
-            and your AI agent generates <em>and packs</em> the .uix file in one
-            conversation — no terminal, no copy-paste. Just describe the app and
-            get a file.
+            AI can build any interactive experience — dashboard, compliance
+            tool, simulation, report. The delivery problem has always been
+            deployment. Install{" "}
+            <span className="text-white font-mono">@dotuix/mcp</span> and that
+            problem disappears: describe what you want, receive one signed .uix
+            file. No hosting. No deployment. No URL.
           </p>
           <div className="space-y-3 text-left mb-5">
             <CopyBox value="npx @dotuix/mcp" />

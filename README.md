@@ -47,15 +47,15 @@ Open [viewer.dotuix.com](https://viewer.dotuix.com) (or run the web viewer local
 
 ## Packages
 
-| Package                                              | Description                                                                             | Status         |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------- |
-| [`packages/core`](packages/core)                     | Core library — pack, unpack, validate, sign, read/write SQLite                          | ✅ Stable      |
-| [`packages/cli`](packages/cli)                       | `dotuix` CLI — pack, unpack, validate, sign, verify, keygen, export                     | ✅ Stable      |
-| [`packages/vite-plugin`](packages/vite-plugin)       | Vite plugin — build React/Vue/Svelte/TS apps, outputs a `.uix` file                     | ✅ Stable      |
-| [`packages/viewer-core`](packages/viewer-core)       | Shared viewer logic for web and desktop viewers                                         | 🔄 In progress |
-| [`apps/viewer`](apps/viewer)                         | Desktop viewer — Tauri + Rust, full `window.__uix` bridge, state persistence            | ✅ Stable      |
-| [`apps/editor`](apps/editor)                         | Developer editor — Electron + Monaco, file tree, live preview, DB records browser       | ✅ Stable      |
-| [`apps/web-viewer`](apps/web-viewer)                 | Browser viewer — drag-and-drop, runs in any modern browser                              | 🔄 In progress |
+| Package                                        | Description                                                                       | Status         |
+| ---------------------------------------------- | --------------------------------------------------------------------------------- | -------------- |
+| [`packages/core`](packages/core)               | Core library — pack, unpack, validate, sign, read/write SQLite                    | ✅ Stable      |
+| [`packages/cli`](packages/cli)                 | `dotuix` CLI — pack, unpack, validate, sign, verify, keygen, export               | ✅ Stable      |
+| [`packages/vite-plugin`](packages/vite-plugin) | Vite plugin — build React/Vue/Svelte/TS apps, outputs a `.uix` file               | ✅ Stable      |
+| [`packages/viewer-core`](packages/viewer-core) | Shared viewer logic for web and desktop viewers                                   | 🔄 In progress |
+| [`apps/viewer`](apps/viewer)                   | Desktop viewer — Tauri + Rust, full `window.__uix` bridge, state persistence      | ✅ Stable      |
+| [`apps/editor`](apps/editor)                   | Developer editor — Electron + Monaco, file tree, live preview, DB records browser | ✅ Stable      |
+| [`apps/web-viewer`](apps/web-viewer)           | Browser viewer — drag-and-drop, runs in any modern browser                        | 🔄 In progress |
 
 ---
 
@@ -90,11 +90,11 @@ Then drag `restaurant.uix` onto the viewer at `http://localhost:5173`.
 Add the plugin to your `vite.config.ts`:
 
 ```ts
-import { dotuix } from '@dotuix/vite-plugin'
+import { dotuix } from "@dotuix/vite-plugin";
 
 export default {
-  plugins: [dotuix()]
-}
+  plugins: [dotuix()],
+};
 ```
 
 Add a `manifest.json` to your project root (see [the format spec](#the-format)), then:
@@ -155,12 +155,12 @@ Regular apps (restaurant menus, shop catalogues) omit the `security` field entir
 }
 ```
 
-| Feature               | How it works                                                                                  |
-| --------------------- | --------------------------------------------------------------------------------------------- |
-| PIN auth              | Viewer prompts before opening; key derived with PBKDF2-SHA256 — no server involved            |
-| Encrypted files       | AES-256-GCM; decrypted in memory after auth; app uses normal relative paths                   |
-| Max opens             | Tracked by viewer locally (`~/.dotuix/sessions.db`) — file cannot bypass it                   |
-| Screenshot prevention | Viewer blocks OS screenshot API while file is open (desktop only)                             |
+| Feature               | How it works                                                                                                                                       |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PIN auth              | Viewer prompts before opening; key derived with PBKDF2-SHA256 — no server involved                                                                 |
+| Encrypted files       | AES-256-GCM; decrypted in memory after auth; app uses normal relative paths                                                                        |
+| Max opens             | Tracked by viewer locally (`~/.dotuix/sessions.db`) — file cannot bypass it                                                                        |
+| Screenshot prevention | Viewer blocks OS screenshot API while file is open (desktop only)                                                                                  |
 | Tamper detection      | Ed25519 signature over all app file hashes (excluding `state.db`, which is user-writable); viewer refuses if app files were modified after signing |
 
 Full spec: [`docs/plan.md`](docs/plan.md)

@@ -646,7 +646,7 @@ The format spec itself will be published as an open document under Creative Comm
 ## 9. Milestones
 
 | Milestone | Deliverable                                                                            | Target  | Status              |
-| --------- | -------------------------------------------------------------------------------------- | ------- | ------------------- |
+| --------- | -------------------------------------------------------------------------------------- | ------- | ------------------- | --- | --- | --------------------------------------------------------------------------- | ------- | ----------- |
 | M1        | `@dotuix/core` published to npm with full test suite                                   | Week 3  | ✅ Ready to publish |
 | M2        | Web fallback viewer live at `viewer.dotuix.com` + restaurant demo template             | Week 5  | ✅ Complete         |
 | M3        | `dotuix` CLI — pack, unpack, validate, init, sign, verify, keygen, encrypt             | Week 6  | ✅ Complete         |
@@ -664,7 +664,8 @@ The format spec itself will be published as an open document under Creative Comm
 | M11       | `dotuix.com` landing page — public front door for the project                          | Week 24 | ✅ Complete         |
 | M11.5     | `llms.txt` format spec + AI section on website — lets any LLM generate `.uix` files    | Week 24 | ✅ Complete         |
 | M13       | `@dotuix/mcp` MCP server — lets Claude Desktop/Cursor pack `.uix` via tool calls       | Week 25 | ✅ Complete         |
-| M12       | Tauri viewer binaries — macOS/Windows/Linux installers published to GitHub Releases    | Week 26 | ✅ Complete         |
+| M12       | Tauri viewer binaries — macOS/Windows/Linux installers published to GitHub Releases    | Week 26 | ✅ Complete         |     | M14 | Electron editor binaries — macOS/Windows/Linux published to GitHub Releases | Week 26 | ✅ Complete |
+| M15       | Merge viewer + editor into one Tauri app (viewer mode / developer mode toggle)         | Future  | ⬜ Not started      |
 
 ---
 

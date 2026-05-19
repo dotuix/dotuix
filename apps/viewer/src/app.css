@@ -188,3 +188,275 @@ body,
 .pin-cancel:hover {
   color: #aaa;
 }
+
+/* ── Home screen ──────────────────────────────────────────────── */
+.home-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 3rem 4rem;
+  border: 1px solid #2a2a2a;
+  border-radius: 1rem;
+  background: #151515;
+  text-align: center;
+  min-width: 320px;
+}
+
+.home-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.home-btn {
+  width: 100%;
+  padding: 0.65rem 1.25rem;
+  border-radius: 7px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: none;
+}
+
+.home-btn-primary {
+  background: #c8a96e;
+  color: #111;
+}
+
+.home-btn-primary:hover:not(:disabled) {
+  background: #d9bb82;
+}
+
+.home-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.home-btn-secondary {
+  background: #222;
+  color: #aaa;
+  border: 1px solid #333;
+}
+
+.home-btn-secondary:hover {
+  background: #2a2a2a;
+  color: #e8e8e8;
+}
+
+/* ── Developer mode layout ────────────────────────────────────── */
+.dev-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font-family: system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+.dev-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+  height: 40px;
+  background: #252525;
+  border-bottom: 1px solid #2d2d2d;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.dev-toolbar-nodrag {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  -webkit-app-region: no-drag;
+}
+
+.dev-macos-spacer {
+  width: 72px;
+  flex-shrink: 0;
+}
+
+.dev-app-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #0ea5e9;
+  letter-spacing: -0.01em;
+  user-select: none;
+}
+
+.dev-tbtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.55rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  color: #bbb;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  -webkit-app-region: no-drag;
+}
+
+.dev-tbtn:hover {
+  background: #2d2d2d;
+  color: #fff;
+}
+
+.dev-tbtn-primary {
+  background: #0e3a52;
+  color: #38bdf8;
+  border-color: #0ea5e9;
+}
+
+.dev-tbtn-primary:hover {
+  background: #0c4a6e;
+  color: #7dd3fc;
+}
+
+.dev-tbtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.dev-status {
+  font-size: 0.72rem;
+  color: #666;
+  margin-left: auto;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+.dev-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dev-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  border-right: 1px solid #2d2d2d;
+  overflow-y: auto;
+  background: #1e1e1e;
+  display: flex;
+  flex-direction: column;
+}
+
+.dev-sidebar-header {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #555;
+  border-bottom: 1px solid #2d2d2d;
+  flex-shrink: 0;
+}
+
+.dev-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dev-right {
+  width: 380px;
+  flex-shrink: 0;
+  border-left: 1px solid #2d2d2d;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dev-right-tabs {
+  display: flex;
+  border-bottom: 1px solid #2d2d2d;
+  flex-shrink: 0;
+}
+
+.dev-right-tab {
+  padding: 0.4rem 0.85rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #666;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.1s;
+}
+
+.dev-right-tab:hover {
+  color: #bbb;
+}
+
+.dev-right-tab.active {
+  color: #e8e8e8;
+  border-bottom-color: #569cd6;
+}
+
+.dev-right-pane {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── File tree ────────────────────────────────────────────────── */
+.tree-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.18rem 0.5rem;
+  font-size: 0.78rem;
+  color: #c8c8c8;
+  cursor: pointer;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+
+.tree-item:hover {
+  background: #2a2d2e;
+}
+
+.tree-item.active {
+  background: #094771;
+  color: #fff;
+}
+
+.tree-item.is-dir {
+  color: #e8e8e8;
+  font-weight: 500;
+}
+
+.dev-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 0.75rem;
+  color: #555;
+  font-size: 0.8rem;
+  padding: 1rem;
+  text-align: center;
+}

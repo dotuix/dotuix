@@ -665,7 +665,7 @@ The format spec itself will be published as an open document under Creative Comm
 | M11.5     | `llms.txt` format spec + AI section on website — lets any LLM generate `.uix` files    | Week 24 | ✅ Complete         |
 | M13       | `@dotuix/mcp` MCP server — lets Claude Desktop/Cursor pack `.uix` via tool calls       | Week 25 | ✅ Complete         |
 | M12       | Tauri viewer binaries — macOS/Windows/Linux installers published to GitHub Releases    | Week 26 | ✅ Complete         |     | M14 | Electron editor binaries — macOS/Windows/Linux published to GitHub Releases | Week 26 | ✅ Complete |
-| M15       | Merge viewer + editor into one Tauri app (viewer mode / developer mode toggle)         | Future  | ⬜ Not started      |
+| M15       | Merge viewer + editor into one Tauri app (viewer mode / developer mode toggle)         | Week 27 | ✅ Complete         |
 
 ---
 

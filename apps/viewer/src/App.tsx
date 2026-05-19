@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import DeveloperMode from "./components/DeveloperMode";
 
 type LoadResult =
   | { status: "loaded"; manifest: string }
@@ -10,6 +11,7 @@ type ViewerState =
   | { status: "loading" }
   | { status: "pin_required"; appName: string }
   | { status: "loaded"; manifestName: string }
+  | { status: "developer" }
   | { status: "error"; message: string };
 
 function handleLoadResult(result: LoadResult): ViewerState {
@@ -27,7 +29,6 @@ export default function App() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Relay postMessages from the uix:// iframe to Tauri commands and back.
-  // The iframe is cross-origin so it cannot call window.__TAURI_INTERNALS__ directly.
   useEffect(() => {
     if (state.status !== "loaded") return;
 
@@ -56,8 +57,7 @@ export default function App() {
     return () => window.removeEventListener("message", handler);
   }, [state.status]);
 
-  // On mount: check if the viewer was launched with a .uix path (file association /
-  // double-click on macOS/Windows/Linux). Consume the path once and auto-load it.
+  // On mount: check if the viewer was launched with a .uix path (file association).
   useEffect(() => {
     invoke<string | null>("get_initial_file").then((path) => {
       if (!path) return;
@@ -66,7 +66,7 @@ export default function App() {
         .then((result) => setState(handleLoadResult(result)))
         .catch((err) => setState({ status: "error", message: String(err) }));
     });
-  }, []); // empty deps — run once on mount
+  }, []);
 
   const openFile = useCallback(async () => {
     setState({ status: "loading" });
@@ -99,10 +99,13 @@ export default function App() {
     setState({ status: "idle" });
   }, []);
 
+  if (state.status === "developer") {
+    return <DeveloperMode onClose={closeApp} />;
+  }
+
   if (state.status === "loaded") {
     return (
       <div className="kiosk-root">
-        {/* Thin escape bar — hidden in production kiosk builds */}
         <div className="kiosk-bar">
           <span className="kiosk-title">{state.manifestName}</span>
           <button className="kiosk-close" onClick={closeApp}>
@@ -164,11 +167,29 @@ export default function App() {
 
   return (
     <div className="shell">
-      <div className="drop-zone" onClick={openFile}>
+      <div className="home-card">
         <div className="drop-icon">▦</div>
-        <p className="drop-primary">Open a .uix app</p>
-        <p className="drop-secondary">Click to browse or drag a file here</p>
-        {state.status === "loading" && <p className="drop-loading">Loading…</p>}
+        <h1 className="drop-primary">dotuix</h1>
+        <p className="drop-secondary">
+          Open and run signed .uix apps, or build new ones.
+        </p>
+
+        <div className="home-buttons">
+          <button
+            className="home-btn home-btn-primary"
+            onClick={openFile}
+            disabled={state.status === "loading"}
+          >
+            {state.status === "loading" ? "Loading…" : "Open .uix file"}
+          </button>
+          <button
+            className="home-btn home-btn-secondary"
+            onClick={() => setState({ status: "developer" })}
+          >
+            Developer mode
+          </button>
+        </div>
+
         {state.status === "error" && (
           <p className="drop-error">{state.message}</p>
         )}

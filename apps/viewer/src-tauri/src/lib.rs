@@ -36,6 +36,8 @@ struct AppState {
     pending_manifest: Mutex<Option<serde_json::Value>>,
     /// .uix path whose load is awaiting PIN entry.
     pending_path: Mutex<Option<String>>,
+    /// Project folder currently open in developer mode; shared with devpreview:// protocol.
+    preview_dir: Arc<Mutex<Option<String>>>,
 }
 
 impl Default for AppState {
@@ -52,6 +54,7 @@ impl Default for AppState {
             pending_files: Mutex::new(None),
             pending_manifest: Mutex::new(None),
             pending_path: Mutex::new(None),
+            preview_dir: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -1040,11 +1043,271 @@ fn state_raw(
 // ---------------------------------------------------------------------------
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+// ---------------------------------------------------------------------------
+// Developer mode — types & helpers
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Serialize, Clone)]
+struct DirEntry {
+    name: String,
+    path: String,
+    is_dir: bool,
+    children: Option<Vec<DirEntry>>,
+}
+
+fn read_dir_recursive(dir: &std::path::Path, depth: u32) -> Vec<DirEntry> {
+    if depth > 8 {
+        return vec![];
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return vec![];
+    };
+    let mut result: Vec<DirEntry> = rd
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                return None;
+            }
+            let path = e.path();
+            let path_str = path.to_string_lossy().to_string();
+            if path.is_dir() {
+                Some(DirEntry {
+                    name,
+                    path: path_str,
+                    is_dir: true,
+                    children: Some(read_dir_recursive(&path, depth + 1)),
+                })
+            } else {
+                Some(DirEntry { name, path: path_str, is_dir: false, children: None })
+            }
+        })
+        .collect();
+    result.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.cmp(&b.name),
+    });
+    result
+}
+
+fn pack_add_dir(
+    zip: &mut zip::ZipWriter<std::fs::File>,
+    base: &std::path::Path,
+    dir: &std::path::Path,
+) -> Result<(), String> {
+    const TEXT_EXTS: &[&str] = &[
+        "html", "htm", "js", "mjs", "cjs", "css", "json", "ts", "tsx", "jsx",
+        "svg", "txt", "md", "yaml", "yml", "xml",
+    ];
+    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        let rel = path.strip_prefix(base).map_err(|e| e.to_string())?;
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+        // Skip hidden paths
+        if rel_str.split('/').any(|seg| seg.starts_with('.')) {
+            continue;
+        }
+        if path.is_dir() {
+            pack_add_dir(zip, base, &path)?;
+        } else {
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            let method = if TEXT_EXTS.contains(&ext.as_str()) {
+                zip::CompressionMethod::Deflated
+            } else {
+                zip::CompressionMethod::Stored
+            };
+            let opts = zip::write::SimpleFileOptions::default().compression_method(method);
+            zip.start_file(&rel_str, opts).map_err(|e| e.to_string())?;
+            let data = std::fs::read(&path).map_err(|e| e.to_string())?;
+            zip.write_all(&data).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn pack_dir_to_zip(src_dir: &str, out_path: &str) -> Result<(), String> {
+    let src = std::path::Path::new(src_dir);
+    let out_file = std::fs::File::create(out_path).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipWriter::new(out_file);
+    pack_add_dir(&mut zip, src, src)?;
+    zip.finish().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+struct DbLoadResult {
+    exists: bool,
+    records: Vec<Record>,
+}
+
+// ---------------------------------------------------------------------------
+// Developer mode — Tauri commands
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn editor_open_folder(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let result = app.dialog().file().blocking_pick_folder();
+    Ok(result.map(|p| p.to_string()))
+}
+
+#[tauri::command]
+fn editor_read_dir(path: String) -> Result<Vec<DirEntry>, String> {
+    Ok(read_dir_recursive(std::path::Path::new(&path), 0))
+}
+
+#[tauri::command]
+fn editor_read_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn editor_write_file(path: String, content: String) -> Result<(), String> {
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, content.as_bytes()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn editor_pack_uix(src_dir: String, out_path: String) -> Result<(), String> {
+    pack_dir_to_zip(&src_dir, &out_path)
+}
+
+#[tauri::command]
+fn editor_show_save_dialog(app: AppHandle, default_name: String) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let result = app
+        .dialog()
+        .file()
+        .add_filter("UIX App", &["uix"])
+        .set_file_name(&default_name)
+        .blocking_save_file();
+    Ok(result.map(|p| p.to_string()))
+}
+
+#[tauri::command]
+fn editor_set_preview_dir(path: String, state: State<AppState>) -> Result<(), String> {
+    *state.preview_dir.lock().unwrap() = Some(path);
+    Ok(())
+}
+
+#[tauri::command]
+fn editor_clear_preview_dir(state: State<AppState>) {
+    *state.preview_dir.lock().unwrap() = None;
+}
+
+#[tauri::command]
+fn editor_reveal_in_folder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("explorer")
+        .arg(format!("/select,{path}"))
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    #[cfg(target_os = "linux")]
+    {
+        let p = std::path::Path::new(&path);
+        let dir = if p.is_file() {
+            p.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or(path)
+        } else {
+            path
+        };
+        std::process::Command::new("xdg-open")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn db_load_all(db_path: String) -> Result<DbLoadResult, String> {
+    if !std::path::Path::new(&db_path).exists() {
+        return Ok(DbLoadResult { exists: false, records: vec![] });
+    }
+    let conn = rusqlite::Connection::open(&db_path).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, type, body, created_at, updated_at \
+             FROM records ORDER BY type, created_at DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let records = stmt
+        .query_map([], |row| {
+            Ok(Record {
+                id: row.get(0)?,
+                r#type: row.get(1)?,
+                body: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(DbLoadResult { exists: true, records })
+}
+
+#[tauri::command]
+fn db_update_record(db_path: String, id: String, body: String) -> Result<(), String> {
+    let conn = rusqlite::Connection::open(&db_path).map_err(|e| e.to_string())?;
+    let now = now_ms() / 1000;
+    conn.execute(
+        "UPDATE records SET body = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![body, now, id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn db_delete_record(db_path: String, id: String) -> Result<(), String> {
+    let conn = rusqlite::Connection::open(&db_path).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM records WHERE id = ?1", rusqlite::params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn db_insert_record(db_path: String, r#type: String, body: String) -> Result<Record, String> {
+    let conn = rusqlite::Connection::open(&db_path).map_err(|e| e.to_string())?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS records (\
+            id TEXT PRIMARY KEY, \
+            type TEXT NOT NULL, \
+            body TEXT NOT NULL, \
+            created_at INTEGER NOT NULL, \
+            updated_at INTEGER NOT NULL\
+        );\
+        CREATE INDEX IF NOT EXISTS records_type_idx ON records(type);",
+    )
+    .map_err(|e| e.to_string())?;
+    let id = format!("{}:{}", r#type, gen_id());
+    let now = now_ms() / 1000;
+    conn.execute(
+        "INSERT INTO records (id, type, body, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?4)",
+        rusqlite::params![id, r#type, body, now],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(Record { id, r#type, body, created_at: now, updated_at: now })
+}
+
+// ---------------------------------------------------------------------------
+
 pub fn run() {
     let app_state = AppState::default();
-    // Clone the files Arc so the uix:// protocol closure can access it without
-    // going through Tauri State (UriSchemeContext has no .state() method).
+    // Clone the Arcs so protocol closures can access state without going
+    // through Tauri State (UriSchemeContext has no .state() method).
     let protocol_files = Arc::clone(&app_state.files);
+    let protocol_preview_dir = Arc::clone(&app_state.preview_dir);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -1133,6 +1396,36 @@ pub fn run() {
                     .unwrap(),
             }
         })
+        .register_uri_scheme_protocol("devpreview", move |_ctx, req: Request<Vec<u8>>| {
+            let raw_path = req.uri().path().to_string();
+            let rel = raw_path.trim_start_matches('/');
+            let rel = if rel.is_empty() { "index.html" } else { rel };
+
+            let dir_opt = protocol_preview_dir.lock().unwrap().clone();
+            match dir_opt {
+                None => Response::builder()
+                    .status(503)
+                    .header("Content-Type", "text/plain")
+                    .body(b"No preview directory set".to_vec())
+                    .unwrap(),
+                Some(dir) => {
+                    let full = std::path::Path::new(&dir).join(rel);
+                    match std::fs::read(&full) {
+                        Ok(data) => Response::builder()
+                            .status(200)
+                            .header("Content-Type", mime_for(rel))
+                            .header("Access-Control-Allow-Origin", "*")
+                            .body(data)
+                            .unwrap(),
+                        Err(_) => Response::builder()
+                            .status(404)
+                            .header("Content-Type", "text/plain")
+                            .body(format!("Not found: {rel}").into_bytes())
+                            .unwrap(),
+                    }
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             pick_and_load_uix,
             load_uix,
@@ -1150,6 +1443,20 @@ pub fn run() {
             state_delete,
             state_purge,
             state_raw,
+            // Editor / developer mode
+            editor_open_folder,
+            editor_read_dir,
+            editor_read_file,
+            editor_write_file,
+            editor_pack_uix,
+            editor_show_save_dialog,
+            editor_set_preview_dir,
+            editor_clear_preview_dir,
+            editor_reveal_in_folder,
+            db_load_all,
+            db_update_record,
+            db_delete_record,
+            db_insert_record,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

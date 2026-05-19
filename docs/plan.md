@@ -661,6 +661,8 @@ The format spec itself will be published as an open document under Creative Comm
 | M8        | Catalog and portfolio starter templates + `dotuix init --template`                     | Week 21 | ✅ Complete         |
 | M9        | Publish `@dotuix/core` and `@dotuix/cli` to npm                                        | Week 22 | ✅ Complete         |
 | M10       | VS Code extension — manifest IntelliSense, pack/validate commands, `.uix` file support | Week 23 | ✅ Complete         |
+| M11       | `dotuix.com` landing page — public front door for the project                          | Week 24 | ⬜ Not started      |
+| M12       | Tauri viewer binaries — macOS/Windows/Linux installers published to GitHub Releases    | Week 25 | ⬜ Not started      |
 
 ---
 

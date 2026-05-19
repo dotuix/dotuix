@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{
     http::{Request, Response},
-    AppHandle, Manager, State,
+    AppHandle, Emitter, Manager, State,
 };
 
 const VIEWER_VERSION: &str = "1.0.0";
@@ -1147,9 +1147,14 @@ struct DbLoadResult {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn editor_open_folder(app: AppHandle) -> Result<Option<String>, String> {
+async fn editor_open_folder(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let result = app.dialog().file().blocking_pick_folder();
+    use tokio::sync::oneshot;
+    let (tx, rx) = oneshot::channel();
+    app.dialog()
+        .file()
+        .pick_folder(move |maybe_path| { let _ = tx.send(maybe_path); });
+    let result = rx.await.map_err(|_| "Dialog closed unexpectedly".to_string())?;
     Ok(result.map(|p| p.to_string()))
 }
 
@@ -1302,6 +1307,14 @@ fn db_insert_record(db_path: String, r#type: String, body: String) -> Result<Rec
 
 // ---------------------------------------------------------------------------
 
+#[tauri::command]
+async fn toggle_fullscreen(window: tauri::WebviewWindow) -> Result<(), String> {
+    let is_full = window.is_fullscreen().map_err(|e| e.to_string())?;
+    window.set_fullscreen(!is_full).map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+
 pub fn run() {
     let app_state = AppState::default();
     // Clone the Arcs so protocol closures can access state without going
@@ -1321,9 +1334,12 @@ pub fn run() {
                 *app.state::<AppState>().initial_path.lock().unwrap() = Some(path.clone());
             }
 
-            // --- Cleanup on window destroy: repack state.db into .uix + delete lock ---
+            // --- Window refs ---
             let main_window = app.get_webview_window("main").expect("main window must exist");
+            let win_for_menu = main_window.clone();
             let handle = app.handle().clone();
+
+            // --- Cleanup on window destroy: repack state.db into .uix + delete lock ---
             main_window.on_window_event(move |event| {
                 if let tauri::WindowEvent::Destroyed = event {
                     let state = handle.state::<AppState>();
@@ -1348,6 +1364,33 @@ pub fn run() {
 
                     // Always delete the lock file, even if repack failed.
                     let _ = std::fs::remove_file(format!("{uix_path}.lock"));
+                }
+            });
+
+            // --- App menu ---
+            use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+            let open_m  = MenuItemBuilder::with_id("open_file", "Open\u{2026}").accelerator("CmdOrCtrl+O").build(app)?;
+            let close_m = MenuItemBuilder::with_id("close_app", "Close File").accelerator("CmdOrCtrl+W").build(app)?;
+            let fs_m    = MenuItemBuilder::with_id("toggle_fullscreen", "Enter Full Screen").accelerator("Ctrl+Cmd+F").build(app)?;
+            let dev_m   = MenuItemBuilder::with_id("dev_mode", "Developer Mode").accelerator("CmdOrCtrl+Shift+D").build(app)?;
+
+            let file_menu = SubmenuBuilder::new(app, "File")
+                .item(&open_m).separator().item(&close_m).separator().quit().build()?;
+            let view_menu = SubmenuBuilder::new(app, "View")
+                .item(&fs_m).separator().item(&dev_m).build()?;
+            let menu = MenuBuilder::new(app).item(&file_menu).item(&view_menu).build()?;
+            app.set_menu(menu)?;
+
+            app.on_menu_event(move |_app, event| {
+                match event.id().as_ref() {
+                    "open_file"         => { win_for_menu.emit("menu-open-file", ()).ok(); }
+                    "close_app"         => { win_for_menu.emit("menu-close-app", ()).ok(); }
+                    "toggle_fullscreen" => {
+                        let is = win_for_menu.is_fullscreen().unwrap_or(false);
+                        win_for_menu.set_fullscreen(!is).ok();
+                    }
+                    "dev_mode"          => { win_for_menu.emit("menu-dev-mode", ()).ok(); }
+                    _ => {}
                 }
             });
 
@@ -1457,7 +1500,35 @@ pub fn run() {
             db_update_record,
             db_delete_record,
             db_insert_record,
+            toggle_fullscreen,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+.build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // macOS: handle file-association opens (Apple Events / NSApplicationDelegate).
+            // Double-clicking a .uix file does NOT pass it as argv[1] on macOS —
+            // the OS delivers it via RunEvent::Opened (NSApplicationDelegate openURLs:).
+            #[cfg(target_os = "macos")]
+            {
+                if let tauri::RunEvent::Opened { urls } = event {
+                    let paths: Vec<String> = urls
+                        .iter()
+                        .filter_map(|u| u.to_file_path().ok())
+                        .filter(|p| p.extension().map(|e| e == "uix").unwrap_or(false))
+                        .filter_map(|p| p.to_str().map(String::from))
+                        .collect();
+                    if let Some(path) = paths.first().cloned() {
+                        // Store so get_initial_file() picks it up on frontend mount
+                        let state = app.state::<AppState>();
+                        *state.initial_path.lock().unwrap() = Some(path.clone());
+                        // Also emit for the case where the window is already loaded
+                        if let Some(win) = app.get_webview_window("main") {
+                            win.emit("uix-file-opened", &path).ok();
+                        }
+                    }
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }

@@ -238,24 +238,32 @@ export function App() {
           <div className="flex items-center gap-5 text-sm text-gray-400">
             <a
               href="https://github.com/dotuix/dotuix"
+              target="_blank"
+              rel="noopener noreferrer"
               className="hover:text-white transition-colors hidden sm:block"
             >
               GitHub
             </a>
             <a
               href="https://www.npmjs.com/package/@dotuix/cli"
+              target="_blank"
+              rel="noopener noreferrer"
               className="hover:text-white transition-colors hidden sm:block"
             >
               npm
             </a>
             <a
               href="https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix"
+              target="_blank"
+              rel="noopener noreferrer"
               className="hover:text-white transition-colors hidden sm:block"
             >
               VS Code
             </a>
             <a
               href="https://github.com/dotuix/dotuix"
+              target="_blank"
+              rel="noopener noreferrer"
               className="px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/15 text-white transition-colors text-xs font-medium"
             >
               GitHub →
@@ -275,7 +283,7 @@ export function App() {
         </div>
 
         {/* headline */}
-        <h1 className="text-5xl sm:text-6xl font-bold tracking-tight mb-4 leading-[1.1]">
+        <h1 className="text-6xl sm:text-7xl lg:text-8xl font-bold tracking-tight mb-6 leading-[1.05]">
           The{" "}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400">
             executable
@@ -285,7 +293,7 @@ export function App() {
         </h1>
 
         {/* category */}
-        <p className="text-base text-gray-400 mb-5 tracking-wide font-medium">
+        <p className="text-lg sm:text-xl text-gray-400 mb-6 tracking-wide font-medium">
           PDF for printable. EPUB for readable.{" "}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400">
             .uix for executable.
@@ -293,7 +301,7 @@ export function App() {
         </p>
 
         {/* subtext */}
-        <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+        <p className="text-xl sm:text-2xl text-gray-400 max-w-4xl mx-auto mb-12 leading-relaxed">
           A single portable file for AI-generated software, interactive reports,
           simulations, and tools —{" "}
           <span className="text-gray-300">
@@ -315,7 +323,7 @@ export function App() {
         </div>
 
         {/* terminal mockup */}
-        <div className="max-w-lg mx-auto rounded-xl border border-white/10 bg-white/3 overflow-hidden text-left shadow-2xl">
+        <div className="max-w-2xl mx-auto rounded-xl border border-white/10 bg-white/3 overflow-hidden text-left shadow-2xl">
           <div className="flex items-center gap-1.5 px-4 py-3 border-b border-white/8 bg-white/3">
             <span className="w-3 h-3 rounded-full bg-red-500/50" />
             <span className="w-3 h-3 rounded-full bg-yellow-500/50" />
@@ -567,7 +575,7 @@ export function App() {
               </p>
               <div className="flex flex-wrap gap-3">
                 <a
-                  href="https://github.com/dotuix/dotuix/releases"
+                  href="https://github.com/dotuix/dotuix/releases/tag/v0.2.0"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:opacity-90 transition-opacity text-sm font-medium"
@@ -707,36 +715,48 @@ export function App() {
           <div className="flex items-center gap-5">
             <a
               href="https://github.com/dotuix/dotuix"
+              target="_blank"
+              rel="noopener noreferrer"
               className="hover:text-gray-300 transition-colors"
             >
               GitHub
             </a>
             <a
               href="https://dotuix.com/llms.txt"
+              target="_blank"
+              rel="noopener noreferrer"
               className="hover:text-gray-300 transition-colors"
             >
               llms.txt
             </a>
             <a
               href="https://www.npmjs.com/package/@dotuix/core"
+              target="_blank"
+              rel="noopener noreferrer"
               className="hover:text-gray-300 transition-colors"
             >
               @dotuix/core
             </a>
             <a
               href="https://www.npmjs.com/package/@dotuix/cli"
+              target="_blank"
+              rel="noopener noreferrer"
               className="hover:text-gray-300 transition-colors"
             >
               @dotuix/cli
             </a>
             <a
               href="https://www.npmjs.com/package/@dotuix/mcp"
+              target="_blank"
+              rel="noopener noreferrer"
               className="hover:text-gray-300 transition-colors"
             >
               @dotuix/mcp
             </a>
             <a
               href="https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix"
+              target="_blank"
+              rel="noopener noreferrer"
               className="hover:text-gray-300 transition-colors"
             >
               VS Code

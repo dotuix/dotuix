@@ -19,13 +19,7 @@
 
 import sharp from "sharp";
 import toIco from "to-ico";
-import {
-  mkdirSync,
-  writeFileSync,
-  rmSync,
-  existsSync,
-  readFileSync,
-} from "fs";
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
@@ -49,7 +43,7 @@ async function png(size, dest) {
 
 async function ico(sizes, dest) {
   const buffers = await Promise.all(
-    sizes.map((s) => sharp(SOURCE).resize(s, s).png().toBuffer())
+    sizes.map((s) => sharp(SOURCE).resize(s, s).png().toBuffer()),
   );
   const icoBuffer = await toIco(buffers);
   writeFileSync(join(ROOT, dest), icoBuffer);
@@ -81,8 +75,8 @@ async function icns(dest) {
 
   await Promise.all(
     scales.map(([s, name]) =>
-      sharp(SOURCE).resize(s, s).png().toFile(join(iconsetDir, name))
-    )
+      sharp(SOURCE).resize(s, s).png().toFile(join(iconsetDir, name)),
+    ),
   );
 
   const outPath = join(ROOT, dest);
@@ -102,15 +96,19 @@ async function main() {
   }
 
   const meta = await sharp(SOURCE).metadata();
-  console.log(
-    `\nSource: docs/logo.png  (${meta.width}×${meta.height})\n`
-  );
+  console.log(`\nSource: docs/logo.png  (${meta.width}×${meta.height})\n`);
 
   // ── VS Code extension ────────────────────────────────────────────────────
   console.log("VS Code extension:");
   dir("packages/vscode-extension/icons");
   await png(128, "packages/vscode-extension/icons/icon.png");
-  await png(16,  "packages/vscode-extension/icons/uix-file-light.svg".replace(".svg", "-16.png"));
+  await png(
+    16,
+    "packages/vscode-extension/icons/uix-file-light.svg".replace(
+      ".svg",
+      "-16.png",
+    ),
+  );
   // Replace the SVG placeholders with real PNGs (16px for file icons)
   // vscode file icons are small; 16 and 32 are used
   await sharp(SOURCE)
@@ -118,27 +116,30 @@ async function main() {
     .png()
     .toFile(join(ROOT, "packages/vscode-extension/icons/uix-file-16.png"));
   console.log("  ✓ packages/vscode-extension/icons/uix-file-16.png  (16×16)");
-  await png(32,  "packages/vscode-extension/icons/uix-file-32.png");
+  await png(32, "packages/vscode-extension/icons/uix-file-32.png");
 
   // ── Tauri desktop viewer ─────────────────────────────────────────────────
   console.log("\nTauri viewer (apps/viewer/src-tauri/icons/):");
   dir("apps/viewer/src-tauri/icons");
-  await png(512,  "apps/viewer/src-tauri/icons/icon.png");
-  await png(32,   "apps/viewer/src-tauri/icons/32x32.png");
-  await png(128,  "apps/viewer/src-tauri/icons/128x128.png");
-  await png(256,  "apps/viewer/src-tauri/icons/128x128@2x.png");
+  await png(512, "apps/viewer/src-tauri/icons/icon.png");
+  await png(32, "apps/viewer/src-tauri/icons/32x32.png");
+  await png(128, "apps/viewer/src-tauri/icons/128x128.png");
+  await png(256, "apps/viewer/src-tauri/icons/128x128@2x.png");
   // Windows Store logos
-  await png(30,   "apps/viewer/src-tauri/icons/Square30x30Logo.png");
-  await png(44,   "apps/viewer/src-tauri/icons/Square44x44Logo.png");
-  await png(71,   "apps/viewer/src-tauri/icons/Square71x71Logo.png");
-  await png(89,   "apps/viewer/src-tauri/icons/Square89x89Logo.png");
-  await png(107,  "apps/viewer/src-tauri/icons/Square107x107Logo.png");
-  await png(142,  "apps/viewer/src-tauri/icons/Square142x142Logo.png");
-  await png(150,  "apps/viewer/src-tauri/icons/Square150x150Logo.png");
-  await png(284,  "apps/viewer/src-tauri/icons/Square284x284Logo.png");
-  await png(310,  "apps/viewer/src-tauri/icons/Square310x310Logo.png");
-  await png(50,   "apps/viewer/src-tauri/icons/StoreLogo.png");
-  await ico([16, 24, 32, 48, 64, 128, 256], "apps/viewer/src-tauri/icons/icon.ico");
+  await png(30, "apps/viewer/src-tauri/icons/Square30x30Logo.png");
+  await png(44, "apps/viewer/src-tauri/icons/Square44x44Logo.png");
+  await png(71, "apps/viewer/src-tauri/icons/Square71x71Logo.png");
+  await png(89, "apps/viewer/src-tauri/icons/Square89x89Logo.png");
+  await png(107, "apps/viewer/src-tauri/icons/Square107x107Logo.png");
+  await png(142, "apps/viewer/src-tauri/icons/Square142x142Logo.png");
+  await png(150, "apps/viewer/src-tauri/icons/Square150x150Logo.png");
+  await png(284, "apps/viewer/src-tauri/icons/Square284x284Logo.png");
+  await png(310, "apps/viewer/src-tauri/icons/Square310x310Logo.png");
+  await png(50, "apps/viewer/src-tauri/icons/StoreLogo.png");
+  await ico(
+    [16, 24, 32, 48, 64, 128, 256],
+    "apps/viewer/src-tauri/icons/icon.ico",
+  );
   await icns("apps/viewer/src-tauri/icons/icon.icns");
 
   // ── Electron editor ──────────────────────────────────────────────────────
@@ -160,14 +161,14 @@ async function main() {
   // ── Shared assets (for README, docs, og:image, etc.) ────────────────────
   console.log("\nShared assets (docs/assets/):");
   dir("docs/assets");
-  await png(1254, "docs/assets/logo.png");   // full resolution copy
-  await png(512,  "docs/assets/logo-512.png");
-  await png(256,  "docs/assets/logo-256.png");
-  await png(128,  "docs/assets/logo-128.png");
+  await png(1254, "docs/assets/logo.png"); // full resolution copy
+  await png(512, "docs/assets/logo-512.png");
+  await png(256, "docs/assets/logo-256.png");
+  await png(128, "docs/assets/logo-128.png");
 
   console.log("\n✓ All icons generated.\n");
   console.log(
-    "To update: replace docs/logo.png then run: node scripts/generate-icons.mjs\n"
+    "To update: replace docs/logo.png then run: node scripts/generate-icons.mjs\n",
   );
 }
 

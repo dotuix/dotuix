@@ -276,12 +276,12 @@ export function App() {
 
         {/* headline */}
         <h1 className="text-5xl sm:text-6xl font-bold tracking-tight mb-4 leading-[1.1]">
+          The{" "}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400">
-            .uix
-          </span>{" "}
-          — one file.
+            executable
+          </span>
           <br />
-          offline. interactive.
+          document format.
         </h1>
 
         {/* category */}

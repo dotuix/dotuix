@@ -1,0 +1,434 @@
+# dotuix
+
+> dotuix is an open-source ecosystem for the `.uix` executable document format.
+> A `.uix` file is an interactive, offline-first, tamper-evident application
+> distributed as a single portable file — like PDF, but it runs.
+
+## What is .uix?
+
+`.uix` is the **executable document format**. It is a standard ZIP archive
+containing a self-contained HTML/JS/CSS application, optional assets, and
+optional SQLite databases. The viewer opens it fully offline with no install,
+no URL, and no server.
+
+Mental model:
+- PDF = printable document
+- EPUB = readable document
+- `.uix` = **executable document**
+
+Use cases: classified government briefings, legal reference systems, offline
+healthcare databases, audit reports, education simulations, restaurant kiosks,
+sales proposals — any interactive experience that must be self-contained,
+offline, and distributable as a single file.
+
+---
+
+## Archive structure
+
+```
+myapp.uix  (ZIP — standard ZIP format)
+├── manifest.json       ← REQUIRED. Describes the app.
+├── index.html          ← Entry point declared in manifest.entry
+├── app.js
+├── style.css
+├── assets/             ← Convention: images, video, audio, fonts
+├── files/              ← Convention: PDFs, CSVs, JSON data
+├── data.db             ← Optional: read-only SQLite (creator data)
+└── state.db            ← Optional: read-write SQLite (user state / seed)
+```
+
+Compression rules:
+- HTML, CSS, JS, JSON → DEFLATE
+- PNG, JPG, WEBP, GIF, data.db, state.db → STORE (already compressed or binary)
+
+`assets/` and `files/` are conventions, not enforced. Files can live anywhere
+and are referenced by relative path from the entry HTML.
+
+---
+
+## manifest.json — complete field reference
+
+```json
+{
+  "uix": "1.0",
+  "id": "com.almadina.menu",
+  "name": "Al Madina Restaurant Menu",
+  "version": "1.0.0",
+  "minViewer": "1.0.0",
+  "entry": "index.html",
+  "mode": "kiosk",
+  "permissions": ["local-storage", "print"],
+  "network": "blocked",
+  "theme": {
+    "color": "#1a1a2e",
+    "background": "#ffffff"
+  },
+  "author": "author@example.com",
+  "expires": null,
+  "state": {
+    "seed": false
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `uix` | string | Yes | Format version. Always `"1.0"` for current format. |
+| `id` | string | Yes | Stable reverse-domain id. e.g. `"com.almadina.menu"`. No DNS enforcement — convention only. Used for state isolation, caching, and signatures. |
+| `name` | string | Yes | Human-readable app name shown in viewer chrome. |
+| `version` | string | Yes | SemVer app version. e.g. `"1.0.0"`. |
+| `minViewer` | string | No | Minimum viewer version required. Viewer refuses with a clear message if below. |
+| `entry` | string | Yes | Path to entry HTML file inside archive. e.g. `"index.html"`. |
+| `mode` | string | Yes | `"kiosk"` — locked UI, no address bar, no right-click. `"window"` — developer preview with toolbar. |
+| `permissions` | string[] | No | Capabilities the app is allowed to use (see list below). |
+| `network` | string | No | `"blocked"` (default) or `"allowed"`. Blocked = viewer's CSP blocks all external requests. |
+| `theme` | object | No | Viewer chrome colors: `color` (hex) and `background` (hex). |
+| `author` | string | No | Creator email or identifier. |
+| `expires` | string\|null | No | ISO 8601 date string or `null`. Viewer checks expiry **before extraction** — expired files never unpack. |
+| `state.seed` | boolean | No | `true` = copy `state.db` from archive as starting user state on first open. Default `false`. |
+| `security` | object | No | Optional PIN auth + encryption. Omit entirely for regular apps. |
+| `signature` | object | No | Optional Ed25519 signature. Written by `dotuix sign`. |
+
+### Allowed permissions values
+
+- `"local-storage"` — browser localStorage access
+- `"print"` — system print dialog
+- `"clipboard-write"` — write to clipboard
+- `"fullscreen"` — request fullscreen
+- `"raw-sql"` — enable `uix.data.raw()` and `uix.state.raw()` for arbitrary SQL queries
+
+### Security block (optional — omit entirely for regular apps)
+
+```json
+{
+  "security": {
+    "auth": "pin",
+    "encryptedPaths": ["data.db", "files/annex.pdf"],
+    "kdf": "PBKDF2-SHA256",
+    "kdfIterations": 200000,
+    "keySalt": "base64url-random-salt-here",
+    "maxOpens": 3,
+    "screenshot": false
+  },
+  "signature": {
+    "algorithm": "Ed25519",
+    "publicKey": "base64url-public-key",
+    "value": "base64url-signature",
+    "signedAt": "2026-05-19T10:00:00Z"
+  }
+}
+```
+
+| security field | Default | Description |
+|---|---|---|
+| `auth` | `"none"` | `"pin"` = viewer prompts for PIN before opening. |
+| `encryptedPaths` | `[]` | Paths inside archive encrypted with AES-256-GCM. Decrypted in memory after auth. |
+| `kdf` | `"PBKDF2-SHA256"` | Key derivation function. |
+| `kdfIterations` | 200000 | PBKDF2 iteration count. |
+| `keySalt` | — | Base64url random salt (stored in manifest, safe to store publicly). |
+| `maxOpens` | unlimited | Max times this file may be opened. Tracked by viewer locally. |
+| `screenshot` | `false` | `true` = viewer blocks OS screenshot while file is open (desktop only). |
+
+---
+
+## The window.__uix bridge API
+
+The viewer injects `window.__uix` (also aliased as `window.uix`) into the
+running app. All methods return Promises. The app has no access to the host
+filesystem — only through this bridge.
+
+### App metadata
+
+```javascript
+const manifest = await uix.manifest();
+// Returns the full manifest.json as a plain object
+
+const viewerVersion = await uix.version();
+// Returns the viewer version string e.g. "1.0.0"
+```
+
+### Data database — read-only (creator data shipped in the .uix)
+
+```javascript
+// Find all records of a type
+const products = await uix.data.find({ type: "product" });
+
+// Find with filters, sorting, pagination
+const burgers = await uix.data.find({
+  type: "product",
+  where: { category: "burgers" },
+  orderBy: { field: "name", direction: "asc" },
+  limit: 20,
+});
+// where clause: key = json_extract(body, '$.key') = value
+
+// Get a single record by id
+const product = await uix.data.get("product:001");
+
+// Raw SQL — requires "raw-sql" in manifest permissions
+const results = await uix.data.raw(
+  "SELECT body FROM records WHERE type = ? ORDER BY json_extract(body, '$.sort') ASC",
+  ["product"]
+);
+```
+
+### State database — read-write (user data, persisted across opens)
+
+```javascript
+// Insert a new record
+const record = await uix.state.insert({
+  type: "cart_item",
+  body: { productId: "product:001", qty: 2, price: 35.0 },
+});
+// Returns full record: { id, type, body, created_at, updated_at }
+// id is auto-generated as "cart_item:<uuid>"
+
+// Find records
+const cartItems = await uix.state.find({ type: "cart_item" });
+
+// Update (merges body)
+await uix.state.update("cart_item:uuid", { body: { qty: 3 } });
+
+// Delete
+await uix.state.delete("cart_item:uuid");
+
+// Purge records older than N seconds
+await uix.state.purge({ type: "session_log", olderThan: 86400 });
+
+// Raw SQL — requires "raw-sql" permission
+await uix.state.raw("DELETE FROM records WHERE type = ?", ["session_log"]);
+```
+
+### Record shape (both databases)
+
+```typescript
+interface Record {
+  id: string;          // e.g. "product:001", "cart_item:a1b2c3"
+  type: string;        // e.g. "product", "cart_item"
+  body: object;        // App-defined JSON — shape entirely up to the app
+  created_at: number;  // Unix timestamp — set on insert, never changed
+  updated_at: number;  // Unix timestamp — updated on every update call
+}
+```
+
+The `body` field is an arbitrary JSON object. The viewer never inspects it.
+The app decides all type names and all body shapes.
+
+---
+
+## SQLite schema (identical in both databases)
+
+```sql
+CREATE TABLE records (
+  id         TEXT    PRIMARY KEY,
+  type       TEXT    NOT NULL,
+  body       TEXT    NOT NULL,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX idx_type       ON records (type);
+CREATE INDEX idx_created_at ON records (created_at);
+
+-- meta table (state.db only — created by viewer on first open)
+CREATE TABLE meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT
+);
+```
+
+---
+
+## Example: Minimal working .uix project
+
+To generate a valid `.uix`, create a folder with these files and run
+`dotuix pack ./my-app`:
+
+**manifest.json**
+```json
+{
+  "uix": "1.0",
+  "id": "com.example.myapp",
+  "name": "My App",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "mode": "kiosk",
+  "network": "blocked"
+}
+```
+
+**index.html**
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My App</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Hello from .uix</h1>
+  <div id="app"></div>
+  <script src="app.js"></script>
+</body>
+</html>
+```
+
+**app.js**
+```javascript
+(async () => {
+  const manifest = await uix.manifest();
+  document.querySelector('h1').textContent = manifest.name;
+
+  // Load creator data
+  const products = await uix.data.find({ type: "product" });
+  const app = document.getElementById('app');
+  app.innerHTML = products.map(p =>
+    `<div class="product">${p.body.name} — ${p.body.price}</div>`
+  ).join('');
+})();
+```
+
+---
+
+## Example: Restaurant kiosk with SQLite
+
+**manifest.json**
+```json
+{
+  "uix": "1.0",
+  "id": "com.almadina.menu",
+  "name": "Al Madina Restaurant",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "mode": "kiosk",
+  "permissions": ["local-storage"],
+  "network": "blocked"
+}
+```
+
+**data.db** — SQLite with records table populated by creator:
+```sql
+-- Populate with the creator's menu items
+INSERT INTO records (id, type, body) VALUES
+  ('product:001', 'product', '{"name":"مشاوي مشكلة","nameEn":"Mixed Grill","price":85,"currency":"QAR","category":"grills"}'),
+  ('product:002', 'product', '{"name":"حمص","nameEn":"Hummus","price":18,"currency":"QAR","category":"appetizers"}'),
+  ('category:grills', 'category', '{"name":"مشويات","nameEn":"Grills","sort":1}');
+```
+
+**app.js**
+```javascript
+(async () => {
+  // Load menu from data.db (read-only, creator data)
+  const categories = await uix.data.find({ type: "category", orderBy: { field: "sort", direction: "asc" } });
+  const products = await uix.data.find({ type: "product" });
+
+  // Add to cart (persisted in state.db)
+  async function addToCart(productId, qty, price) {
+    const existing = await uix.state.find({ type: "cart_item", where: { productId } });
+    if (existing.length > 0) {
+      await uix.state.update(existing[0].id, { body: { ...existing[0].body, qty: existing[0].body.qty + qty } });
+    } else {
+      await uix.state.insert({ type: "cart_item", body: { productId, qty, price } });
+    }
+  }
+
+  // Get cart total
+  const cartItems = await uix.state.find({ type: "cart_item" });
+  const total = cartItems.reduce((sum, item) => sum + item.body.qty * item.body.price, 0);
+})();
+```
+
+---
+
+## CLI reference
+
+```bash
+# Install globally
+npm install -g @dotuix/cli
+
+# Create a new project
+dotuix init my-app                    # blank starter
+dotuix init my-app -t restaurant      # Gulf restaurant kiosk template
+dotuix init my-app -t catalog         # product catalog template
+dotuix init my-app -t portfolio       # portfolio/showcase template
+
+# Pack a directory into .uix
+dotuix pack ./my-app                  # → my-app.uix in current dir
+dotuix pack ./my-app -o dist/         # → dist/my-app.uix
+
+# Validate
+dotuix validate my-app.uix
+
+# Inspect
+dotuix info my-app.uix                # prints manifest
+
+# Sign (requires keygen first)
+dotuix keygen my-key                  # generates my-key.private + my-key.public
+dotuix sign my-app.uix --key my-key.private
+
+# Encrypt selected paths
+dotuix encrypt my-app.uix --paths data.db --pin-prompt
+
+# Export state data
+dotuix export my-app.uix --type order --format csv --output orders.csv
+dotuix export my-app.uix --type order --format json --output orders.json
+```
+
+---
+
+## Node.js / TypeScript API
+
+```typescript
+import { UIX } from "@dotuix/core";
+
+// Pack a directory into .uix
+await UIX.pack("./my-app", "./dist/my-app.uix");
+
+// Unpack .uix to directory
+await UIX.unpack("./my-app.uix", "./extracted/");
+
+// Validate — returns { valid: boolean, errors: string[], warnings: string[] }
+const result = await UIX.validate("./my-app.uix");
+
+// Read manifest without unpacking
+const manifest = await UIX.manifest("./my-app.uix");
+
+// Open data.db for reading
+const db = await UIX.openData("./my-app.uix");
+```
+
+---
+
+## How to generate a .uix file with AI assistance
+
+To generate a `.uix` file using any AI agent (GPT, Gemini, Claude, etc.):
+
+1. Share this spec URL with your AI: `https://dotuix.com/llms.txt`
+2. Describe what you want: "Create a restaurant menu .uix for a Gulf Arabic restaurant with 10 items in QAR"
+3. The AI generates: `manifest.json`, `index.html`, `app.js`, `style.css`, and optionally a SQL seed script for `data.db`
+4. Run: `dotuix pack ./generated-app` to produce the `.uix` file
+
+For AI agents with tool use (Claude via MCP, Cursor):
+- Install `@dotuix/mcp` and the AI can pack the file directly — no manual step needed.
+
+---
+
+## Packages and tools
+
+| Package | Install | Description |
+|---|---|---|
+| `@dotuix/core` | `npm install @dotuix/core` | Core library: pack, unpack, validate, sign, read SQLite |
+| `@dotuix/cli` | `npm install -g @dotuix/cli` | CLI: dotuix pack / validate / init / sign / encrypt / export |
+| `@dotuix/mcp` | `npm install @dotuix/mcp` | MCP server: lets AI agents generate and pack .uix files directly |
+| `@dotuix/vite-plugin` | workspace | Vite plugin: build React/Vue/Svelte/TS apps → .uix |
+| VS Code extension | `intenttext.dotuix` | Manifest IntelliSense, .uix file icon, pack/validate commands |
+
+## Links
+
+- Website: https://dotuix.com
+- GitHub: https://github.com/dotuix/dotuix
+- npm (@dotuix/core): https://www.npmjs.com/package/@dotuix/core
+- npm (@dotuix/cli): https://www.npmjs.com/package/@dotuix/cli
+- VS Code Extension: https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix
+- Format spec (this file): https://dotuix.com/llms.txt

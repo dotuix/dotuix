@@ -620,6 +620,64 @@ export function App() {
       </section>
 
       {/* ------------------------------------------------------------------ */}
+      {/* AI section                                                          */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8">
+        <div className="max-w-2xl mx-auto text-center">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/15 bg-white/5 text-xs text-gray-400 mb-6">
+            ✦ AI-ready
+          </div>
+          <h2 className="text-3xl font-bold mb-3">Generate .uix with any AI</h2>
+          <p className="text-gray-400 mb-8 leading-relaxed">
+            GPT, Gemini, and Claude can generate valid .uix files. Share the
+            spec URL and describe what you want — the AI generates the app
+            files, you run one command to pack them.
+          </p>
+
+          <div className="grid sm:grid-cols-3 gap-4 mb-8 text-left">
+            {[
+              {
+                n: "1",
+                title: "Share the spec",
+                body: 'Tell your AI: "Read dotuix.com/llms.txt and generate a .uix file for a restaurant menu."',
+              },
+              {
+                n: "2",
+                title: "AI generates files",
+                body: "The AI produces manifest.json, index.html, app.js, style.css — all valid .uix structure.",
+              },
+              {
+                n: "3",
+                title: "Pack it",
+                body: "Run dotuix pack ./output and get a working .uix file ready to open in the viewer.",
+              },
+            ].map((s) => (
+              <div
+                key={s.n}
+                className="rounded-xl border border-white/10 bg-white/3 p-4"
+              >
+                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center text-xs font-bold mb-3">
+                  {s.n}
+                </div>
+                <h3 className="font-semibold text-sm mb-1">{s.title}</h3>
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  {s.body}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-3">
+            <CopyBox value="https://dotuix.com/llms.txt" />
+          </div>
+          <p className="text-gray-500 text-xs mt-3">
+            Share this URL with any AI agent to give it full knowledge of the
+            .uix format.
+          </p>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
       {/* Footer                                                              */}
       {/* ------------------------------------------------------------------ */}
       <footer className="border-t border-white/8 py-12 px-6">

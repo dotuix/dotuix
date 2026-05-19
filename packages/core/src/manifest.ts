@@ -10,6 +10,33 @@ const PermissionSchema = z.enum([
   "local-sync",
 ]);
 
+// ---------------------------------------------------------------------------
+// Security sub-schema — all fields optional, no effect when omitted
+// ---------------------------------------------------------------------------
+
+const UIXSignatureSchema = z.object({
+  algorithm: z.literal("Ed25519"),
+  publicKey: z.string(),
+  value: z.string(),
+  signedAt: z.string(),
+});
+
+const UIXSecuritySchema = z
+  .object({
+    auth: z.enum(["none", "pin"]).optional().default("none"),
+    encryptedPaths: z.array(z.string()).optional().default([]),
+    kdf: z.literal("PBKDF2-SHA256").optional().default("PBKDF2-SHA256"),
+    kdfIterations: z.number().int().positive().optional().default(200000),
+    keySalt: z.string().optional(),
+    maxOpens: z.number().int().positive().optional(),
+    screenshot: z.boolean().optional().default(false),
+  })
+  .optional();
+
+// ---------------------------------------------------------------------------
+// Main manifest schema
+// ---------------------------------------------------------------------------
+
 export const ManifestSchema = z.object({
   uix: z.string({ required_error: "uix format version is required" }),
   id: z
@@ -40,7 +67,10 @@ export const ManifestSchema = z.object({
       seed: z.boolean().optional().default(false),
     })
     .optional(),
-  signature: z.unknown().nullable().optional(),
+  // Optional — omit entirely for regular apps (restaurant, shop, etc.)
+  security: UIXSecuritySchema,
+  // Optional — written by `dotuix sign`, verified by the viewer on load
+  signature: UIXSignatureSchema.nullable().optional(),
 });
 
 export type ManifestInput = z.input<typeof ManifestSchema>;

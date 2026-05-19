@@ -21,6 +21,8 @@ export {
 export type {
   Manifest,
   UIXRecord,
+  UIXSecurity,
+  UIXSignature,
   ValidateResult,
   Permission,
   FindQuery,

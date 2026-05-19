@@ -41,6 +41,24 @@ export default function App() {
     return () => window.removeEventListener("message", handler);
   }, [state.status]);
 
+  // On mount: check if the viewer was launched with a .uix path (file association /
+  // double-click on macOS/Windows/Linux). Consume the path once and auto-load it.
+  useEffect(() => {
+    invoke<string | null>("get_initial_file").then((path) => {
+      if (!path) return;
+      setState({ status: "loading" });
+      invoke<string>("load_uix", { path })
+        .then((manifestJson) => {
+          const manifest = JSON.parse(manifestJson) as { name?: string };
+          setState({
+            status: "loaded",
+            manifestName: manifest.name ?? "UIX App",
+          });
+        })
+        .catch((err) => setState({ status: "error", message: String(err) }));
+    });
+  }, []); // empty deps — run once on mount
+
   const openFile = useCallback(async () => {
     setState({ status: "loading" });
     try {

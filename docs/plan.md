@@ -598,8 +598,8 @@ The format spec itself will be published as an open document under Creative Comm
 | M1        | `@dotuix/core` published to npm with full test suite                         | Week 3  | ✅ Ready to publish |
 | M2        | Web fallback viewer live at `viewer.dotuix.com` + restaurant demo template   | Week 5  | ✅ Complete         |
 | M3        | `dotuix` CLI — pack, unpack, validate, init (ships with restaurant template) | Week 6  | ✅ Complete         |
-| M4        | Tauri viewer opens a `.uix` in kiosk mode                                    | Week 9  | 🔄 In progress      |
-| M5        | Viewer with full bridge API, lock files, crash recovery, `state.db` init     | Week 12 | ⬜ Not started      |
+| M4        | Tauri viewer opens a `.uix` in kiosk mode                                    | Week 9  | ✅ Complete         |
+| M5        | Lock files, repack-on-close, file association, purge, minViewer, expires     | Week 12 | 🔄 In progress      |
 | M6        | Editor developer mode (code + live preview + DB editor)                      | Week 16 | ⬜ Not started      |
 | M7        | Editor simple mode (template + export)                                       | Week 20 | ⬜ Not started      |
 | M8        | Catalog and portfolio starter templates                                      | Week 20 | ⬜ Not started      |

@@ -588,7 +588,7 @@ fn bridge_script(manifest_json: &str) -> String {
     data: {{
       find: function (opts) {{
         var q = (typeof opts === 'string') ? {{ type: opts }} : Object.assign({{}}, opts);
-        return relay('data_find', q);
+        return relay('data_find', {{ query: q }});
       }},
       get:  function (id)              {{ return relay('data_get',  {{ id: id }}); }},
       raw:  function (sql, params)     {{ return relay('data_raw',  {{ sql: sql, params: params || [] }}); }},
@@ -596,7 +596,7 @@ fn bridge_script(manifest_json: &str) -> String {
     state: {{
       find:   function (opts) {{
         var q = (typeof opts === 'string') ? {{ type: opts }} : Object.assign({{}}, opts);
-        return relay('state_find', q);
+        return relay('state_find', {{ query: q }});
       }},
       get:    function (id)          {{ return relay('state_get',   {{ id: id }}); }},
       insert: function (opts)        {{

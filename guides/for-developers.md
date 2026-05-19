@@ -18,21 +18,36 @@ npm install -g @dotuix/cli
 
 ---
 
-## Method 1 — Pack a plain HTML folder
+## Method 1 — Plain HTML/CSS/JS (scaffold with `dotuix init`)
 
-The simplest path. Write your app as a regular HTML/CSS/JS project, add a `manifest.json`, and pack it.
+The simplest path. Run `dotuix init` to get a working scaffold, then edit the files and pack.
 
-### Folder structure
+```bash
+dotuix init my-app
+cd my-app
+```
+
+This creates:
 
 ```
 my-app/
-├── manifest.json     ← required
+├── manifest.json     ← pre-filled with your app name
+├── index.html        ← entry point wired to app.js
+├── style.css
+└── app.js            ← bridge usage example included
+```
+
+Add your own assets and a `data.db` as needed:
+
+```
+my-app/
+├── manifest.json
 ├── index.html
 ├── style.css
 ├── app.js
 ├── assets/
 │   └── logo.png
-└── data.db           ← optional: read-only SQLite data
+└── data.db           ← optional: read-only SQLite data (see "Database schema" below)
 ```
 
 ### manifest.json (minimal)
@@ -49,21 +64,22 @@ my-app/
 }
 ```
 
-| Field     | Required | Notes                                                                                    |
-| --------- | -------- | ---------------------------------------------------------------------------------------- |
-| `uix`     | Yes      | Always `"1.0"`                                                                           |
-| `id`      | Yes      | Reverse-domain string. Unique per app. Used for state isolation and signatures.          |
-| `name`    | Yes      | Human-readable name shown in the viewer title bar                                        |
-| `version` | Yes      | SemVer. Your app version.                                                                |
-| `entry`   | Yes      | Path to entry HTML file inside the archive                                               |
-| `mode`    | Yes      | `"kiosk"` — no address bar, locked UI. `"window"` — regular windowed mode for dev/portfolio. |
-| `network` | No       | `"blocked"` (default) — viewer blocks all outbound requests. `"allowed"` — unrestricted. |
-| `expires` | No       | ISO date string `"2026-12-31"`. Viewer refuses to open the file after this date.         |
-| `minViewer` | No     | Minimum viewer version required. e.g. `"1.2.0"`. Older viewers show a clear error.      |
+| Field       | Required | Notes                                                                                        |
+| ----------- | -------- | -------------------------------------------------------------------------------------------- |
+| `uix`       | Yes      | Always `"1.0"`                                                                               |
+| `id`        | Yes      | Reverse-domain string. Unique per app. Used for state isolation and signatures.              |
+| `name`      | Yes      | Human-readable name shown in the viewer title bar                                            |
+| `version`   | Yes      | SemVer. Your app version.                                                                    |
+| `entry`     | Yes      | Path to entry HTML file inside the archive                                                   |
+| `mode`      | Yes      | `"kiosk"` — no address bar, locked UI. `"window"` — regular windowed mode for dev/portfolio. |
+| `network`   | No       | `"blocked"` (default) — viewer blocks all outbound requests. `"allowed"` — unrestricted.     |
+| `expires`   | No       | ISO date string `"2026-12-31"`. Viewer refuses to open the file after this date.             |
+| `minViewer` | No       | Minimum viewer version required. e.g. `"1.2.0"`. Older viewers show a clear error.           |
 
-### Pack it
+### Pack and validate
 
 ```bash
+# from inside my-app/ or from outside
 dotuix pack ./my-app
 # → my-app.uix in current directory
 
@@ -119,7 +135,7 @@ await window.__uix.state.purge({ type: "cart_item", olderThan: "7d" });
 // Raw SQL (requires "raw-sql" in manifest permissions)
 const results = await window.__uix.data.raw(
   "SELECT body FROM records WHERE type = ? ORDER BY json_extract(body, '$.sort') ASC",
-  ["product"]
+  ["product"],
 );
 
 // Get manifest info
@@ -195,7 +211,7 @@ import { dotuix } from "@dotuix/vite-plugin";
 export default defineConfig({
   plugins: [
     react(),
-    dotuix(),   // reads manifest.json from project root
+    dotuix(), // reads manifest.json from project root
   ],
 });
 ```
@@ -223,12 +239,22 @@ interface DotuixRecord {
 
 interface DotuixBridge {
   data: {
-    find(query: { type: string; where?: Record<string, unknown>; orderBy?: string; limit?: number }): Promise<DotuixRecord[]>;
+    find(query: {
+      type: string;
+      where?: Record<string, unknown>;
+      orderBy?: string;
+      limit?: number;
+    }): Promise<DotuixRecord[]>;
     get(id: string): Promise<DotuixRecord | null>;
     raw(sql: string, params?: unknown[]): Promise<DotuixRecord[]>;
   };
   state: {
-    find(query: { type: string; where?: Record<string, unknown>; orderBy?: string; limit?: number }): Promise<DotuixRecord[]>;
+    find(query: {
+      type: string;
+      where?: Record<string, unknown>;
+      orderBy?: string;
+      limit?: number;
+    }): Promise<DotuixRecord[]>;
     get(id: string): Promise<DotuixRecord | null>;
     insert(record: { type: string; body: unknown }): Promise<string>;
     update(id: string, body: unknown): Promise<void>;
@@ -236,7 +262,12 @@ interface DotuixBridge {
     purge(query: { type: string; olderThan: string }): Promise<number>;
     raw(sql: string, params?: unknown[]): Promise<DotuixRecord[]>;
   };
-  manifest(): { id: string; name: string; version: string; [key: string]: unknown };
+  manifest(): {
+    id: string;
+    name: string;
+    version: string;
+    [key: string]: unknown;
+  };
   print(): void;
 }
 
@@ -397,6 +428,7 @@ The `security` block added to `manifest.json`:
 ```
 
 How it works:
+
 1. `dotuix encrypt` derives an AES-256 key: `PBKDF2(PIN, randomSalt, 200 000 iterations, SHA-256)`
 2. Each specified path is encrypted with AES-256-GCM: `[12-byte nonce][ciphertext + 16-byte GCM tag]`
 3. The salt is stored in `manifest.json` (safe — it does not reveal the PIN)
@@ -511,6 +543,7 @@ dotuix validate my-app.uix
 ```
 
 Checks:
+
 - `manifest.json` required fields and schema
 - Entry file exists inside the archive
 - `data.db` / `state.db` schema is correct
@@ -531,11 +564,11 @@ Checks:
 
 Three ready-to-run templates are in the monorepo under `templates/`:
 
-| Template                                                   | Record type | Key fields                             |
-| ---------------------------------------------------------- | ----------- | -------------------------------------- |
-| [`templates/restaurant`](../templates/restaurant)          | `product`   | name, description, price, category     |
-| [`templates/catalog`](../templates/catalog)                | `product`   | name, description, price, category, sku |
-| [`templates/portfolio`](../templates/portfolio)            | `project`   | title, description, category, year     |
+| Template                                          | Record type | Key fields                              |
+| ------------------------------------------------- | ----------- | --------------------------------------- |
+| [`templates/restaurant`](../templates/restaurant) | `product`   | name, description, price, category      |
+| [`templates/catalog`](../templates/catalog)       | `product`   | name, description, price, category, sku |
+| [`templates/portfolio`](../templates/portfolio)   | `project`   | title, description, category, year      |
 
 Pack any of them directly:
 

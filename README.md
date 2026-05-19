@@ -167,11 +167,23 @@ Full spec: [`docs/plan.md`](docs/plan.md)
 
 ---
 
+## Guides
+
+**Business owners** — create a `.uix` file in minutes using the editor, no code required, with clear explanations of every security option in plain language:  
+→ [guides/for-business-owners.md](guides/for-business-owners.md)
+
+**Developers** — every method for creating `.uix` files (plain HTML, React/Vue/Svelte with the Vite plugin, programmatic Node.js), the full bridge API, all security scenarios with code examples (signing, PIN encryption, expiry, max opens), and CLI reference:  
+→ [guides/for-developers.md](guides/for-developers.md)
+
+---
+
 ## Templates
 
-| Template                                       | Description                                                   |
-| ---------------------------------------------- | ------------------------------------------------------------- |
-| [`templates/restaurant`](templates/restaurant) | Gulf restaurant kiosk menu — Arabic, QAR prices, working cart |
+| Template                                           | Description                                                         |
+| -------------------------------------------------- | ------------------------------------------------------------------- |
+| [`templates/restaurant`](templates/restaurant)     | Gulf restaurant kiosk menu — Arabic, QAR prices, working cart       |
+| [`templates/catalog`](templates/catalog)           | Product showcase — category filters, SKU, pricing (light theme)     |
+| [`templates/portfolio`](templates/portfolio)       | Creative portfolio — sidebar category filters, year badge (dark)    |
 
 ---
 

@@ -128,6 +128,20 @@ async function cmdInit() {
   runInTerminal(`${cwd}dotuix init ${name}${flag}`, "dotuix: init");
 }
 
+async function cmdOpen() {
+  // Allow picking a .uix from disk, OR use the active editor's folder
+  const files = await vscode.window.showOpenDialog({
+    canSelectFiles: true,
+    canSelectFolders: false,
+    canSelectMany: false,
+    filters: { "UIX files": ["uix"] },
+    title: "Select a .uix file to open in viewer",
+  });
+  if (!files || files.length === 0) return;
+  // openExternal hands the file to the OS default handler — the dotuix viewer
+  await vscode.env.openExternal(files[0]);
+}
+
 // ---------------------------------------------------------------------------
 // Activation
 // ---------------------------------------------------------------------------
@@ -137,6 +151,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("dotuix.pack", cmdPack),
     vscode.commands.registerCommand("dotuix.validate", cmdValidate),
     vscode.commands.registerCommand("dotuix.init", cmdInit),
+    vscode.commands.registerCommand("dotuix.open", cmdOpen),
   );
 }
 

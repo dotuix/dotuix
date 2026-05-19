@@ -2,7 +2,7 @@
   "name": "dotuix",
   "displayName": "dotuix",
   "description": "Language support, IntelliSense, and commands for .uix files",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "intenttext",
   "license": "MIT",
   "icon": "icons/icon.png",
@@ -47,6 +47,10 @@
       {
         "command": "dotuix.init",
         "title": "dotuix: Init new project"
+      },
+      {
+        "command": "dotuix.open",
+        "title": "dotuix: Open .uix file in viewer"
       }
     ],
     "jsonValidation": [

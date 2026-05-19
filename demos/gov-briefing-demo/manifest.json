@@ -1,0 +1,12 @@
+{
+  "uix": "1.0",
+  "id": "com.dotuix.demo.govbriefing",
+  "name": "Ministry Security Briefing — DEMO",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "mode": "kiosk",
+  "permissions": [],
+  "network": "blocked",
+  "expires": "2026-05-26",
+  "author": "security-demo@dotuix.com"
+}

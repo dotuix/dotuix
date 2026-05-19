@@ -62,7 +62,9 @@ function usePlatformUrls() {
         }
         setUrls(found);
       })
-      .catch(() => {/* fallback urls used */});
+      .catch(() => {
+        /* fallback urls used */
+      });
   }, []);
 
   return { urls, version };
@@ -73,7 +75,16 @@ function PlatformDownloadButton() {
   const { urls, version } = usePlatformUrls();
   const fallback = "https://github.com/dotuix/dotuix/releases/latest";
 
-  const config: Record<PlatformKey, { text: string; hint: string; key: string; altText?: string; altKey?: string }> = {
+  const config: Record<
+    PlatformKey,
+    {
+      text: string;
+      hint: string;
+      key: string;
+      altText?: string;
+      altKey?: string;
+    }
+  > = {
     "mac-arm": {
       text: "Download for macOS",
       hint: "Apple Silicon  ·  .dmg",
@@ -88,14 +99,26 @@ function PlatformDownloadButton() {
       altText: "Apple Silicon",
       altKey: "mac-arm",
     },
-    windows: { text: "Download for Windows", hint: "Windows 10+  ·  .msi", key: "windows" },
-    linux: { text: "Download for Linux", hint: ".AppImage  ·  most distros", key: "linux" },
-    other: { text: "Download Desktop Viewer", hint: "macOS  ·  Windows  ·  Linux", key: "" },
+    windows: {
+      text: "Download for Windows",
+      hint: "Windows 10+  ·  .msi",
+      key: "windows",
+    },
+    linux: {
+      text: "Download for Linux",
+      hint: ".AppImage  ·  most distros",
+      key: "linux",
+    },
+    other: {
+      text: "Download Desktop Viewer",
+      hint: "macOS  ·  Windows  ·  Linux",
+      key: "",
+    },
   };
 
   const { text, hint, key, altText, altKey } = config[platform];
   const primaryUrl = (key && urls[key]) || fallback;
-  const altUrl = altKey ? (urls[altKey] || fallback) : null;
+  const altUrl = altKey ? urls[altKey] || fallback : null;
 
   return (
     <div className="flex flex-col items-center gap-2 mb-8">
@@ -145,13 +168,19 @@ const AI_TEMPLATES = [
     label: "Restaurant menu",
     fields: [
       { key: "name", placeholder: "Restaurant name", required: true },
-      { key: "cuisine", placeholder: "Cuisine type (e.g. Qatari, Italian)", required: false },
+      {
+        key: "cuisine",
+        placeholder: "Cuisine type (e.g. Qatari, Italian)",
+        required: false,
+      },
       { key: "city", placeholder: "City / location", required: false },
     ],
     buildPrompt: (vals: Record<string, string>) =>
       `Read the full dotuix format spec at /llms.txt
 
-Build a restaurant kiosk .uix file for ${vals.name || "my restaurant"}${vals.cuisine ? ` — ${vals.cuisine} cuisine` : ""}${vals.city ? `, ${vals.city}` : ""}.
+Build a restaurant kiosk .uix file for ${vals.name || "my restaurant"}${
+        vals.cuisine ? ` — ${vals.cuisine} cuisine` : ""
+      }${vals.city ? `, ${vals.city}` : ""}.
 
 Output exactly these files (no other files):
 • manifest.json — id, name, version, entry, author
@@ -174,13 +203,23 @@ to create the final .uix file.`,
     label: "Product catalogue",
     fields: [
       { key: "company", placeholder: "Company or brand name", required: true },
-      { key: "product", placeholder: "What products? (e.g. furniture, electronics)", required: true },
-      { key: "count", placeholder: "How many sample products? (e.g. 20)", required: false },
+      {
+        key: "product",
+        placeholder: "What products? (e.g. furniture, electronics)",
+        required: true,
+      },
+      {
+        key: "count",
+        placeholder: "How many sample products? (e.g. 20)",
+        required: false,
+      },
     ],
     buildPrompt: (vals: Record<string, string>) =>
       `Read the full dotuix format spec at /llms.txt
 
-Build a product catalogue .uix file for ${vals.company || "my company"} selling ${vals.product || "products"}.
+Build a product catalogue .uix file for ${
+        vals.company || "my company"
+      } selling ${vals.product || "products"}.
 
 Output exactly these files:
 • manifest.json
@@ -190,7 +229,9 @@ Output exactly these files:
 
 Requirements:
 - No external URLs
-- At least ${vals.count || "12"} sample products with name, price, description, category
+- At least ${
+        vals.count || "12"
+      } sample products with name, price, description, category
 - Filterable by category, searchable by name
 - Works offline, no server
 
@@ -201,13 +242,23 @@ After generating: dotuix pack ./[folder-name]`,
     label: "Portfolio / showcase",
     fields: [
       { key: "name", placeholder: "Your name", required: true },
-      { key: "role", placeholder: "Your role (e.g. designer, engineer)", required: false },
-      { key: "projects", placeholder: "Key projects or skills (brief)", required: false },
+      {
+        key: "role",
+        placeholder: "Your role (e.g. designer, engineer)",
+        required: false,
+      },
+      {
+        key: "projects",
+        placeholder: "Key projects or skills (brief)",
+        required: false,
+      },
     ],
     buildPrompt: (vals: Record<string, string>) =>
       `Read the full dotuix format spec at /llms.txt
 
-Build a portfolio .uix file for ${vals.name || "me"}, a ${vals.role || "professional"}.${vals.projects ? ` Focus on: ${vals.projects}.` : ""}
+Build a portfolio .uix file for ${vals.name || "me"}, a ${
+        vals.role || "professional"
+      }.${vals.projects ? ` Focus on: ${vals.projects}.` : ""}
 
 Output exactly these files:
 • manifest.json
@@ -226,13 +277,24 @@ After generating: dotuix pack ./[folder-name]`,
     label: "Report / dashboard",
     fields: [
       { key: "title", placeholder: "Report title", required: true },
-      { key: "subject", placeholder: "Data type / subject (e.g. quarterly sales, hospital stats)", required: false },
-      { key: "metrics", placeholder: "Key metrics or sections to include", required: false },
+      {
+        key: "subject",
+        placeholder:
+          "Data type / subject (e.g. quarterly sales, hospital stats)",
+        required: false,
+      },
+      {
+        key: "metrics",
+        placeholder: "Key metrics or sections to include",
+        required: false,
+      },
     ],
     buildPrompt: (vals: Record<string, string>) =>
       `Read the full dotuix format spec at /llms.txt
 
-Build an interactive report .uix file titled "${vals.title || "My Report"}".${vals.subject ? ` Subject: ${vals.subject}.` : ""}${vals.metrics ? ` Include: ${vals.metrics}.` : ""}
+Build an interactive report .uix file titled "${vals.title || "My Report"}".${
+        vals.subject ? ` Subject: ${vals.subject}.` : ""
+      }${vals.metrics ? ` Include: ${vals.metrics}.` : ""}
 
 Output exactly these files:
 • manifest.json
@@ -251,7 +313,11 @@ After generating: dotuix pack ./[folder-name]`,
     id: "custom",
     label: "Custom",
     fields: [
-      { key: "description", placeholder: "Describe what you want to build…", required: true },
+      {
+        key: "description",
+        placeholder: "Describe what you want to build…",
+        required: true,
+      },
     ],
     buildPrompt: (vals: Record<string, string>) =>
       `Read the full dotuix format spec at /llms.txt
@@ -300,12 +366,13 @@ function AIPromptBuilder() {
       <div className="max-w-3xl mx-auto">
         <div className="text-center mb-10">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple-400/30 bg-purple-500/10 text-xs text-purple-300 mb-5">
-            <Sparkles className="w-3 h-3" /> Works with ChatGPT · Gemini · Claude
+            <Sparkles className="w-3 h-3" /> Works with ChatGPT · Gemini ·
+            Claude
           </div>
           <h2 className="text-3xl font-bold mb-3">Generate with any AI</h2>
           <p className="text-gray-400 max-w-xl mx-auto leading-relaxed">
-            No API key. No backend. Pick a template, fill in details, copy the prompt into
-            any AI — then pack the files it gives you with the CLI.
+            No API key. No backend. Pick a template, fill in details, copy the
+            prompt into any AI — then pack the files it gives you with the CLI.
           </p>
         </div>
 
@@ -345,15 +412,21 @@ function AIPromptBuilder() {
         {/* Generated prompt */}
         <div className="rounded-xl border border-white/10 bg-white/3 overflow-hidden mb-4">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/8 bg-white/3">
-            <span className="text-xs text-gray-500 font-medium">Generated prompt — paste into any AI</span>
+            <span className="text-xs text-gray-500 font-medium">
+              Generated prompt — paste into any AI
+            </span>
             <button
               onClick={handleCopy}
               className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors"
             >
               {copied ? (
-                <><CheckCheck className="w-3.5 h-3.5 text-green-400" /> Copied!</>
+                <>
+                  <CheckCheck className="w-3.5 h-3.5 text-green-400" /> Copied!
+                </>
               ) : (
-                <><Copy className="w-3.5 h-3.5" /> Copy</>
+                <>
+                  <Copy className="w-3.5 h-3.5" /> Copy
+                </>
               )}
             </button>
           </div>
@@ -368,14 +441,20 @@ function AIPromptBuilder() {
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:opacity-90 transition-opacity text-sm font-medium"
           >
             {copied ? (
-              <><CheckCheck className="w-4 h-4" /> Prompt copied!</>
+              <>
+                <CheckCheck className="w-4 h-4" /> Prompt copied!
+              </>
             ) : (
-              <><Copy className="w-4 h-4" /> Copy prompt</>
+              <>
+                <Copy className="w-4 h-4" /> Copy prompt
+              </>
             )}
           </button>
           <p className="text-xs text-gray-500 leading-relaxed">
-            Paste into any AI. Save the files it outputs.{" "}
-            Then: <code className="text-gray-400 bg-white/5 px-1.5 py-0.5 rounded">dotuix pack ./folder</code>
+            Paste into any AI. Save the files it outputs. Then:{" "}
+            <code className="text-gray-400 bg-white/5 px-1.5 py-0.5 rounded">
+              dotuix pack ./folder
+            </code>
           </p>
         </div>
       </div>
@@ -571,6 +650,38 @@ const GUIDE_PATHS = [
     ],
   },
   {
+    id: "vite",
+    label: "With Vite / React",
+    tag: "React  ·  Vue  ·  Svelte  ·  TypeScript",
+    steps: [
+      {
+        title: "Install the plugin",
+        desc: "Add to your existing Vite project — works with React, Vue, Svelte, or plain TypeScript.",
+        code: "npm install -D @dotuix/vite-plugin",
+      },
+      {
+        title: "Configure vite.config",
+        desc: "Import the plugin and add a manifest. Your app's existing entry point becomes the .uix entry.",
+        code: `// vite.config.ts\nimport { dotuix } from "@dotuix/vite-plugin";\n\nexport default {\n  plugins: [\n    dotuix({\n      manifest: {\n        id: "com.myapp.name",\n        name: "My App",\n        version: "1.0.0",\n        entry: "index.html",\n        mode: "kiosk",\n        network: "blocked",\n      },\n    }),\n  ],\n};`,
+      },
+      {
+        title: "Use the bridge API in your app",
+        desc: "Replace fetch/localStorage calls with window.__uix. Data and state go through the bridge — fully offline, no server.",
+        code: `// In your React/Vue/Svelte component:\nconst items = await window.uix.data.find({ type: "product" });\nawait window.uix.state.insert({ type: "cart", body: { id, qty } });`,
+      },
+      {
+        title: "Build",
+        desc: "Run your normal Vite build. A .uix file is written alongside the dist/ output — no extra step.",
+        code: "npm run build\n✓  dist/my-app.uix — ready",
+      },
+      {
+        title: "Open in the desktop viewer",
+        desc: "Open dist/my-app.uix in the viewer. Your full React/Vue/Svelte app runs fully offline in one file.",
+        code: null,
+      },
+    ],
+  },
+  {
     id: "cli",
     label: "CLI from scratch",
     tag: "Full control  ·  edit files yourself",
@@ -609,7 +720,10 @@ function GuideSection() {
   const path = GUIDE_PATHS.find((p) => p.id === tab)!;
 
   return (
-    <section id="guide" className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8">
+    <section
+      id="guide"
+      className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8"
+    >
       <h2 className="text-3xl font-bold text-center mb-3">Start building</h2>
       <p className="text-gray-400 text-center mb-10 max-w-xl mx-auto">
         Three paths to a .uix file. Pick the one that fits.
@@ -628,7 +742,11 @@ function GuideSection() {
             }`}
           >
             <div className="font-semibold">{p.label}</div>
-            <div className={`text-xs mt-0.5 ${tab === p.id ? "text-gray-300" : "text-gray-600"}`}>
+            <div
+              className={`text-xs mt-0.5 ${
+                tab === p.id ? "text-gray-300" : "text-gray-600"
+              }`}
+            >
               {p.tag}
             </div>
           </button>
@@ -644,12 +762,21 @@ function GuideSection() {
                 {i + 1}
               </div>
               {i < path.steps.length - 1 && (
-                <div className="w-px flex-1 bg-white/8 mt-2 mb-0" style={{ minHeight: "2rem" }} />
+                <div
+                  className="w-px flex-1 bg-white/8 mt-2 mb-0"
+                  style={{ minHeight: "2rem" }}
+                />
               )}
             </div>
-            <div className={`flex-1 ${i < path.steps.length - 1 ? "pb-8" : "pb-0"}`}>
+            <div
+              className={`flex-1 ${
+                i < path.steps.length - 1 ? "pb-8" : "pb-0"
+              }`}
+            >
               <h3 className="font-semibold text-sm mb-1 mt-1">{step.title}</h3>
-              <p className="text-gray-400 text-sm leading-relaxed mb-3">{step.desc}</p>
+              <p className="text-gray-400 text-sm leading-relaxed mb-3">
+                {step.desc}
+              </p>
               {step.code && (
                 <pre className="text-xs font-mono text-gray-300 bg-black/30 rounded-lg p-3.5 leading-6 overflow-x-auto border border-white/6">
                   {step.code}
@@ -667,23 +794,108 @@ function GuideSection() {
 // Format reference section
 // ---------------------------------------------------------------------------
 
-const MANIFEST_FIELDS: { field: string; type: string; req: boolean; desc: string }[] = [
-  { field: "uix",          type: "string",    req: true,  desc: 'Format version. Always "1.0".' },
-  { field: "id",           type: "string",    req: true,  desc: "Reverse-domain stable id. e.g. com.almadina.menu. Used for state isolation and signatures." },
-  { field: "name",         type: "string",    req: true,  desc: "Human-readable app name shown in the viewer chrome." },
-  { field: "version",      type: "string",    req: true,  desc: 'SemVer app version. e.g. "1.0.0".' },
-  { field: "entry",        type: "string",    req: true,  desc: "Path to entry HTML inside the archive. e.g. index.html." },
-  { field: "mode",         type: "string",    req: true,  desc: '"kiosk" — locked UI, no address bar. "window" — toolbar visible. Use window for AI agent apps.' },
-  { field: "minViewer",    type: "string",    req: false, desc: "Minimum viewer version required. Viewer refuses with a clear message if below." },
-  { field: "permissions",  type: "string[]",  req: false, desc: '"local-storage", "print", "clipboard-write", "fullscreen", "raw-sql".' },
-  { field: "network",      type: "string",    req: false, desc: '"blocked" (default) — CSP blocks all external requests. "allowed" — outbound enabled.' },
-  { field: "theme",        type: "object",    req: false, desc: "Viewer chrome colors: { color: hex, background: hex }." },
-  { field: "author",       type: "string",    req: false, desc: "Creator email or identifier." },
-  { field: "expires",      type: "string|null",req: false, desc: "ISO 8601 expiry date. Viewer checks before extraction — expired files never unpack." },
-  { field: "state.seed",   type: "boolean",   req: false, desc: "true = copy state.db from archive as starting user state on first open." },
-  { field: "security",     type: "object",    req: false, desc: "Optional PIN auth + AES-256-GCM encryption. Omit entirely for regular apps." },
-  { field: "signature",    type: "object",    req: false, desc: "Ed25519 signature added by dotuix sign. Viewer verifies before running any content." },
-  { field: "ai",           type: "object",    req: false, desc: "AI provenance block. { generatedBy, generatedAt, capabilities, promptHash }. Informational only." },
+const MANIFEST_FIELDS: {
+  field: string;
+  type: string;
+  req: boolean;
+  desc: string;
+}[] = [
+  {
+    field: "uix",
+    type: "string",
+    req: true,
+    desc: 'Format version. Always "1.0".',
+  },
+  {
+    field: "id",
+    type: "string",
+    req: true,
+    desc: "Reverse-domain stable id. e.g. com.almadina.menu. Used for state isolation and signatures.",
+  },
+  {
+    field: "name",
+    type: "string",
+    req: true,
+    desc: "Human-readable app name shown in the viewer chrome.",
+  },
+  {
+    field: "version",
+    type: "string",
+    req: true,
+    desc: 'SemVer app version. e.g. "1.0.0".',
+  },
+  {
+    field: "entry",
+    type: "string",
+    req: true,
+    desc: "Path to entry HTML inside the archive. e.g. index.html.",
+  },
+  {
+    field: "mode",
+    type: "string",
+    req: true,
+    desc: '"kiosk" — locked UI, no address bar. "window" — toolbar visible. Use window for AI agent apps.',
+  },
+  {
+    field: "minViewer",
+    type: "string",
+    req: false,
+    desc: "Minimum viewer version required. Viewer refuses with a clear message if below.",
+  },
+  {
+    field: "permissions",
+    type: "string[]",
+    req: false,
+    desc: '"local-storage", "print", "clipboard-write", "fullscreen", "raw-sql".',
+  },
+  {
+    field: "network",
+    type: "string",
+    req: false,
+    desc: '"blocked" (default) — CSP blocks all external requests. "allowed" — outbound enabled.',
+  },
+  {
+    field: "theme",
+    type: "object",
+    req: false,
+    desc: "Viewer chrome colors: { color: hex, background: hex }.",
+  },
+  {
+    field: "author",
+    type: "string",
+    req: false,
+    desc: "Creator email or identifier.",
+  },
+  {
+    field: "expires",
+    type: "string|null",
+    req: false,
+    desc: "ISO 8601 expiry date. Viewer checks before extraction — expired files never unpack.",
+  },
+  {
+    field: "state.seed",
+    type: "boolean",
+    req: false,
+    desc: "true = copy state.db from archive as starting user state on first open.",
+  },
+  {
+    field: "security",
+    type: "object",
+    req: false,
+    desc: "Optional PIN auth + AES-256-GCM encryption. Omit entirely for regular apps.",
+  },
+  {
+    field: "signature",
+    type: "object",
+    req: false,
+    desc: "Ed25519 signature added by dotuix sign. Viewer verifies before running any content.",
+  },
+  {
+    field: "ai",
+    type: "object",
+    req: false,
+    desc: "AI provenance block. { generatedBy, generatedAt, capabilities, promptHash }. Informational only.",
+  },
 ];
 
 const MANIFEST_EXAMPLE = `{
@@ -787,21 +999,24 @@ dotuix export my-app.uix --type order --format csv -o orders.csv
 dotuix export my-app.uix --type order --format json -o orders.json`;
 
 const FORMAT_TABS_DATA = [
-  { id: "manifest",  label: "manifest.json" },
-  { id: "bridge",    label: "Bridge API" },
+  { id: "manifest", label: "manifest.json" },
+  { id: "bridge", label: "Bridge API" },
   { id: "structure", label: "File structure" },
-  { id: "cli",       label: "CLI" },
+  { id: "cli", label: "CLI" },
 ];
 
 function FormatRefSection() {
   const [tab, setTab] = useState("manifest");
 
   return (
-    <section id="format" className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8">
+    <section
+      id="format"
+      className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8"
+    >
       <h2 className="text-3xl font-bold text-center mb-3">Format reference</h2>
       <p className="text-gray-400 text-center mb-10 max-w-xl mx-auto">
-        Everything you need to build, read, or integrate with a .uix file.
-        No external docs required.
+        Everything you need to build, read, or integrate with a .uix file. No
+        external docs required.
       </p>
 
       {/* Tab bar */}
@@ -825,13 +1040,17 @@ function FormatRefSection() {
       {tab === "manifest" && (
         <div className="grid lg:grid-cols-2 gap-6 items-start">
           <div>
-            <p className="text-xs text-gray-500 font-medium mb-2 uppercase tracking-widest">Example</p>
+            <p className="text-xs text-gray-500 font-medium mb-2 uppercase tracking-widest">
+              Example
+            </p>
             <pre className="text-xs font-mono text-gray-300 bg-black/30 rounded-xl p-5 leading-6 overflow-x-auto border border-white/6">
               {MANIFEST_EXAMPLE}
             </pre>
           </div>
           <div>
-            <p className="text-xs text-gray-500 font-medium mb-2 uppercase tracking-widest">Fields</p>
+            <p className="text-xs text-gray-500 font-medium mb-2 uppercase tracking-widest">
+              Fields
+            </p>
             <div className="rounded-xl border border-white/8 overflow-hidden text-xs">
               {MANIFEST_FIELDS.map((f, i) => (
                 <div
@@ -840,12 +1059,18 @@ function FormatRefSection() {
                     i % 2 === 0 ? "bg-white/2" : ""
                   }`}
                 >
-                  <code className="text-blue-300 font-mono truncate">{f.field}</code>
-                  <code className="text-pink-300/70 font-mono truncate">{f.type}</code>
+                  <code className="text-blue-300 font-mono truncate">
+                    {f.field}
+                  </code>
+                  <code className="text-pink-300/70 font-mono truncate">
+                    {f.type}
+                  </code>
                   <span className={f.req ? "text-green-400" : "text-gray-600"}>
                     {f.req ? "req" : "opt"}
                   </span>
-                  <span className="text-gray-400 leading-relaxed">{f.desc}</span>
+                  <span className="text-gray-400 leading-relaxed">
+                    {f.desc}
+                  </span>
                 </div>
               ))}
             </div>
@@ -858,10 +1083,15 @@ function FormatRefSection() {
         <div className="max-w-3xl mx-auto">
           <p className="text-gray-400 text-sm mb-5 leading-relaxed">
             The viewer injects{" "}
-            <code className="text-gray-300 bg-white/5 px-1.5 py-0.5 rounded">window.__uix</code>{" "}
-            (aliased as <code className="text-gray-300 bg-white/5 px-1.5 py-0.5 rounded">window.uix</code>) into
-            every running app. All methods return Promises. The app has no access to the host
-            filesystem — only through this bridge.
+            <code className="text-gray-300 bg-white/5 px-1.5 py-0.5 rounded">
+              window.__uix
+            </code>{" "}
+            (aliased as{" "}
+            <code className="text-gray-300 bg-white/5 px-1.5 py-0.5 rounded">
+              window.uix
+            </code>
+            ) into every running app. All methods return Promises. The app has
+            no access to the host filesystem — only through this bridge.
           </p>
           <pre className="text-xs font-mono text-gray-300 bg-black/30 rounded-xl p-5 leading-6 overflow-x-auto border border-white/6">
             {BRIDGE_API_CODE}
@@ -869,17 +1099,33 @@ function FormatRefSection() {
           <div className="mt-5 grid sm:grid-cols-2 gap-4 text-xs text-gray-400">
             <div className="rounded-xl border border-white/8 p-4">
               <p className="font-medium text-gray-300 mb-2">find() options</p>
-              <p><code className="text-blue-300">where</code>: {"{ field: value }"} — JSON body match</p>
-              <p><code className="text-blue-300">orderBy</code>: {"{ field, direction }"} — asc | desc</p>
-              <p><code className="text-blue-300">limit</code>: max records to return</p>
+              <p>
+                <code className="text-blue-300">where</code>:{" "}
+                {"{ field: value }"} — JSON body match
+              </p>
+              <p>
+                <code className="text-blue-300">orderBy</code>:{" "}
+                {"{ field, direction }"} — asc | desc
+              </p>
+              <p>
+                <code className="text-blue-300">limit</code>: max records to
+                return
+              </p>
             </div>
             <div className="rounded-xl border border-white/8 p-4">
               <p className="font-medium text-gray-300 mb-2">Record shape</p>
-              <p><code className="text-blue-300">id</code>: auto as{" "}
+              <p>
+                <code className="text-blue-300">id</code>: auto as{" "}
                 <code className="text-gray-300">"type:uuid"</code>
               </p>
-              <p><code className="text-blue-300">body</code>: arbitrary JSON — your schema</p>
-              <p><code className="text-blue-300">created_at</code> / <code className="text-blue-300">updated_at</code>: unix ms</p>
+              <p>
+                <code className="text-blue-300">body</code>: arbitrary JSON —
+                your schema
+              </p>
+              <p>
+                <code className="text-blue-300">created_at</code> /{" "}
+                <code className="text-blue-300">updated_at</code>: unix ms
+              </p>
             </div>
           </div>
         </div>
@@ -890,9 +1136,12 @@ function FormatRefSection() {
         <div className="max-w-3xl mx-auto">
           <p className="text-gray-400 text-sm mb-5 leading-relaxed">
             A{" "}
-            <code className="text-gray-300 bg-white/5 px-1.5 py-0.5 rounded">.uix</code>{" "}
-            file is a standard ZIP archive. Any ZIP tool can inspect it.
-            The viewer extracts it in memory — files are never written to disk unencrypted.
+            <code className="text-gray-300 bg-white/5 px-1.5 py-0.5 rounded">
+              .uix
+            </code>{" "}
+            file is a standard ZIP archive. Any ZIP tool can inspect it. The
+            viewer extracts it in memory — files are never written to disk
+            unencrypted.
           </p>
           <pre className="text-xs font-mono text-gray-300 bg-black/30 rounded-xl p-5 leading-6 overflow-x-auto border border-white/6">
             {STRUCTURE_CODE}
@@ -908,14 +1157,18 @@ function FormatRefSection() {
           </pre>
           <div className="grid sm:grid-cols-2 gap-4 text-xs text-gray-400">
             <div className="rounded-xl border border-white/8 p-4">
-              <p className="font-medium text-gray-300 mb-2">Node.js API (@dotuix/core)</p>
+              <p className="font-medium text-gray-300 mb-2">
+                Node.js API (@dotuix/core)
+              </p>
               <code className="block text-gray-400">{`import { UIX } from "@dotuix/core";`}</code>
               <code className="block text-gray-400 mt-1">{`await UIX.pack("./my-app", "out.uix");`}</code>
               <code className="block text-gray-400">{`await UIX.validate("my-app.uix");`}</code>
               <code className="block text-gray-400">{`await UIX.manifest("my-app.uix");`}</code>
             </div>
             <div className="rounded-xl border border-white/8 p-4">
-              <p className="font-medium text-gray-300 mb-2">AI SDK (@dotuix/ai)</p>
+              <p className="font-medium text-gray-300 mb-2">
+                AI SDK (@dotuix/ai)
+              </p>
               <code className="block text-gray-400">{`import { createUIX } from "@dotuix/ai";`}</code>
               <code className="block text-gray-400 mt-1">{`const path = await createUIX({`}</code>
               <code className="block text-gray-400">{`  manifest: { uix:"1.0", ... },`}</code>
@@ -1193,34 +1446,43 @@ export function App() {
       <section className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8">
         <h2 className="text-3xl font-bold text-center mb-3">Try it now</h2>
         <p className="text-gray-400 text-center mb-12 max-w-xl mx-auto">
-          Download a pre-built demo and open it with the desktop viewer. Each file
-          was generated from a template in seconds — fully offline, no server.
+          Download a pre-built demo and open it with the desktop viewer. Each
+          file was generated from a template in seconds — fully offline, no
+          server.
         </p>
 
         <div className="grid sm:grid-cols-3 gap-5 max-w-4xl mx-auto">
-          {([
-            {
-              title: "Restaurant Menu",
-              desc: "Interactive menu with categories, items, and a working cart. Arabic-ready. No WiFi.",
-              file: "/demos/restaurant.uix",
-              size: "6 KB",
-              tag: "restaurant",
-            },
-            {
-              title: "Product Catalogue",
-              desc: "Filterable product showcase for exhibitions and showrooms. Works fully offline.",
-              file: "/demos/catalog.uix",
-              size: "4 KB",
-              tag: "catalog",
-            },
-            {
-              title: "Portfolio",
-              desc: "Personal or agency portfolio with project showcase. Shareable as a single file.",
-              file: "/demos/portfolio.uix",
-              size: "5 KB",
-              tag: "portfolio",
-            },
-          ] as { title: string; desc: string; file: string; size: string; tag: string }[]).map((d) => (
+          {(
+            [
+              {
+                title: "Restaurant Menu",
+                desc: "Interactive menu with categories, items, and a working cart. Arabic-ready. No WiFi.",
+                file: "/demos/restaurant.uix",
+                size: "6 KB",
+                tag: "restaurant",
+              },
+              {
+                title: "Product Catalogue",
+                desc: "Filterable product showcase for exhibitions and showrooms. Works fully offline.",
+                file: "/demos/catalog.uix",
+                size: "4 KB",
+                tag: "catalog",
+              },
+              {
+                title: "Portfolio",
+                desc: "Personal or agency portfolio with project showcase. Shareable as a single file.",
+                file: "/demos/portfolio.uix",
+                size: "5 KB",
+                tag: "portfolio",
+              },
+            ] as {
+              title: string;
+              desc: string;
+              file: string;
+              size: string;
+              tag: string;
+            }[]
+          ).map((d) => (
             <div
               key={d.title}
               className="rounded-xl border border-white/10 bg-white/3 p-6 flex flex-col gap-4"
@@ -1232,7 +1494,9 @@ export function App() {
                     {d.size}
                   </span>
                 </div>
-                <p className="text-gray-400 text-sm leading-relaxed">{d.desc}</p>
+                <p className="text-gray-400 text-sm leading-relaxed">
+                  {d.desc}
+                </p>
               </div>
               <a
                 href={d.file}

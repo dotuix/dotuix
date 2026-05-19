@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@dotuix/core": "workspace:*"
+    "@dotuix/core": "workspace:*",
+    "sql.js": "^1.12.0"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.1",

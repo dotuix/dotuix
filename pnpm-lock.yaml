@@ -26,6 +26,9 @@ importers:
       '@dotuix/core':
         specifier: workspace:*
         version: link:../../packages/core
+      sql.js:
+        specifier: ^1.12.0
+        version: 1.14.1
     devDependencies:
       '@electron-toolkit/preload':
         specifier: ^3.0.1

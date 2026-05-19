@@ -415,7 +415,11 @@ async function cmdInit(args: string[]) {
 // keygen
 // ---------------------------------------------------------------------------
 function cmdKeygen(args: string[]) {
-  const base = (opt(args, "-o", "--out") ?? pos(args)[0] ?? "dotuix-key").replace(/\.(priv|pub)$/, "");
+  const base = (
+    opt(args, "-o", "--out") ??
+    pos(args)[0] ??
+    "dotuix-key"
+  ).replace(/\.(priv|pub)$/, "");
   const privPath = resolve(`${base}.priv`);
   const pubPath = resolve(`${base}.pub`);
 

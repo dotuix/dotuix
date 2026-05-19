@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "dotuix-viewer",
-  "version": "0.1.0",
+  "productName": "dotuix",
+  "version": "0.2.0",
   "identifier": "com.dotuix.viewer",
   "build": {
     "frontendDist": "../dist",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "dotuix viewer",
+        "title": "dotuix",
         "width": 1280,
         "height": 800,
         "resizable": true,

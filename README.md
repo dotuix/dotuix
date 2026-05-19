@@ -21,6 +21,51 @@ A `.uix` file is a ZIP archive containing an HTML app, assets, and optional SQLi
 
 ---
 
+## Use cases
+
+`.uix` is not a document format. Not a book format. Not a presentation format.
+It is a **universal offline interactive experience container** — any web experience, packaged as one portable file.
+
+Its use case ceiling is the ceiling of what web technology can do. Which is effectively unlimited.
+
+### A direct replacement for EPUB — and everything EPUB cannot do
+
+EPUB is a ZIP of HTML too, but EPUB readers strip JavaScript, have no SQLite, no real interactivity, and broken Arabic/RTL support in most readers. A `.uix` book can run simulations, quiz the reader, search its own content via SQLite full-text search, track progress in `state.db`, and render Arabic typography correctly — all offline, no account, no sync.
+
+### Interactive legal codes and references
+
+A country's entire legal corpus — statutes, regulations, precedents — as one `.uix` file. Full-text search across thousands of documents simultaneously via SQLite FTS5. Cross-referenced so clicking a citation jumps to that law. Arabic and English side-by-side. Works in a courtroom with no connectivity, no subscription, no server.
+
+### Air-gapped intelligence and security briefings
+
+A classified briefing for a government official: interactive, contains maps, timelines, visualisations, supporting documents. Encrypted. Expires after 48 hours. Logs every section accessed. Viewable on a completely air-gapped device with no network hardware. Nothing existing does this — PDF is not interactive, encrypted ZIP is not interactive, secure DMS requires servers.
+
+### Offline medical and clinical reference
+
+A complete drug-interaction checker, treatment-protocol guide, and dosage calculator for a remote clinic. The doctor opens one file. Searches symptoms, queries the database, calculates dosages by patient weight — all offline, all in Arabic and English. No app install. No connectivity required for anything but the initial download.
+
+### Interactive audit and compliance reports
+
+An auditor delivers findings as a `.uix` file: interactive charts over the client's own data, drill-down to the source behind each finding, a compliance checklist the client marks as resolved, a remediation timeline. The auditor's findings are frozen and signed — unmodifiable. The client's responses are tracked in `state.db`.
+
+### Self-contained educational simulations
+
+A physics or chemistry simulation for a student: lesson text, interactive variables to adjust with live results, a self-grading quiz, progress stored in `state.db`. Works on any device with the viewer. Distributable on a USB drive. No internet, no teacher system, no account.
+
+### Portable business proposals and tenders
+
+A company submits a tender as a `.uix` file instead of a PDF: interactive presentation, budget scenario calculator, team profiles, interactive Gantt chart, downloadable annexes. Frozen and signed after submission. Every section the committee reads is logged — the proposer knows where attention was focused.
+
+### Offline government forms with built-in validation
+
+A citizen downloads a building permit or residency renewal form once. Fills it offline. The form validates inputs against rules embedded in the file — tells them immediately if a document is missing or a field is wrong. Submission happens when connectivity is available. Paper forms have no validation. Online forms require connectivity throughout.
+
+---
+
+> يا عماد — هذا مشروع يستاهل سنوات من البناء.
+
+---
+
 ## Try it now
 
 Open [viewer.dotuix.com](https://viewer.dotuix.com) (or run the web viewer locally — see below), drag a `.uix` file onto the page, and it renders instantly in your browser.

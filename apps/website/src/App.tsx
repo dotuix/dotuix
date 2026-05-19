@@ -149,7 +149,7 @@ const AI_TEMPLATES = [
       { key: "city", placeholder: "City / location", required: false },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at https://dotuix.com/llms.txt
+      `Read the full dotuix format spec at /llms.txt
 
 Build a restaurant kiosk .uix file for ${vals.name || "my restaurant"}${vals.cuisine ? ` — ${vals.cuisine} cuisine` : ""}${vals.city ? `, ${vals.city}` : ""}.
 
@@ -178,7 +178,7 @@ to create the final .uix file.`,
       { key: "count", placeholder: "How many sample products? (e.g. 20)", required: false },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at https://dotuix.com/llms.txt
+      `Read the full dotuix format spec at /llms.txt
 
 Build a product catalogue .uix file for ${vals.company || "my company"} selling ${vals.product || "products"}.
 
@@ -205,7 +205,7 @@ After generating: dotuix pack ./[folder-name]`,
       { key: "projects", placeholder: "Key projects or skills (brief)", required: false },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at https://dotuix.com/llms.txt
+      `Read the full dotuix format spec at /llms.txt
 
 Build a portfolio .uix file for ${vals.name || "me"}, a ${vals.role || "professional"}.${vals.projects ? ` Focus on: ${vals.projects}.` : ""}
 
@@ -230,7 +230,7 @@ After generating: dotuix pack ./[folder-name]`,
       { key: "metrics", placeholder: "Key metrics or sections to include", required: false },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at https://dotuix.com/llms.txt
+      `Read the full dotuix format spec at /llms.txt
 
 Build an interactive report .uix file titled "${vals.title || "My Report"}".${vals.subject ? ` Subject: ${vals.subject}.` : ""}${vals.metrics ? ` Include: ${vals.metrics}.` : ""}
 
@@ -254,7 +254,7 @@ After generating: dotuix pack ./[folder-name]`,
       { key: "description", placeholder: "Describe what you want to build…", required: true },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at https://dotuix.com/llms.txt
+      `Read the full dotuix format spec at /llms.txt
 
 Build a .uix file for: ${vals.description || "[describe your app]"}
 
@@ -1529,7 +1529,7 @@ export function App() {
               GitHub
             </a>
             <a
-              href="https://dotuix.com/llms.txt"
+              href="/llms.txt"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-gray-300 transition-colors"

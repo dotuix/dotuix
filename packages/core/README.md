@@ -111,13 +111,17 @@ Returns `{ valid: boolean; errors: string[]; warnings: string[] }`.
 
 Checks:
 
-- `manifest.json` exists and is valid (required fields, id format, semver, expiry)
+- `manifest.json` exists and is valid (required fields, id format, expiry)
 - Entry file declared in manifest exists in the archive
 - File has not expired
+- *(Warning, not error)* Media/document files found outside `assets/` or `files/`
+- *(Warning)* `security.encryptedPaths` lists a file not present in the archive
+- *(Warning)* `security.auth: "pin"` declared but `encryptedPaths` or `keySalt` missing
 
 ```typescript
 const result = await UIX.validate("./myshop.uix");
 if (!result.valid) console.error(result.errors);
+if (result.warnings.length) console.warn(result.warnings);
 ```
 
 ---
@@ -228,7 +232,29 @@ interface FindQuery {
 
 ## Format
 
+### Archive structure
+
+```
+myapp.uix (ZIP)
+├── manifest.json        ← required
+├── index.html           ← entry point
+├── app.js
+├── style.css
+├── assets/              ← media files (images, video, audio, fonts)
+│   ├── images/
+│   ├── videos/
+│   ├── audio/
+│   └── fonts/
+├── files/               ← any other file: PDF, JSON, CSV, plain text, …
+├── data.db              ← optional: read-only SQLite (creator data)
+└── state.db             ← optional: read-write SQLite (user session)
+```
+
+`assets/` and `files/` are conventions, not requirements. Files can live anywhere in the archive and are referenced via normal relative HTML paths. The validator emits a warning (never an error) if media files are found outside these folders.
+
 ### manifest.json
+
+Minimal (restaurant, shop, any regular app):
 
 ```json
 {
@@ -242,8 +268,38 @@ interface FindQuery {
   "network": "blocked",
   "author": "emad@domain.com",
   "expires": null,
-  "state": { "seed": false },
-  "signature": null
+  "state": { "seed": false }
+}
+```
+
+With optional security block (government / classified use case — omit entirely for regular apps):
+
+```json
+{
+  "uix": "1.0",
+  "id": "gov.qa.briefing.classified",
+  "name": "Ministry Briefing Q2 2026",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "mode": "kiosk",
+  "permissions": [],
+  "network": "blocked",
+  "expires": "2026-06-30",
+  "security": {
+    "auth": "pin",
+    "encryptedPaths": ["data.db", "files/annex-a.pdf"],
+    "kdf": "PBKDF2-SHA256",
+    "kdfIterations": 200000,
+    "keySalt": "base64url-random-salt",
+    "maxOpens": 3,
+    "screenshot": false
+  },
+  "signature": {
+    "algorithm": "Ed25519",
+    "publicKey": "base64url-public-key",
+    "value": "base64url-signature",
+    "signedAt": "2026-05-19T10:00:00Z"
+  }
 }
 ```
 
@@ -251,15 +307,28 @@ interface FindQuery {
 
 **`permissions`:** `local-storage`, `print`, `clipboard-write`, `fullscreen`, `raw-sql`.
 
-**`network`:** `blocked` (default) or `allowed`. Blocked means the viewer cuts all outbound requests at the OS level.
+**`network`:** `blocked` (default) or `allowed`.
+
+**`security` fields** (all optional — omit the block for regular apps):
+
+| Field | Default | Description |
+|---|---|---|
+| `auth` | `"none"` | `"pin"` — viewer prompts for PIN before opening |
+| `encryptedPaths` | `[]` | Paths inside the archive encrypted with AES-256-GCM |
+| `kdf` | `"PBKDF2-SHA256"` | Key derivation function |
+| `kdfIterations` | `200000` | PBKDF2 iterations (higher = slower brute-force) |
+| `keySalt` | — | Base64url random salt stored in manifest (safe to store publicly) |
+| `maxOpens` | unlimited | Max opens tracked by the viewer locally — file cannot bypass this |
+| `screenshot` | `false` | `true` = viewer blocks OS screenshot API (desktop only) |
 
 ### Compression
 
-| File type                                            | ZIP method        |
-| ---------------------------------------------------- | ----------------- |
-| HTML, CSS, JS, JSON                                  | DEFLATE (level 6) |
-| PNG, JPG, JPEG, WEBP, GIF, SVG, MP4, MP3, WEBM, WASM | STORE             |
-| `.db` files                                          | STORE             |
+| File type | ZIP method |
+|---|---|
+| HTML, CSS, JS, JSON, text | DEFLATE (level 6) |
+| PNG, JPG, JPEG, WEBP, GIF, SVG, MP4, MP3, WEBM, WASM | STORE |
+| `.db` files | STORE |
+| PDF, DOCX, XLSX and other already-compressed formats | STORE |
 
 ---
 

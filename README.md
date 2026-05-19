@@ -70,15 +70,54 @@ A `.uix` file is a standard ZIP containing:
 
 ```
 myapp.uix (ZIP)
-├── manifest.json   ← required: id, name, version, entry, permissions…
-├── index.html      ← entry point (declared in manifest.entry)
+├── manifest.json        ← required: id, name, version, entry, permissions…
+├── index.html           ← entry point (declared in manifest.entry)
 ├── app.js
 ├── style.css
-├── data.db         ← optional: read-only SQLite database (creator data)
-└── state.db        ← optional: read-write SQLite state (user session)
+├── assets/              ← media files (images, video, audio, fonts)
+│   ├── images/
+│   ├── videos/
+│   ├── audio/
+│   └── fonts/
+├── files/               ← any other file the app needs (PDF, JSON, CSV, …)
+├── data.db              ← optional: read-only SQLite (creator data)
+└── state.db             ← optional: read-write SQLite (user session)
 ```
 
+`assets/` and `files/` are conventions, not requirements — files can live anywhere in the archive and are referenced by relative path from HTML.
+
 The viewer injects `window.__uix` into the running app — a postMessage-based bridge that exposes `data.find`, `state.insert`, etc. without giving the app access to the host filesystem.
+
+### Security (opt-in)
+
+Regular apps (restaurant menus, shop catalogues) omit the `security` field entirely and are unaffected. For classified or access-controlled content, add a `security` block to `manifest.json`:
+
+```json
+{
+  "security": {
+    "auth": "pin",
+    "encryptedPaths": ["data.db", "files/annex.pdf"],
+    "keySalt": "base64url-random-salt",
+    "kdfIterations": 200000,
+    "maxOpens": 3,
+    "screenshot": false
+  },
+  "signature": {
+    "algorithm": "Ed25519",
+    "publicKey": "base64url-public-key",
+    "value": "base64url-signature",
+    "signedAt": "2026-05-19T10:00:00Z"
+  }
+}
+```
+
+| Feature | How it works |
+|---|---|
+| PIN auth | Viewer prompts before opening; key derived with PBKDF2-SHA256 — no server involved |
+| Encrypted files | AES-256-GCM; decrypted in memory after auth; app uses normal relative paths |
+| Max opens | Tracked by viewer locally (`~/.dotuix/sessions.db`) — file cannot bypass it |
+| Screenshot prevention | Viewer blocks OS screenshot API while file is open (desktop only) |
+| Tamper detection | Ed25519 signature over all file hashes; viewer refuses if any file was modified after signing |
 
 Full spec: [`docs/plan.md`](docs/plan.md)
 

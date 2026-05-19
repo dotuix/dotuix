@@ -575,7 +575,7 @@ export function App() {
               </p>
               <div className="flex flex-wrap gap-3">
                 <a
-                  href="https://github.com/dotuix/dotuix/releases/tag/v0.2.0"
+                  href="https://github.com/dotuix/dotuix/releases"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:opacity-90 transition-opacity text-sm font-medium"

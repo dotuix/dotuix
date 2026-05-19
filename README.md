@@ -47,10 +47,14 @@ Open [viewer.dotuix.com](https://viewer.dotuix.com) (or run the web viewer local
 
 ## Packages
 
-| Package                              | Description                                              | Status                                                                                          |
-| ------------------------------------ | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [`packages/core`](packages/core)     | Core library — pack, unpack, validate, read/write SQLite | [![npm](https://img.shields.io/npm/v/@dotuix/core)](https://www.npmjs.com/package/@dotuix/core) |
-| [`apps/web-viewer`](apps/web-viewer) | Browser-based `.uix` viewer (Vite + React)               | In progress                                                                                     |
+| Package                                        | Description                                                                  | Status         |
+| ---------------------------------------------- | ---------------------------------------------------------------------------- | -------------- |
+| [`packages/core`](packages/core)               | Core library — pack, unpack, validate, sign, read/write SQLite               | ✅ Stable      |
+| [`packages/cli`](packages/cli)                 | `dotuix` CLI — pack, unpack, validate, sign, verify, keygen, export          | ✅ Stable      |
+| [`packages/viewer-core`](packages/viewer-core) | Shared viewer logic for web and desktop viewers                              | 🔄 In progress |
+| [`apps/viewer`](apps/viewer)                   | Desktop viewer — Tauri + Rust, full `window.__uix` bridge, state persistence | ✅ Stable      |
+| [`apps/editor`](apps/editor)                   | Developer editor — Electron + Monaco, file tree, live preview                | 🔄 In progress |
+| [`apps/web-viewer`](apps/web-viewer)           | Browser viewer — drag-and-drop, runs in any modern browser                   | 🔄 In progress |
 
 ---
 

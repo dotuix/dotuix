@@ -1,0 +1,299 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
+
+const execFileAsync = promisify(execFile);
+
+const SPEC_URL = "https://dotuix.com/llms.txt";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+async function runDotuix(
+  args: string[],
+): Promise<{ stdout: string; stderr: string }> {
+  try {
+    const { stdout, stderr } = await execFileAsync("dotuix", args, {
+      timeout: 30_000,
+    });
+    return { stdout: stdout.trim(), stderr: stderr.trim() };
+  } catch (err: unknown) {
+    const e = err as { stdout?: string; stderr?: string; message?: string };
+    throw new Error(e.stderr?.trim() || e.message || String(err));
+  }
+}
+
+function formatJsonResult(data: unknown): string {
+  return JSON.stringify(data, null, 2);
+}
+
+// ---------------------------------------------------------------------------
+// Server
+// ---------------------------------------------------------------------------
+
+const server = new McpServer({
+  name: "dotuix",
+  version: "0.1.0",
+});
+
+// ---------------------------------------------------------------------------
+// Tool: get_spec
+// ---------------------------------------------------------------------------
+server.tool(
+  "get_spec",
+  "Returns the full .uix format specification — ZIP structure, manifest.json fields, " +
+    "window.__uix bridge API, SQLite schema, compression rules, CLI commands, and code examples. " +
+    "Read this before generating any .uix files.",
+  {},
+  async () => {
+    try {
+      const res = await fetch(SPEC_URL);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      return { content: [{ type: "text", text }] };
+    } catch {
+      // Fallback: return bundled summary if network is unavailable
+      return {
+        content: [
+          {
+            type: "text",
+            text: [
+              "# .uix format — quick reference",
+              "",
+              "A .uix file is a ZIP archive with a manifest.json at the root and an HTML entry point.",
+              "",
+              "## Minimal manifest.json",
+              "```json",
+              JSON.stringify(
+                {
+                  uix: "1.0",
+                  id: "com.example.myapp",
+                  name: "My App",
+                  version: "1.0.0",
+                  entry: "index.html",
+                  mode: "kiosk",
+                  network: "blocked",
+                },
+                null,
+                2,
+              ),
+              "```",
+              "",
+              "## window.__uix bridge API",
+              "```javascript",
+              "const manifest = await uix.manifest();",
+              "const records  = await uix.data.find({ type: 'product' });",
+              "const one      = await uix.data.get('product:001');",
+              "const inserted = await uix.state.insert({ type: 'cart_item', body: { qty: 1 } });",
+              "await uix.state.update(inserted.id, { body: { qty: 2 } });",
+              "await uix.state.delete(inserted.id);",
+              "```",
+              "",
+              `Full spec: ${SPEC_URL}`,
+            ].join("\n"),
+          },
+        ],
+      };
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool: validate
+// ---------------------------------------------------------------------------
+server.tool(
+  "validate",
+  "Validate an existing .uix file. Returns a structured result with valid/invalid status, " +
+    "any errors, and any warnings. Pass an absolute path to the .uix file.",
+  { path: z.string().describe("Absolute path to the .uix file to validate.") },
+  async ({ path }) => {
+    const abs = resolve(path);
+    const { stdout, stderr } = await runDotuix(["validate", abs]);
+    const output = stdout || stderr;
+    const valid =
+      !output.toLowerCase().includes("error") &&
+      !output.toLowerCase().includes("invalid");
+    return {
+      content: [
+        {
+          type: "text",
+          text: formatJsonResult({ valid, output }),
+        },
+      ],
+    };
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool: info
+// ---------------------------------------------------------------------------
+server.tool(
+  "info",
+  "Read the manifest.json from a .uix file without fully unpacking it. " +
+    "Returns the manifest as a JSON object. Pass an absolute path to the .uix file.",
+  { path: z.string().describe("Absolute path to the .uix file.") },
+  async ({ path }) => {
+    const abs = resolve(path);
+    const { stdout } = await runDotuix(["info", abs, "--json"]);
+    return {
+      content: [{ type: "text", text: stdout }],
+    };
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool: pack
+// ---------------------------------------------------------------------------
+server.tool(
+  "pack",
+  "Pack a directory into a .uix file using the dotuix CLI. " +
+    "The directory must contain a valid manifest.json at its root. " +
+    "Returns the path to the output .uix file.",
+  {
+    directory: z.string().describe("Absolute path to the directory to pack."),
+    output: z
+      .string()
+      .optional()
+      .describe(
+        "Absolute path for the output .uix file. Defaults to <directory-name>.uix next to the directory.",
+      ),
+  },
+  async ({ directory, output }) => {
+    const dir = resolve(directory);
+    const args = ["pack", dir];
+    if (output) {
+      args.push("-o", resolve(output));
+    }
+    const { stdout } = await runDotuix(args);
+    // Extract output path from CLI stdout
+    const match = stdout.match(/→\s*(.+\.uix)/);
+    const outPath = match ? match[1].trim() : stdout;
+    return {
+      content: [
+        {
+          type: "text",
+          text: formatJsonResult({
+            success: true,
+            path: outPath,
+            output: stdout,
+          }),
+        },
+      ],
+    };
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool: init
+// ---------------------------------------------------------------------------
+server.tool(
+  "init",
+  "Scaffold a new .uix project using the dotuix CLI. Creates a directory with manifest.json, " +
+    "index.html, app.js, style.css, and optionally a data.db seed. " +
+    "Returns the list of created files.",
+  {
+    name: z.string().describe("Project name and directory name. e.g. 'my-app'"),
+    template: z
+      .enum(["blank", "restaurant", "catalog", "portfolio"])
+      .optional()
+      .describe(
+        "Starter template. 'blank' (default), 'restaurant', 'catalog', or 'portfolio'.",
+      ),
+    directory: z
+      .string()
+      .optional()
+      .describe(
+        "Parent directory where the project folder will be created. Defaults to a temp directory.",
+      ),
+  },
+  async ({ name, template, directory }) => {
+    const parent = directory
+      ? resolve(directory)
+      : join(tmpdir(), `dotuix-${randomUUID()}`);
+    await mkdir(parent, { recursive: true });
+
+    const args = ["init", name];
+    if (template && template !== "blank") {
+      args.push("-t", template);
+    }
+
+    const { stdout } = await execFileAsync("dotuix", args, {
+      cwd: parent,
+      timeout: 30_000,
+    });
+    const projectDir = join(parent, name);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: formatJsonResult({
+            success: true,
+            projectDir,
+            output: stdout.trim(),
+            nextStep: `Edit the files in ${projectDir}, then call pack({ directory: "${projectDir}" })`,
+          }),
+        },
+      ],
+    };
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool: write_files
+// ---------------------------------------------------------------------------
+server.tool(
+  "write_files",
+  "Write a set of files into an existing project directory. Use this after init to customise the " +
+    "generated files with your own HTML/JS/CSS content before packing. " +
+    "Pass an array of { path, content } pairs where path is relative to the project directory.",
+  {
+    directory: z.string().describe("Absolute path to the project directory."),
+    files: z
+      .array(
+        z.object({
+          path: z
+            .string()
+            .describe(
+              "Relative path from the project directory, e.g. 'index.html'",
+            ),
+          content: z.string().describe("File content as a UTF-8 string."),
+        }),
+      )
+      .describe("Files to write."),
+  },
+  async ({ directory, files }) => {
+    const dir = resolve(directory);
+    const written: string[] = [];
+
+    for (const file of files) {
+      const fullPath = join(dir, file.path);
+      const parent = fullPath.substring(0, fullPath.lastIndexOf("/"));
+      await mkdir(parent, { recursive: true });
+      await writeFile(fullPath, file.content, "utf8");
+      written.push(file.path);
+    }
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: formatJsonResult({ success: true, written }),
+        },
+      ],
+    };
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Start
+// ---------------------------------------------------------------------------
+const transport = new StdioServerTransport();
+await server.connect(transport);

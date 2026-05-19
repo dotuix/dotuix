@@ -285,22 +285,20 @@ export function App() {
         </h1>
 
         {/* category */}
-        <p className="text-base text-gray-500 mb-5 tracking-wide">
-          <span className="text-gray-300 font-medium">
-            PDF for printable. EPUB for readable. .uix for executable.
-          </span>{" "}
-          The portable format for AI-generated software and everything that must
-          run offline.
+        <p className="text-base text-gray-400 mb-5 tracking-wide font-medium">
+          PDF for printable. EPUB for readable.{" "}
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400">
+            .uix for executable.
+          </span>
         </p>
 
         {/* subtext */}
         <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-          AI can generate dashboards, forms, simulations — but where does the
-          output go?
-          <br className="hidden sm:block" />
-          Not a URL. Not a deployment. One signed file. Open it like a PDF,
-          fully offline — in a clinic, a courtroom, an air-gapped datacenter, or
-          a kiosk in a remote camp.
+          A single portable file for AI-generated software, interactive reports,
+          simulations, and tools —{" "}
+          <span className="text-gray-300">
+            fully offline, signed, and self-contained.
+          </span>
         </p>
 
         {/* CTAs */}

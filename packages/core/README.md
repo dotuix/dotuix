@@ -114,9 +114,9 @@ Checks:
 - `manifest.json` exists and is valid (required fields, id format, expiry)
 - Entry file declared in manifest exists in the archive
 - File has not expired
-- *(Warning, not error)* Media/document files found outside `assets/` or `files/`
-- *(Warning)* `security.encryptedPaths` lists a file not present in the archive
-- *(Warning)* `security.auth: "pin"` declared but `encryptedPaths` or `keySalt` missing
+- _(Warning, not error)_ Media/document files found outside `assets/` or `files/`
+- _(Warning)_ `security.encryptedPaths` lists a file not present in the archive
+- _(Warning)_ `security.auth: "pin"` declared but `encryptedPaths` or `keySalt` missing
 
 ```typescript
 const result = await UIX.validate("./myshop.uix");
@@ -311,24 +311,24 @@ With optional security block (government / classified use case — omit entirely
 
 **`security` fields** (all optional — omit the block for regular apps):
 
-| Field | Default | Description |
-|---|---|---|
-| `auth` | `"none"` | `"pin"` — viewer prompts for PIN before opening |
-| `encryptedPaths` | `[]` | Paths inside the archive encrypted with AES-256-GCM |
-| `kdf` | `"PBKDF2-SHA256"` | Key derivation function |
-| `kdfIterations` | `200000` | PBKDF2 iterations (higher = slower brute-force) |
-| `keySalt` | — | Base64url random salt stored in manifest (safe to store publicly) |
-| `maxOpens` | unlimited | Max opens tracked by the viewer locally — file cannot bypass this |
-| `screenshot` | `false` | `true` = viewer blocks OS screenshot API (desktop only) |
+| Field            | Default           | Description                                                       |
+| ---------------- | ----------------- | ----------------------------------------------------------------- |
+| `auth`           | `"none"`          | `"pin"` — viewer prompts for PIN before opening                   |
+| `encryptedPaths` | `[]`              | Paths inside the archive encrypted with AES-256-GCM               |
+| `kdf`            | `"PBKDF2-SHA256"` | Key derivation function                                           |
+| `kdfIterations`  | `200000`          | PBKDF2 iterations (higher = slower brute-force)                   |
+| `keySalt`        | —                 | Base64url random salt stored in manifest (safe to store publicly) |
+| `maxOpens`       | unlimited         | Max opens tracked by the viewer locally — file cannot bypass this |
+| `screenshot`     | `false`           | `true` = viewer blocks OS screenshot API (desktop only)           |
 
 ### Compression
 
-| File type | ZIP method |
-|---|---|
-| HTML, CSS, JS, JSON, text | DEFLATE (level 6) |
-| PNG, JPG, JPEG, WEBP, GIF, SVG, MP4, MP3, WEBM, WASM | STORE |
-| `.db` files | STORE |
-| PDF, DOCX, XLSX and other already-compressed formats | STORE |
+| File type                                            | ZIP method        |
+| ---------------------------------------------------- | ----------------- |
+| HTML, CSS, JS, JSON, text                            | DEFLATE (level 6) |
+| PNG, JPG, JPEG, WEBP, GIF, SVG, MP4, MP3, WEBM, WASM | STORE             |
+| `.db` files                                          | STORE             |
+| PDF, DOCX, XLSX and other already-compressed formats | STORE             |
 
 ---
 

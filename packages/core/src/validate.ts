@@ -103,21 +103,39 @@ export async function validateBuffer(
 
   // Warn if media/document files are placed outside assets/ or files/
   const MEDIA_EXTS = new Set([
-    "mp4", "webm", "mov", "avi",           // video
-    "mp3", "wav", "ogg", "aac", "m4a",     // audio
-    "pdf", "docx", "xlsx", "pptx",         // documents
-    "woff", "woff2", "ttf", "otf",         // fonts (large)
+    "mp4",
+    "webm",
+    "mov",
+    "avi", // video
+    "mp3",
+    "wav",
+    "ogg",
+    "aac",
+    "m4a", // audio
+    "pdf",
+    "docx",
+    "xlsx",
+    "pptx", // documents
+    "woff",
+    "woff2",
+    "ttf",
+    "otf", // fonts (large)
   ]);
   const conventionPrefixes = ["assets/", "files/"];
   const misplaced = Object.keys(files).filter((path) => {
-    if (path === "manifest.json" || path === "data.db" || path === "state.db") return false;
+    if (path === "manifest.json" || path === "data.db" || path === "state.db")
+      return false;
     const ext = path.split(".").pop()?.toLowerCase() ?? "";
     if (!MEDIA_EXTS.has(ext)) return false;
     return !conventionPrefixes.some((p) => path.startsWith(p));
   });
   if (misplaced.length > 0) {
     warnings.push(
-      `Media/document files found outside assets/ or files/ — consider moving them: ${misplaced.slice(0, 3).join(", ")}${misplaced.length > 3 ? ` (+${misplaced.length - 3} more)` : ""}`,
+      `Media/document files found outside assets/ or files/ — consider moving them: ${misplaced
+        .slice(0, 3)
+        .join(", ")}${
+        misplaced.length > 3 ? ` (+${misplaced.length - 3} more)` : ""
+      }`,
     );
   }
 

@@ -38,17 +38,24 @@ myshop.uix  (ZIP)
 ├── manifest.json       ← required. describes the app.
 ├── index.html          ← entry point declared in manifest
 ├── app.js
-├── assets/
-│   ├── logo.png
-│   ├── banner.jpg
-│   └── style.css
+├── style.css
+├── assets/             ← media files: images, video, audio, fonts
+│   ├── images/
+│   ├── videos/
+│   ├── audio/
+│   └── fonts/
+├── files/              ← general-purpose: any other file the app needs
+│   ├── data.json       ← structured data that isn't SQLite
+│   ├── report.pdf      ← documents to embed
+│   └── policy.txt      ← plain text, CSVs, anything
 ├── pages/
 │   ├── menu.html
-│   ├── category.html
-│   └── cart.html
+│   └── category.html
 ├── data.db             ← SQLite. read-only. shipped by creator.
 └── state.db            ← SQLite. optional in zip. used as seed if present.
 ```
+
+**Convention** — `assets/` and `files/` are not enforced by the format. Any file can be anywhere in the archive and referenced by relative path from HTML. The validator emits a warning (not an error) if media files are found outside these folders. This keeps the convention helpful without breaking valid archives.
 
 ### 2.2 manifest.json
 
@@ -71,29 +78,74 @@ myshop.uix  (ZIP)
   "expires": null,
   "state": {
     "seed": false
+  }
+}
+```
+
+> **The `security` and `signature` fields are fully optional.** A restaurant menu, a shop catalogue, or any regular .uix app does not include them and is completely unaffected by their existence.
+
+**Full manifest with optional security fields (government / classified use case):**
+
+```json
+{
+  "uix": "1.0",
+  "id": "gov.qa.briefing.classified",
+  "name": "Ministry Briefing Q2 2026",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "mode": "kiosk",
+  "permissions": [],
+  "network": "blocked",
+  "expires": "2026-06-30",
+  "security": {
+    "auth": "pin",
+    "encryptedPaths": ["data.db", "files/annex-a.pdf"],
+    "kdf": "PBKDF2-SHA256",
+    "kdfIterations": 200000,
+    "keySalt": "base64url-random-salt-here",
+    "maxOpens": 3,
+    "screenshot": false
   },
-  "signature": null
+  "signature": {
+    "algorithm": "Ed25519",
+    "publicKey": "base64url-public-key",
+    "value": "base64url-signature",
+    "signedAt": "2026-05-19T10:00:00Z"
+  }
 }
 ```
 
 **Fields:**
 
-| Field         | Required | Description                                                                                                                                                                                                                  |
-| ------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `uix`         | Yes      | Format version                                                                                                                                                                                                               |
-| `id`          | Yes      | Stable reverse-domain identifier. e.g. `com.almadina.menu`. No DNS enforcement — convention only. Used for state isolation, caching, signatures, and future update tracking.                                                 |
-| `name`        | Yes      | Human-readable app name                                                                                                                                                                                                      |
-| `version`     | Yes      | SemVer. Creator's app version                                                                                                                                                                                                |
-| `minViewer`   | No       | Minimum viewer version required to open this file. Viewer refuses gracefully with a message if its version is below this. e.g. `"1.2.0"`                                                                                     |
-| `entry`       | Yes      | Path to the entry HTML file inside the zip                                                                                                                                                                                   |
-| `mode`        | Yes      | `kiosk` (locked) or `window` (for dev/preview)                                                                                                                                                                               |
-| `permissions` | No       | What the app is allowed to do                                                                                                                                                                                                |
-| `network`     | No       | `blocked` (default) or `allowed`                                                                                                                                                                                             |
-| `theme`       | No       | Viewer chrome colors                                                                                                                                                                                                         |
-| `author`      | No       | Creator identity                                                                                                                                                                                                             |
-| `expires`     | No       | ISO date string or `null`. Viewer checks expiry **before extraction** — expired files never unpack.                                                                                                                          |
-| `state.seed`  | No       | `true` = the `state.db` in the zip is a creator seed, copy it as starting state. `false` (default) = no seed. Without this flag the viewer cannot distinguish a creator-provided seed from a previously packed user session. |
-| `signature`   | No       | Reserved. `null` in v1. Format slot for ed25519 package signing in v2. Viewer reads and stores the field but does not validate it in v1.                                                                                     |
+| Field         | Required | Description                                                                                                                                                                  |
+| ------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uix`         | Yes      | Format version                                                                                                                                                               |
+| `id`          | Yes      | Stable reverse-domain identifier. e.g. `com.almadina.menu`. No DNS enforcement — convention only. Used for state isolation, caching, signatures, and future update tracking. |
+| `name`        | Yes      | Human-readable app name                                                                                                                                                      |
+| `version`     | Yes      | SemVer. Creator's app version                                                                                                                                                |
+| `minViewer`   | No       | Minimum viewer version required to open this file. Viewer refuses gracefully with a message if its version is below this. e.g. `"1.2.0"`                                     |
+| `entry`       | Yes      | Path to the entry HTML file inside the zip                                                                                                                                   |
+| `mode`        | Yes      | `kiosk` (locked) or `window` (for dev/preview)                                                                                                                               |
+| `permissions` | No       | What the app is allowed to do                                                                                                                                                |
+| `network`     | No       | `blocked` (default) or `allowed`                                                                                                                                             |
+| `theme`       | No       | Viewer chrome colors                                                                                                                                                         |
+| `author`      | No       | Creator identity                                                                                                                                                             |
+| `expires`     | No       | ISO date string or `null`. Viewer checks expiry **before extraction** — expired files never unpack.                                                                          |
+| `state.seed`  | No       | `true` = the `state.db` in the zip is a creator seed, copy it as starting state. `false` (default) = no seed.                                                                |
+| `security`    | No       | **Opt-in only.** Omit entirely for regular apps. See security block below.                                                                                                   |
+| `signature`   | No       | Ed25519 package signature. Written by `dotuix sign`. Viewer verifies on load — tampered files are refused. Omit or null for unsigned files.                                  |
+
+**`security` block fields (all optional, omit the block entirely for regular use):**
+
+| Field            | Default           | Description                                                                                              |
+| ---------------- | ----------------- | -------------------------------------------------------------------------------------------------------- |
+| `auth`           | `"none"`          | `"pin"` — viewer prompts for PIN before opening. `"none"` — no authentication.                           |
+| `encryptedPaths` | `[]`              | Paths inside the archive encrypted with AES-256-GCM. Viewer decrypts in memory after auth succeeds.      |
+| `kdf`            | `"PBKDF2-SHA256"` | Key derivation function used to derive the AES key from the PIN.                                         |
+| `kdfIterations`  | `200000`          | PBKDF2 iteration count. Higher = slower brute-force.                                                     |
+| `keySalt`        | —                 | Base64url random salt (stored in manifest, safe to store publicly). Key = PBKDF2(PIN, salt, iterations). |
+| `maxOpens`       | unlimited         | Max times this file may be opened. Tracked by the viewer locally — the file cannot bypass this.          |
+| `screenshot`     | `false`           | `true` = viewer prevents OS screenshot/screen-recording while file is open (desktop only).               |
 
 **Allowed permissions:**
 

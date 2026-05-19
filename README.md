@@ -111,13 +111,13 @@ Regular apps (restaurant menus, shop catalogues) omit the `security` field entir
 }
 ```
 
-| Feature | How it works |
-|---|---|
-| PIN auth | Viewer prompts before opening; key derived with PBKDF2-SHA256 — no server involved |
-| Encrypted files | AES-256-GCM; decrypted in memory after auth; app uses normal relative paths |
-| Max opens | Tracked by viewer locally (`~/.dotuix/sessions.db`) — file cannot bypass it |
-| Screenshot prevention | Viewer blocks OS screenshot API while file is open (desktop only) |
-| Tamper detection | Ed25519 signature over all file hashes; viewer refuses if any file was modified after signing |
+| Feature               | How it works                                                                                  |
+| --------------------- | --------------------------------------------------------------------------------------------- |
+| PIN auth              | Viewer prompts before opening; key derived with PBKDF2-SHA256 — no server involved            |
+| Encrypted files       | AES-256-GCM; decrypted in memory after auth; app uses normal relative paths                   |
+| Max opens             | Tracked by viewer locally (`~/.dotuix/sessions.db`) — file cannot bypass it                   |
+| Screenshot prevention | Viewer blocks OS screenshot API while file is open (desktop only)                             |
+| Tamper detection      | Ed25519 signature over all file hashes; viewer refuses if any file was modified after signing |
 
 Full spec: [`docs/plan.md`](docs/plan.md)
 

@@ -14,13 +14,13 @@
   "homepage": "https://github.com/dotuix/dotuix#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dotuix/dotuix.git",
+    "url": "git+https://github.com/dotuix/dotuix.git",
     "directory": "packages/mcp"
   },
   "license": "MIT",
   "type": "module",
   "bin": {
-    "dotuix-mcp": "./dist/index.js"
+    "dotuix-mcp": "dist/index.js"
   },
   "files": [
     "dist",

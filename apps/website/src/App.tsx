@@ -13,6 +13,7 @@ import {
   FileSignature,
   Timer,
   Sparkles,
+  Download,
   type LucideIcon,
 } from "lucide-react";
 
@@ -438,6 +439,79 @@ export function App() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Demo downloads                                                      */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8">
+        <h2 className="text-3xl font-bold text-center mb-3">Try it now</h2>
+        <p className="text-gray-400 text-center mb-12 max-w-xl mx-auto">
+          Download a pre-built demo and open it with the desktop viewer. Each file
+          was generated from a template in seconds — fully offline, no server.
+        </p>
+
+        <div className="grid sm:grid-cols-3 gap-5 max-w-4xl mx-auto">
+          {([
+            {
+              title: "Restaurant Menu",
+              desc: "Interactive menu with categories, items, and a working cart. Arabic-ready. No WiFi.",
+              file: "/demos/restaurant.uix",
+              size: "6 KB",
+              tag: "restaurant",
+            },
+            {
+              title: "Product Catalogue",
+              desc: "Filterable product showcase for exhibitions and showrooms. Works fully offline.",
+              file: "/demos/catalog.uix",
+              size: "4 KB",
+              tag: "catalog",
+            },
+            {
+              title: "Portfolio",
+              desc: "Personal or agency portfolio with project showcase. Shareable as a single file.",
+              file: "/demos/portfolio.uix",
+              size: "5 KB",
+              tag: "portfolio",
+            },
+          ] as { title: string; desc: string; file: string; size: string; tag: string }[]).map((d) => (
+            <div
+              key={d.title}
+              className="rounded-xl border border-white/10 bg-white/3 p-6 flex flex-col gap-4"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-semibold text-sm">{d.title}</h3>
+                  <span className="text-xs px-2 py-0.5 rounded-full border border-white/15 text-gray-500 bg-white/5">
+                    {d.size}
+                  </span>
+                </div>
+                <p className="text-gray-400 text-sm leading-relaxed">{d.desc}</p>
+              </div>
+              <a
+                href={d.file}
+                download
+                className="mt-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-white/8 border border-white/15 hover:bg-white/14 transition-colors text-sm font-medium text-gray-200"
+              >
+                <Download className="w-4 h-4" />
+                Download .uix
+              </a>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-center text-gray-600 text-xs mt-8">
+          Requires the{" "}
+          <a
+            href="https://github.com/dotuix/dotuix/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-gray-400 hover:text-gray-300 underline underline-offset-2"
+          >
+            dotuix desktop viewer
+          </a>{" "}
+          to open.
+        </p>
       </section>
 
       {/* ------------------------------------------------------------------ */}

@@ -2,9 +2,10 @@
   "name": "dotuix",
   "displayName": "dotuix",
   "description": "Language support, IntelliSense, and commands for .uix files",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "intenttext",
   "license": "MIT",
+  "icon": "icons/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/dotuix/dotuix.git",
@@ -65,8 +66,8 @@
           ".uix"
         ],
         "icon": {
-          "light": "./icons/uix-file-light.svg",
-          "dark": "./icons/uix-file-dark.svg"
+          "light": "./icons/uix-file-32.png",
+          "dark": "./icons/uix-file-32.png"
         }
       }
     ],

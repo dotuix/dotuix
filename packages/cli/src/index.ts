@@ -6,15 +6,24 @@
  *   unpack   <file.uix> [-o <outDir>]  Unpack a .uix file to a directory
  *   validate <file.uix>                Validate structure + offline-first checks
  *   info     <file.uix>                Print manifest details
- *   init     [name]                    Scaffold a new .uix project
+ *   init     [name] [-t <template>]     Scaffold a new .uix project
  *   export   <file.uix> --type <t>     Export state records as JSON or CSV
  *   keygen   [-o <base>]               Generate an Ed25519 key pair
  *   sign     <file.uix> --key <k.priv> Sign a .uix file (Ed25519)
  *   verify   <file.uix>                Verify the Ed25519 signature
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { resolve, basename, extname, join } from "node:path";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  cpSync,
+} from "node:fs";
+import { readdirSync } from "node:fs";
+import { resolve, basename, extname, join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+const __dirname = dirname(fileURLToPath(import.meta.url));
 import {
   UIX,
   unpackBuffer,
@@ -331,7 +340,7 @@ async function cmdExport(args: string[]) {
 // ---------------------------------------------------------------------------
 const SCAFFOLD: Record<string, string> = {
   "manifest.json": `{
-  "uix": "1",
+  "uix": "1.0",
   "id": "com.example.SLUG",
   "name": "NAME",
   "version": "1.0.0",
@@ -372,7 +381,7 @@ h1   { color: #c8a96e; margin-bottom: 1rem; }
 const bridge = window.__uix ?? null;
 
 async function main() {
-  const name = bridge?.manifest?.name ?? "NAME";
+  const name = bridge?.manifest()?.name ?? "NAME";
   document.querySelector("h1").textContent = name;
   document.getElementById("status").textContent = "Edit app.js to build your experience.";
 }
@@ -381,8 +390,12 @@ main().catch(console.error);
 `,
 };
 
+const KNOWN_TEMPLATES = ["restaurant", "catalog", "portfolio"] as const;
+type TemplateName = (typeof KNOWN_TEMPLATES)[number];
+
 async function cmdInit(args: string[]) {
-  const name = pos(args)[0] ?? "my-uix-app";
+  const templateArg = opt(args, "-t", "--template") as TemplateName | null;
+  const name = pos(args)[0] ?? templateArg ?? "my-uix-app";
   const dir = resolve(name);
   const slug = basename(name)
     .toLowerCase()
@@ -394,19 +407,61 @@ async function cmdInit(args: string[]) {
   }
   mkdirSync(dir, { recursive: true });
 
-  for (const [filename, tpl] of Object.entries(SCAFFOLD)) {
-    const content = tpl.replace(/NAME/g, basename(name)).replace(/SLUG/g, slug);
-    writeFileSync(join(dir, filename), content, "utf8");
+  if (templateArg) {
+    // ── Scaffold from a bundled starter template ────────────────────────
+    if (!KNOWN_TEMPLATES.includes(templateArg)) {
+      console.error(
+        c.red("✗") +
+          ` Unknown template "${templateArg}". Available: ${KNOWN_TEMPLATES.join(
+            ", ",
+          )}`,
+      );
+      process.exit(1);
+    }
+    const tmplDir = join(__dirname, "templates", templateArg);
+    if (!existsSync(tmplDir)) {
+      console.error(
+        c.red("✗") +
+          ` Template files not found at ${tmplDir}.\n` +
+          `  Run ${c.cyan(
+            "pnpm --filter @dotuix/cli build",
+          )} to rebuild the CLI.`,
+      );
+      process.exit(1);
+    }
+    cpSync(tmplDir, dir, { recursive: true });
+
+    // Patch manifest id + name
+    const manifestPath = join(dir, "manifest.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifest.id = `com.example.${slug}`;
+    manifest.name = basename(name);
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+
+    const files = readdirSync(dir);
+    console.log(
+      `\n  ${c.green("✓")} Created ${c.bold(name)}/ from template ${c.cyan(
+        templateArg,
+      )}\n`,
+    );
+    for (const f of files) console.log(`    ${c.muted("+")} ${f}`);
+  } else {
+    // ── Minimal blank scaffold ───────────────────────────────────────────
+    for (const [filename, tpl] of Object.entries(SCAFFOLD)) {
+      const content = tpl
+        .replace(/NAME/g, basename(name))
+        .replace(/SLUG/g, slug);
+      writeFileSync(join(dir, filename), content, "utf8");
+    }
+    console.log(`\n  ${c.green("✓")} Created ${c.bold(name)}/\n`);
+    for (const f of Object.keys(SCAFFOLD))
+      console.log(`    ${c.muted("+")} ${f}`);
   }
 
-  console.log(`\n  ${c.green("✓")} Created ${c.bold(name)}/\n`);
-  for (const f of Object.keys(SCAFFOLD))
-    console.log(`    ${c.muted("+")} ${f}`);
   console.log(`
   Next:
 
     ${c.cyan("cd")} ${name}
-    ${c.cyan("# customise manifest.json, index.html, style.css, app.js")}
     ${c.cyan("dotuix pack")} .
     ${c.cyan("dotuix validate")} ${slug}.uix
 `);
@@ -624,7 +679,7 @@ function printHelp() {
     )}     <file.uix>                          Show manifest details
     ${c.cyan(
       "init",
-    )}     [name]                              Scaffold a new project
+    )}     [name] [-t restaurant|catalog|portfolio]  Scaffold a new project
     ${c.cyan(
       "export",
     )}   <file.uix> --type <t>               Export state records
@@ -643,6 +698,7 @@ function printHelp() {
     dotuix validate myapp.uix
     dotuix info myapp.uix
     dotuix init my-restaurant
+    dotuix init my-menu -t restaurant
     dotuix export myapp.uix --type order --format csv -o orders.csv
     dotuix keygen -o ministry-key
     dotuix sign briefing.uix --key ministry-key.priv

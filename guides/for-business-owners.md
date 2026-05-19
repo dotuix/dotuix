@@ -33,11 +33,11 @@ At the top of the editor you will see two buttons: **Developer** and **Simple**.
 
 Three templates are available:
 
-| Template            | Best for                                                         |
-| ------------------- | ---------------------------------------------------------------- |
-| 🍽️ Restaurant Menu  | Cafés, restaurants, hotel dining — kiosk menu with cart         |
-| 📦 Product Catalog  | Showrooms, exhibitions, retail — browse products, no cart       |
-| ✦ Portfolio         | Freelancers, agencies, photographers — showcase your work       |
+| Template           | Best for                                                  |
+| ------------------ | --------------------------------------------------------- |
+| 🍽️ Restaurant Menu | Cafés, restaurants, hotel dining — kiosk menu with cart   |
+| 📦 Product Catalog | Showrooms, exhibitions, retail — browse products, no cart |
+| ✦ Portfolio        | Freelancers, agencies, photographers — showcase your work |
 
 Click the template that matches your business.
 
@@ -51,6 +51,7 @@ You will see:
 The table already has a couple of example rows to show you the format. You can edit them directly, delete the ones you do not need, and click **+ Add item** to add your own.
 
 **Tips:**
+
 - You do not need to fill every column — description and SKU are optional
 - Prices can be in any currency; the template displays whatever you type
 - For the portfolio template, the **Year** column is the year you completed the project
@@ -74,6 +75,7 @@ Go to [viewer.dotuix.com](https://viewer.dotuix.com) and drag the `.uix` file on
 Download and install the dotuix desktop viewer. Double-click any `.uix` file and it opens in full kiosk mode — no address bar, no browser tabs, professional presentation.
 
 This is the recommended option for:
+
 - Tablets placed at reception or on restaurant tables
 - Kiosk screens in a showroom or shop
 - Offline presentations at exhibitions
@@ -171,31 +173,33 @@ To set this up, share this guide with your developer: [for-developers.md](./for-
 
 ## Frequently asked questions
 
-**Can I add images to my products?**  
+**Can I add images to my products?**
 Not yet in the Simple mode editor. Images are on the roadmap. For now, the templates use category icons as placeholders. A developer can add product images using the Developer mode.
 
-**Is there a limit to how many items I can add?**  
+**Is there a limit to how many items I can add?**
 No practical limit. Hundreds or thousands of items work fine — the database inside the `.uix` file is SQLite, which handles large datasets well.
 
-**Can my customers place real orders through the file?**  
+**Can my customers place real orders through the file?**
 The restaurant template has a cart that collects orders inside the file (stored in `state.db`). These orders can be exported to CSV or JSON using the CLI. There is no real-time order notification — this is an offline file, not a connected app. For live orders you need a regular online app.
 
-**What happens to the cart orders in the restaurant template?**  
-Orders are saved inside the `.uix` file itself in a database (`state.db`). To read them, use the CLI:  
+**What happens to the cart orders in the restaurant template?**
+Orders are saved inside the `.uix` file itself in a database (`state.db`). To read them, use the CLI:
+
 ```bash
 dotuix export restaurant.uix --type order --format csv --output orders.csv
 ```
 
-**Do I need the internet to use the file?**  
+**Do I need the internet to use the file?**
 No. The file works completely offline. The viewer does not phone home. No analytics, no tracking, no account required.
 
-**Can I customise the design (colours, fonts, logo)?**  
+**Can I customise the design (colours, fonts, logo)?**
 The Simple mode editor uses fixed template designs. For custom branding — your logo, colours, and typography — you need a developer to work in Developer mode or use the Vite plugin. Share the [developer guide](./for-developers.md) with them.
 
-**What devices does the `.uix` file work on?**  
+**What devices does the `.uix` file work on?**
+
 - Any modern browser (Chrome, Safari, Firefox, Edge) at [viewer.dotuix.com](https://viewer.dotuix.com)
 - macOS, Windows, Linux via the desktop viewer
 - Tablets running iOS or Android can open it in a browser
 
-**Is it free?**  
+**Is it free?**
 The format, the viewer, the CLI, and the editor are all open source and free to use.

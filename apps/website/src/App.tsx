@@ -126,35 +126,39 @@ const USE_CASES = [
 const HOW_IT_WORKS = [
   {
     n: "1",
-    title: "Build your app",
-    desc: "Write plain HTML/CSS/JS, or use React/Vue/Svelte with the Vite plugin. Add a manifest.json.",
-    code: `// manifest.json
-{
-  "uix": "1.0",
-  "id": "com.shop.menu",
-  "name": "My Menu",
-  "entry": "index.html"
-}`,
+    title: "Point your AI at the spec",
+    desc: "Share dotuix.com/llms.txt with GPT, Gemini, Claude, or any AI. It contains the full format: manifest fields, bridge API, SQLite schema, and code examples.",
+    code: `# Tell your AI:
+"Read dotuix.com/llms.txt and
+build a restaurant menu .uix
+for Al Madina with 10 items."`,
   },
   {
     n: "2",
-    title: "Pack it",
-    desc: "The CLI compresses everything into a single .uix file — a ZIP with a defined structure.",
-    code: `$ dotuix pack ./my-app
-✓ my-app.uix — 847 KB`,
+    title: "AI generates the files",
+    desc: "The AI produces manifest.json, index.html, app.js, style.css — all correct .uix structure. Iterate in natural language until it's exactly what you want.",
+    code: `# AI output:
+├── manifest.json
+├── index.html
+├── app.js
+└── style.css`,
   },
   {
     n: "3",
-    title: "Share the file",
-    desc: "Send over email, USB, AirDrop. The viewer opens it instantly, fully offline.",
-    code: `$ dotuix validate my-app.uix
-✓ manifest valid
-✓ entry index.html found
-✓ no external URLs`,
+    title: "Pack and share",
+    desc: "One command turns the generated files into a distributable .uix file. Share over email, USB, or AirDrop — opens fully offline, no install.",
+    code: `$ dotuix pack ./my-app
+✓ my-app.uix — 847 KB`,
   },
 ];
 
 const TOOLS = [
+  {
+    name: "@dotuix/mcp",
+    desc: "MCP server — connects Claude Desktop, Cursor, and VS Code Copilot. Say what you want; the AI generates and packs the .uix for you.",
+    href: "https://www.npmjs.com/package/@dotuix/mcp",
+    tag: "npm",
+  },
   {
     name: "@dotuix/core",
     desc: "Core library — pack, unpack, validate, sign, read/write SQLite.",
@@ -383,7 +387,7 @@ export function App() {
       <section className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8">
         <h2 className="text-3xl font-bold text-center mb-3">How it works</h2>
         <p className="text-gray-400 text-center mb-12 max-w-xl mx-auto">
-          Three steps from HTML to a distributable file.
+          Tell any AI what you want. It generates the files, you pack them.
         </p>
 
         <div className="grid md:grid-cols-3 gap-6">
@@ -620,59 +624,35 @@ export function App() {
       </section>
 
       {/* ------------------------------------------------------------------ */}
-      {/* AI section                                                          */}
+      {/* MCP callout                                                         */}
       {/* ------------------------------------------------------------------ */}
-      <section className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8">
-        <div className="max-w-2xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/15 bg-white/5 text-xs text-gray-400 mb-6">
-            ✦ AI-ready
+      <section className="max-w-6xl mx-auto px-6 py-16 border-t border-white/8">
+        <div className="max-w-2xl mx-auto rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-900/20 to-blue-900/10 p-8 text-center">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple-400/30 bg-purple-500/10 text-xs text-purple-300 mb-5">
+            ✦ Claude Desktop · Cursor · VS Code Copilot
           </div>
-          <h2 className="text-3xl font-bold mb-3">Generate .uix with any AI</h2>
-          <p className="text-gray-400 mb-8 leading-relaxed">
-            GPT, Gemini, and Claude can generate valid .uix files. Share the
-            spec URL and describe what you want — the AI generates the app
-            files, you run one command to pack them.
+          <h2 className="text-2xl font-bold mb-3">
+            Skip the manual step entirely
+          </h2>
+          <p className="text-gray-400 mb-6 leading-relaxed text-sm">
+            Install <span className="text-white font-mono">@dotuix/mcp</span>{" "}
+            and your AI agent generates <em>and packs</em> the .uix file in one
+            conversation — no terminal, no copy-paste. Just describe the app and
+            get a file.
           </p>
-
-          <div className="grid sm:grid-cols-3 gap-4 mb-8 text-left">
-            {[
-              {
-                n: "1",
-                title: "Share the spec",
-                body: 'Tell your AI: "Read dotuix.com/llms.txt and generate a .uix file for a restaurant menu."',
-              },
-              {
-                n: "2",
-                title: "AI generates files",
-                body: "The AI produces manifest.json, index.html, app.js, style.css — all valid .uix structure.",
-              },
-              {
-                n: "3",
-                title: "Pack it",
-                body: "Run dotuix pack ./output and get a working .uix file ready to open in the viewer.",
-              },
-            ].map((s) => (
-              <div
-                key={s.n}
-                className="rounded-xl border border-white/10 bg-white/3 p-4"
-              >
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center text-xs font-bold mb-3">
-                  {s.n}
-                </div>
-                <h3 className="font-semibold text-sm mb-1">{s.title}</h3>
-                <p className="text-gray-400 text-xs leading-relaxed">
-                  {s.body}
-                </p>
-              </div>
-            ))}
+          <div className="space-y-3 text-left mb-5">
+            <CopyBox value="npx @dotuix/mcp" />
           </div>
-
-          <div className="space-y-3">
-            <CopyBox value="https://dotuix.com/llms.txt" />
-          </div>
-          <p className="text-gray-500 text-xs mt-3">
-            Share this URL with any AI agent to give it full knowledge of the
-            .uix format.
+          <p className="text-gray-500 text-xs">
+            Or share{" "}
+            <a
+              href="/llms.txt"
+              className="text-purple-400 hover:text-purple-300 underline underline-offset-2"
+            >
+              dotuix.com/llms.txt
+            </a>{" "}
+            with any AI (GPT, Gemini, Claude) to generate the files yourself and
+            pack with the CLI.
           </p>
         </div>
       </section>

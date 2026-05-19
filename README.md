@@ -58,6 +58,7 @@ Open [viewer.dotuix.com](https://viewer.dotuix.com) (or run the web viewer local
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- | --------------------------- |
 | [`packages/core`](packages/core)                         | Core library — pack, unpack, validate, sign, read/write SQLite                                                           | [`@dotuix/core`](https://www.npmjs.com/package/@dotuix/core)                                 | ✅ Published                |
 | [`packages/cli`](packages/cli)                           | `dotuix` CLI — pack, unpack, validate, sign, verify, keygen, export, encrypt, init `--template`                          | [`@dotuix/cli`](https://www.npmjs.com/package/@dotuix/cli)                                   | ✅ Published                |
+| [`packages/mcp`](packages/mcp)                           | MCP server — connects Claude Desktop, Cursor, VS Code Copilot; AI generates and packs `.uix` end-to-end                  | [`@dotuix/mcp`](https://www.npmjs.com/package/@dotuix/mcp)                                   | ✅ Published                |
 | [`packages/vscode-extension`](packages/vscode-extension) | VS Code extension — manifest IntelliSense, pack/validate/init commands, `.uix` file icon                                 | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix) | ✅ Published                |
 | [`packages/vite-plugin`](packages/vite-plugin)           | Vite plugin — build React/Vue/Svelte/TS apps, outputs a `.uix` file                                                      | —                                                                                            | ✅ Stable                   |
 | [`packages/viewer-core`](packages/viewer-core)           | Shared viewer logic for web and desktop viewers                                                                          | —                                                                                            | ⬜ Planned                  |
@@ -65,6 +66,38 @@ Open [viewer.dotuix.com](https://viewer.dotuix.com) (or run the web viewer local
 | [`apps/editor`](apps/editor)                             | Developer editor — Electron + Monaco, file tree, live preview, DB records browser, no-code Simple mode (template wizard) | —                                                                                            | ✅ Stable                   |
 | [`apps/web-viewer`](apps/web-viewer)                     | Browser viewer — drag-and-drop, runs in any modern browser                                                               | —                                                                                            | ✅ Built · not yet deployed |
 | [`apps/website`](apps/website)                           | dotuix.com — public landing page (Vite + React + Tailwind)                                                               | [dotuix.com](https://dotuix.com)                                                             | ✅ Built · deploy pending   |
+
+---
+
+## Create with AI (recommended)
+
+The fastest way to create a `.uix` file is to let an AI do it. Any LLM with web access (GPT, Gemini, Claude) can generate a complete, valid `.uix` project from a single prompt — because the full format spec lives at `dotuix.com/llms.txt`.
+
+### With any AI (GPT, Gemini, Claude.ai)
+
+1. Open your AI of choice
+2. Say: _"Read https://dotuix.com/llms.txt and create a [describe your app] .uix project"_
+3. Save the generated files into a folder
+4. Run `dotuix pack ./folder` → done
+
+### With Claude Desktop, Cursor, or VS Code Copilot (zero manual step)
+
+Install the MCP server and the AI generates **and packs** the file for you in one conversation:
+
+```bash
+# Claude Desktop — add to ~/Library/Application Support/Claude/claude_desktop_config.json
+{
+  "mcpServers": {
+    "dotuix": { "command": "npx", "args": ["-y", "@dotuix/mcp"] }
+  }
+}
+```
+
+Then just say: _"Create a restaurant menu .uix for Al Madina with 10 items in QAR, pack it to ~/Desktop/menu.uix"_
+
+The agent calls `get_spec` → `init` → `write_files` → `pack` and hands you a ready-to-open file.
+
+See [`packages/mcp`](packages/mcp) for Cursor and VS Code Copilot setup.
 
 ---
 

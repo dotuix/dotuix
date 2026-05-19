@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Utensils,
   Store,
@@ -14,8 +14,374 @@ import {
   Timer,
   Sparkles,
   Download,
+  Copy,
+  CheckCheck,
   type LucideIcon,
 } from "lucide-react";
+
+// ---------------------------------------------------------------------------
+// Platform-aware download
+// ---------------------------------------------------------------------------
+
+type PlatformKey = "mac-arm" | "mac-intel" | "windows" | "linux" | "other";
+
+function detectPlatform(): PlatformKey {
+  const ua = navigator.userAgent;
+  if (/Macintosh/.test(ua)) return "mac-arm"; // default Apple Silicon; Intel shown as secondary
+  if (/Windows/.test(ua)) return "windows";
+  if (/Linux/.test(ua)) return "linux";
+  return "other";
+}
+
+interface ReleaseAsset {
+  name: string;
+  browser_download_url: string;
+}
+
+function usePlatformUrls() {
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [version, setVersion] = useState("v0.2.0");
+
+  useEffect(() => {
+    fetch("https://api.github.com/repos/dotuix/dotuix/releases/latest")
+      .then((r) => r.json())
+      .then((data) => {
+        setVersion(data.tag_name ?? "v0.2.0");
+        const assets: ReleaseAsset[] = data.assets ?? [];
+        const found: Record<string, string> = {};
+        for (const asset of assets) {
+          const { name, browser_download_url } = asset;
+          if (name.includes("aarch64") && name.endsWith(".dmg"))
+            found["mac-arm"] = browser_download_url;
+          else if (name.includes("x64") && name.endsWith(".dmg"))
+            found["mac-intel"] = browser_download_url;
+          else if (name.endsWith(".msi"))
+            found["windows"] = browser_download_url;
+          else if (name.endsWith(".AppImage"))
+            found["linux"] = browser_download_url;
+        }
+        setUrls(found);
+      })
+      .catch(() => {/* fallback urls used */});
+  }, []);
+
+  return { urls, version };
+}
+
+function PlatformDownloadButton() {
+  const platform = detectPlatform();
+  const { urls, version } = usePlatformUrls();
+  const fallback = "https://github.com/dotuix/dotuix/releases/latest";
+
+  const config: Record<PlatformKey, { text: string; hint: string; key: string; altText?: string; altKey?: string }> = {
+    "mac-arm": {
+      text: "Download for macOS",
+      hint: "Apple Silicon  ·  .dmg",
+      key: "mac-arm",
+      altText: "Intel Mac",
+      altKey: "mac-intel",
+    },
+    "mac-intel": {
+      text: "Download for macOS (Intel)",
+      hint: "Intel  ·  .dmg",
+      key: "mac-intel",
+      altText: "Apple Silicon",
+      altKey: "mac-arm",
+    },
+    windows: { text: "Download for Windows", hint: "Windows 10+  ·  .msi", key: "windows" },
+    linux: { text: "Download for Linux", hint: ".AppImage  ·  most distros", key: "linux" },
+    other: { text: "Download Desktop Viewer", hint: "macOS  ·  Windows  ·  Linux", key: "" },
+  };
+
+  const { text, hint, key, altText, altKey } = config[platform];
+  const primaryUrl = (key && urls[key]) || fallback;
+  const altUrl = altKey ? (urls[altKey] || fallback) : null;
+
+  return (
+    <div className="flex flex-col items-center gap-2 mb-8">
+      <a
+        href={primaryUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-3 px-8 py-4 rounded-xl bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:opacity-90 transition-opacity text-base font-semibold shadow-lg shadow-purple-900/30"
+      >
+        <Download className="w-5 h-5" />
+        {text}
+      </a>
+      <p className="text-xs text-gray-500">
+        {hint}&nbsp;&nbsp;·&nbsp;&nbsp;Free&nbsp;&nbsp;·&nbsp;&nbsp;{version}
+      </p>
+      <div className="flex items-center gap-4 text-xs">
+        {altText && altUrl && (
+          <a
+            href={altUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-gray-500 hover:text-gray-300 underline underline-offset-2 transition-colors"
+          >
+            {altText} →
+          </a>
+        )}
+        <a
+          href={fallback}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gray-500 hover:text-gray-300 underline underline-offset-2 transition-colors"
+        >
+          All downloads →
+        </a>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AI prompt builder
+// ---------------------------------------------------------------------------
+
+const AI_TEMPLATES = [
+  {
+    id: "restaurant",
+    label: "Restaurant menu",
+    fields: [
+      { key: "name", placeholder: "Restaurant name", required: true },
+      { key: "cuisine", placeholder: "Cuisine type (e.g. Qatari, Italian)", required: false },
+      { key: "city", placeholder: "City / location", required: false },
+    ],
+    buildPrompt: (vals: Record<string, string>) =>
+      `Read the full dotuix format spec at https://dotuix.com/llms.txt
+
+Build a restaurant kiosk .uix file for ${vals.name || "my restaurant"}${vals.cuisine ? ` — ${vals.cuisine} cuisine` : ""}${vals.city ? `, ${vals.city}` : ""}.
+
+Output exactly these files (no other files):
+• manifest.json — id, name, version, entry, author
+• index.html — app shell
+• app.js — menu data and cart logic using the window.__uix bridge
+• style.css — professional kiosk styling, touch-friendly
+
+Requirements:
+- No external URLs (fully offline)
+- If Gulf restaurant: include Arabic + English labels
+- At least 8 sample menu items across 3 categories
+- Working add-to-cart with order total
+
+After generating all files, tell me to run:
+  dotuix pack ./[folder-name]
+to create the final .uix file.`,
+  },
+  {
+    id: "catalog",
+    label: "Product catalogue",
+    fields: [
+      { key: "company", placeholder: "Company or brand name", required: true },
+      { key: "product", placeholder: "What products? (e.g. furniture, electronics)", required: true },
+      { key: "count", placeholder: "How many sample products? (e.g. 20)", required: false },
+    ],
+    buildPrompt: (vals: Record<string, string>) =>
+      `Read the full dotuix format spec at https://dotuix.com/llms.txt
+
+Build a product catalogue .uix file for ${vals.company || "my company"} selling ${vals.product || "products"}.
+
+Output exactly these files:
+• manifest.json
+• index.html
+• app.js — product data, category filters, search
+• style.css — clean exhibition/showroom styling
+
+Requirements:
+- No external URLs
+- At least ${vals.count || "12"} sample products with name, price, description, category
+- Filterable by category, searchable by name
+- Works offline, no server
+
+After generating: dotuix pack ./[folder-name]`,
+  },
+  {
+    id: "portfolio",
+    label: "Portfolio / showcase",
+    fields: [
+      { key: "name", placeholder: "Your name", required: true },
+      { key: "role", placeholder: "Your role (e.g. designer, engineer)", required: false },
+      { key: "projects", placeholder: "Key projects or skills (brief)", required: false },
+    ],
+    buildPrompt: (vals: Record<string, string>) =>
+      `Read the full dotuix format spec at https://dotuix.com/llms.txt
+
+Build a portfolio .uix file for ${vals.name || "me"}, a ${vals.role || "professional"}.${vals.projects ? ` Focus on: ${vals.projects}.` : ""}
+
+Output exactly these files:
+• manifest.json
+• index.html
+• app.js — portfolio data and interactivity
+• style.css — professional, modern design
+
+Sections: About, Projects (at least 4), Skills, Contact
+- No external URLs
+- Shareable as a single file
+
+After generating: dotuix pack ./[folder-name]`,
+  },
+  {
+    id: "report",
+    label: "Report / dashboard",
+    fields: [
+      { key: "title", placeholder: "Report title", required: true },
+      { key: "subject", placeholder: "Data type / subject (e.g. quarterly sales, hospital stats)", required: false },
+      { key: "metrics", placeholder: "Key metrics or sections to include", required: false },
+    ],
+    buildPrompt: (vals: Record<string, string>) =>
+      `Read the full dotuix format spec at https://dotuix.com/llms.txt
+
+Build an interactive report .uix file titled "${vals.title || "My Report"}".${vals.subject ? ` Subject: ${vals.subject}.` : ""}${vals.metrics ? ` Include: ${vals.metrics}.` : ""}
+
+Output exactly these files:
+• manifest.json
+• index.html
+• app.js — report data, charts, interactive filters
+• style.css — clean report/dashboard design
+
+Requirements:
+- No external URLs
+- Use sample/realistic data
+- Print-friendly layout option
+
+After generating: dotuix pack ./[folder-name]`,
+  },
+  {
+    id: "custom",
+    label: "Custom",
+    fields: [
+      { key: "description", placeholder: "Describe what you want to build…", required: true },
+    ],
+    buildPrompt: (vals: Record<string, string>) =>
+      `Read the full dotuix format spec at https://dotuix.com/llms.txt
+
+Build a .uix file for: ${vals.description || "[describe your app]"}
+
+Output exactly these files:
+• manifest.json — id, name, version, entry, author fields
+• index.html — app shell
+• app.js — all app logic
+• style.css — clean, professional design
+
+Rules:
+- No external URLs anywhere (fully offline)
+- Use window.__uix.db for any local data or storage
+- Responsive design
+
+After generating all files, tell me to run:
+  dotuix pack ./[folder-name]`,
+  },
+];
+
+function AIPromptBuilder() {
+  const [templateId, setTemplateId] = useState("restaurant");
+  const [fields, setFields] = useState<Record<string, string>>({});
+  const [copied, setCopied] = useState(false);
+
+  const template = AI_TEMPLATES.find((t) => t.id === templateId)!;
+  const prompt = template.buildPrompt(fields);
+
+  const handleTemplateChange = (id: string) => {
+    setTemplateId(id);
+    setFields({});
+    setCopied(false);
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(prompt).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
+  };
+
+  return (
+    <section className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8">
+      <div className="max-w-3xl mx-auto">
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple-400/30 bg-purple-500/10 text-xs text-purple-300 mb-5">
+            <Sparkles className="w-3 h-3" /> Works with ChatGPT · Gemini · Claude
+          </div>
+          <h2 className="text-3xl font-bold mb-3">Generate with any AI</h2>
+          <p className="text-gray-400 max-w-xl mx-auto leading-relaxed">
+            No API key. No backend. Pick a template, fill in details, copy the prompt into
+            any AI — then pack the files it gives you with the CLI.
+          </p>
+        </div>
+
+        {/* Template tabs */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          {AI_TEMPLATES.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => handleTemplateChange(t.id)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                templateId === t.id
+                  ? "bg-white/15 border border-white/20 text-white"
+                  : "bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Fields */}
+        <div className="space-y-3 mb-6">
+          {template.fields.map((f) => (
+            <input
+              key={f.key}
+              type="text"
+              placeholder={f.placeholder}
+              value={fields[f.key] || ""}
+              onChange={(e) =>
+                setFields((prev) => ({ ...prev, [f.key]: e.target.value }))
+              }
+              className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-400/50 focus:bg-white/8 transition-all"
+            />
+          ))}
+        </div>
+
+        {/* Generated prompt */}
+        <div className="rounded-xl border border-white/10 bg-white/3 overflow-hidden mb-4">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/8 bg-white/3">
+            <span className="text-xs text-gray-500 font-medium">Generated prompt — paste into any AI</span>
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors"
+            >
+              {copied ? (
+                <><CheckCheck className="w-3.5 h-3.5 text-green-400" /> Copied!</>
+              ) : (
+                <><Copy className="w-3.5 h-3.5" /> Copy</>
+              )}
+            </button>
+          </div>
+          <pre className="px-5 py-4 text-xs font-mono text-gray-300 leading-relaxed whitespace-pre-wrap overflow-x-auto max-h-72">
+            {prompt}
+          </pre>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <button
+            onClick={handleCopy}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:opacity-90 transition-opacity text-sm font-medium"
+          >
+            {copied ? (
+              <><CheckCheck className="w-4 h-4" /> Prompt copied!</>
+            ) : (
+              <><Copy className="w-4 h-4" /> Copy prompt</>
+            )}
+          </button>
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Paste into any AI. Save the files it outputs.{" "}
+            Then: <code className="text-gray-400 bg-white/5 px-1.5 py-0.5 rounded">dotuix pack ./folder</code>
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Small reusable components
@@ -302,7 +668,7 @@ export function App() {
         </p>
 
         {/* subtext */}
-        <p className="text-xl sm:text-2xl text-gray-400 max-w-4xl mx-auto mb-12 leading-relaxed">
+        <p className="text-xl sm:text-2xl text-gray-400 max-w-4xl mx-auto mb-10 leading-relaxed">
           A single portable file for AI-generated software, interactive reports,
           simulations, and tools —{" "}
           <span className="text-gray-300">
@@ -310,7 +676,10 @@ export function App() {
           </span>
         </p>
 
-        {/* CTAs */}
+        {/* Platform download — primary CTA */}
+        <PlatformDownloadButton />
+
+        {/* Developer CTAs */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-16">
           <div className="w-full sm:w-auto sm:min-w-72">
             <CopyBox value="npm install -g @dotuix/cli" />
@@ -774,6 +1143,11 @@ export function App() {
           </p>
         </div>
       </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* AI prompt builder                                                   */}
+      {/* ------------------------------------------------------------------ */}
+      <AIPromptBuilder />
 
       {/* ------------------------------------------------------------------ */}
       {/* Footer                                                              */}

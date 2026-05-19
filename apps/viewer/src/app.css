@@ -247,6 +247,24 @@ body,
   color: #e8e8e8;
 }
 
+.dev-mode-link {
+  background: none;
+  border: none;
+  color: #444;
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 0.4rem 0.5rem;
+  margin-top: 0.25rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.2s;
+  font-family: inherit;
+}
+
+.dev-mode-link:hover {
+  color: #888;
+}
+
 /* ── Developer mode layout ────────────────────────────────────── */
 .dev-root {
   display: flex;

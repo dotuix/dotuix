@@ -182,13 +182,14 @@ export default function App() {
           >
             {state.status === "loading" ? "Loading…" : "Open .uix file"}
           </button>
-          <button
-            className="home-btn home-btn-secondary"
-            onClick={() => setState({ status: "developer" })}
-          >
-            Developer mode
-          </button>
         </div>
+
+        <button
+          className="dev-mode-link"
+          onClick={() => setState({ status: "developer" })}
+        >
+          Developer mode
+        </button>
 
         {state.status === "error" && (
           <p className="drop-error">{state.message}</p>

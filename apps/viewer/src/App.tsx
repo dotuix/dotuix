@@ -1,14 +1,29 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
+type LoadResult =
+  | { status: "loaded"; manifest: string }
+  | { status: "pin_required"; app_name: string; app_id: string };
+
 type ViewerState =
   | { status: "idle" }
   | { status: "loading" }
+  | { status: "pin_required"; appName: string }
   | { status: "loaded"; manifestName: string }
   | { status: "error"; message: string };
 
+function handleLoadResult(result: LoadResult): ViewerState {
+  if (result.status === "loaded") {
+    const manifest = JSON.parse(result.manifest) as { name?: string };
+    return { status: "loaded", manifestName: manifest.name ?? "UIX App" };
+  }
+  return { status: "pin_required", appName: result.app_name };
+}
+
 export default function App() {
   const [state, setState] = useState<ViewerState>({ status: "idle" });
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState("");
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Relay postMessages from the uix:// iframe to Tauri commands and back.
@@ -47,14 +62,8 @@ export default function App() {
     invoke<string | null>("get_initial_file").then((path) => {
       if (!path) return;
       setState({ status: "loading" });
-      invoke<string>("load_uix", { path })
-        .then((manifestJson) => {
-          const manifest = JSON.parse(manifestJson) as { name?: string };
-          setState({
-            status: "loaded",
-            manifestName: manifest.name ?? "UIX App",
-          });
-        })
+      invoke<LoadResult>("load_uix", { path })
+        .then((result) => setState(handleLoadResult(result)))
         .catch((err) => setState({ status: "error", message: String(err) }));
     });
   }, []); // empty deps — run once on mount
@@ -62,9 +71,8 @@ export default function App() {
   const openFile = useCallback(async () => {
     setState({ status: "loading" });
     try {
-      const manifestJson = await invoke<string>("pick_and_load_uix");
-      const manifest = JSON.parse(manifestJson) as { name?: string };
-      setState({ status: "loaded", manifestName: manifest.name ?? "UIX App" });
+      const result = await invoke<LoadResult>("pick_and_load_uix");
+      setState(handleLoadResult(result));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg === "No file selected") {
@@ -74,6 +82,18 @@ export default function App() {
       }
     }
   }, []);
+
+  const submitPin = useCallback(async () => {
+    if (!pin.trim()) return;
+    setPinError("");
+    try {
+      const result = await invoke<LoadResult>("unlock_with_pin", { pin });
+      setPin("");
+      setState(handleLoadResult(result));
+    } catch (err) {
+      setPinError(err instanceof Error ? err.message : String(err));
+    }
+  }, [pin]);
 
   const closeApp = useCallback(() => {
     setState({ status: "idle" });
@@ -95,6 +115,49 @@ export default function App() {
           className="kiosk-frame"
           title={state.manifestName}
         />
+      </div>
+    );
+  }
+
+  if (state.status === "pin_required") {
+    return (
+      <div className="shell">
+        <div className="pin-box">
+          <div className="drop-icon">🔒</div>
+          <p className="drop-primary">{state.appName}</p>
+          <p className="drop-secondary">
+            This app is PIN-protected. Enter the PIN to open it.
+          </p>
+          <input
+            className="pin-input"
+            type="password"
+            inputMode="numeric"
+            autoFocus
+            placeholder="Enter PIN"
+            value={pin}
+            onChange={(e) => {
+              setPin(e.target.value);
+              setPinError("");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitPin();
+            }}
+          />
+          <button className="pin-submit" onClick={submitPin}>
+            Unlock
+          </button>
+          {pinError && <p className="drop-error">{pinError}</p>}
+          <button
+            className="pin-cancel"
+            onClick={() => {
+              setPin("");
+              setPinError("");
+              setState({ status: "idle" });
+            }}
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     );
   }

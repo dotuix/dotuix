@@ -30,6 +30,12 @@ struct AppState {
     initial_path: Mutex<Option<String>>,
     /// manifest.permissions — gates raw-sql and other optional bridge capabilities.
     permissions: Mutex<Vec<String>>,
+    /// Files from the archive pending PIN-based decryption.
+    pending_files: Mutex<Option<HashMap<String, Vec<u8>>>>,
+    /// Parsed manifest pending completion after PIN unlock.
+    pending_manifest: Mutex<Option<serde_json::Value>>,
+    /// .uix path whose load is awaiting PIN entry.
+    pending_path: Mutex<Option<String>>,
 }
 
 impl Default for AppState {
@@ -43,8 +49,24 @@ impl Default for AppState {
             state_db_path: Mutex::new(None),
             initial_path: Mutex::new(None),
             permissions: Mutex::new(Vec::new()),
+            pending_files: Mutex::new(None),
+            pending_manifest: Mutex::new(None),
+            pending_path: Mutex::new(None),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Load result — returned by load/probe commands
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum LoadResult {
+    /// App loaded successfully; caller receives the serialised manifest JSON.
+    Loaded { manifest: String },
+    /// App requires a PIN; caller must show a PIN dialog and call unlock_with_pin.
+    PinRequired { app_name: String, app_id: String },
 }
 
 // ---------------------------------------------------------------------------
@@ -195,21 +217,155 @@ fn parse_duration(s: &str) -> Result<u64, String> {
     }
 }
 
-fn load_uix_impl(path: &str, app: &AppHandle, state: &AppState) -> Result<String, String> {
+// ---------------------------------------------------------------------------
+// Crypto helpers — signature verification and AES-256-GCM decryption
+// ---------------------------------------------------------------------------
+
+/// Recursively sort JSON object keys (needed for canonical signature payload).
+fn sort_json_keys(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut sorted = serde_json::Map::new();
+            let mut keys: Vec<String> = map.keys().cloned().collect();
+            keys.sort();
+            for k in keys {
+                sorted.insert(k.clone(), sort_json_keys(map[&k].clone()));
+            }
+            serde_json::Value::Object(sorted)
+        }
+        serde_json::Value::Array(arr) => {
+            serde_json::Value::Array(arr.into_iter().map(sort_json_keys).collect())
+        }
+        other => other,
+    }
+}
+
+/// SHA-256 of `data` returned as lowercase hex.
+fn sha256_hex(data: &[u8]) -> String {
+    use sha2::Digest;
+    let hash = sha2::Sha256::digest(data);
+    hash.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Decode a base64url (no-padding) string to bytes.
+fn base64_url_decode(s: &str) -> Result<Vec<u8>, String> {
+    use base64::Engine;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(s)
+        .map_err(|e| format!("base64url decode error: {e}"))
+}
+
+/// Verify the `signature` block of a manifest against the archive files.
+/// Returns `Ok(())` when absent (unsigned) or when the signature is valid.
+/// Returns `Err(msg)` when the signature is present but invalid.
+fn verify_signature(files: &HashMap<String, Vec<u8>>, manifest: &serde_json::Value) -> Result<(), String> {
+    let sig_obj = match manifest.get("signature") {
+        Some(v) if !v.is_null() => v,
+        _ => return Ok(()), // unsigned — allowed
+    };
+
+    let algorithm = sig_obj.get("algorithm").and_then(|v| v.as_str()).unwrap_or("");
+    if algorithm != "Ed25519" {
+        return Err(format!("Unsupported signature algorithm: '{algorithm}'"));
+    }
+
+    let pub_key_b64 = sig_obj.get("publicKey").and_then(|v| v.as_str())
+        .ok_or("signature.publicKey missing")?;
+    let sig_val_b64 = sig_obj.get("value").and_then(|v| v.as_str())
+        .ok_or("signature.value missing")?;
+
+    let pub_key_bytes = base64_url_decode(pub_key_b64)
+        .map_err(|e| format!("signature.publicKey: {e}"))?;
+    let sig_bytes = base64_url_decode(sig_val_b64)
+        .map_err(|e| format!("signature.value: {e}"))?;
+
+    // Rebuild the canonical payload — must match @dotuix/core sign.ts exactly.
+    let mut manifest_clone = manifest.clone();
+    if let Some(obj) = manifest_clone.as_object_mut() { obj.remove("signature"); }
+    let sorted_manifest = sort_json_keys(manifest_clone);
+    let manifest_canon = serde_json::to_string(&sorted_manifest).map_err(|e| e.to_string())?;
+
+    let mut paths: Vec<&str> = files.keys()
+        .filter(|p| *p != "manifest.json" && *p != "state.db")
+        .map(String::as_str)
+        .collect();
+    paths.sort_unstable();
+
+    let mut payload = format!("DOTUIX-SIGN-V1\nmanifest:{manifest_canon}\n");
+    for p in &paths {
+        payload.push_str(&format!("file:{p}:{}\n", sha256_hex(&files[*p])));
+    }
+
+    use ed25519_dalek::{Signature, VerifyingKey, Verifier};
+    let key_arr: [u8; 32] = pub_key_bytes.try_into()
+        .map_err(|_| "signature.publicKey must be 32 bytes".to_string())?;
+    let sig_arr: [u8; 64] = sig_bytes.try_into()
+        .map_err(|_| "signature.value must be 64 bytes".to_string())?;
+    let vk = VerifyingKey::from_bytes(&key_arr)
+        .map_err(|e| format!("Invalid Ed25519 public key: {e}"))?;
+
+    vk.verify(payload.as_bytes(), &Signature::from_bytes(&sig_arr))
+        .map_err(|_| "Signature verification failed — file may have been tampered with.".to_string())
+}
+
+/// Derive a 32-byte AES-256 key from a PIN using PBKDF2-HMAC-SHA256.
+fn derive_aes_key(pin: &str, salt: &[u8], iterations: u32) -> [u8; 32] {
+    use pbkdf2::pbkdf2_hmac;
+    let mut key = [0u8; 32];
+    pbkdf2_hmac::<sha2::Sha256>(pin.as_bytes(), salt, iterations, &mut key);
+    key
+}
+
+/// Decrypt a single file encrypted with AES-256-GCM.
+/// Expected layout: `[12-byte nonce][ciphertext][16-byte GCM auth tag]`
+fn decrypt_aes_gcm(data: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, String> {
+    if data.len() < 29 {
+        return Err("Encrypted file is too short".into());
+    }
+    let (nonce_bytes, ct_with_tag) = data.split_at(12);
+    use aes_gcm::{Aes256Gcm, Key, Nonce, aead::{Aead, KeyInit}};
+    let k = Key::<Aes256Gcm>::from_slice(key);
+    let cipher = Aes256Gcm::new(k);
+    cipher
+        .decrypt(Nonce::from_slice(nonce_bytes), ct_with_tag)
+        .map_err(|_| "Decryption failed — wrong PIN or corrupted file.".to_string())
+}
+
+/// Read the stored open count for an app-id data directory.
+fn read_open_count(data_dir: &std::path::Path) -> u64 {
+    std::fs::read_to_string(data_dir.join("opens"))
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+/// Increment and persist the open count; returns the new value.
+fn increment_open_count(data_dir: &std::path::Path) -> u64 {
+    let n = read_open_count(data_dir) + 1;
+    let _ = std::fs::write(data_dir.join("opens"), n.to_string());
+    n
+}
+
+// ---------------------------------------------------------------------------
+// .uix loading — two-phase: probe (validate + optional PIN gate) + complete
+// ---------------------------------------------------------------------------
+
+/// Phase 1: read the archive, run all validation checks, verify signature.
+/// If the manifest requires a PIN, save the raw files to `AppState.pending_*`
+/// and return `LoadResult::PinRequired`. Otherwise call `complete_load`.
+fn probe_uix_inner(path: &str, app: &AppHandle, state: &AppState) -> Result<LoadResult, String> {
     let files = read_uix(path)?;
 
-    let manifest_json = files
+    let manifest_bytes = files
         .get("manifest.json")
-        .map(|b| String::from_utf8_lossy(b).into_owned())
         .ok_or_else(|| "manifest.json not found in archive".to_string())?;
-
+    let manifest_json = String::from_utf8_lossy(manifest_bytes).into_owned();
     let manifest: serde_json::Value = serde_json::from_str(&manifest_json)
         .map_err(|e| format!("Invalid manifest.json: {e}"))?;
 
-    // --- Expiry check (before touching any files) ---
+    // --- Expiry check ---
     if let Some(exp) = manifest.get("expires").and_then(|v| v.as_str()) {
-        let today = today_iso();
-        if exp < today.as_str() {
+        if exp < today_iso().as_str() {
             return Err(format!("This .uix file expired on {exp}. It can no longer be opened."));
         }
     }
@@ -218,17 +374,63 @@ fn load_uix_impl(path: &str, app: &AppHandle, state: &AppState) -> Result<String
     if let Some(min_ver) = manifest.get("minViewer").and_then(|v| v.as_str()) {
         if !version_gte(VIEWER_VERSION, min_ver) {
             return Err(format!(
-                "This file requires viewer v{min_ver} or later. Current viewer: v{VIEWER_VERSION}. Please update."
+                "This file requires viewer v{min_ver} or later. Current viewer: v{VIEWER_VERSION}."
             ));
         }
     }
 
+    // --- Signature verification ---
+    verify_signature(&files, &manifest)?;
+
+    // --- maxOpens check ---
+    let app_id = manifest["id"].as_str().unwrap_or("unknown").to_string();
+    let app_name = manifest.get("name").and_then(|v| v.as_str()).unwrap_or(&app_id).to_string();
+
+    if let Some(max_opens) = manifest
+        .get("security").and_then(|s| s.get("maxOpens")).and_then(|v| v.as_u64())
+    {
+        let data_dir = app
+            .path().app_data_dir()
+            .map_err(|e| format!("Cannot get app data dir: {e}"))?.join(&app_id);
+        let _ = std::fs::create_dir_all(&data_dir);
+        if read_open_count(&data_dir) >= max_opens {
+            return Err(format!(
+                "This .uix file has reached its maximum number of opens ({max_opens})."
+            ));
+        }
+    }
+
+    // --- PIN gate ---
+    let security = manifest.get("security");
+    let requires_pin = security
+        .and_then(|s| s.get("auth")).and_then(|v| v.as_str()) == Some("pin");
+    let has_encrypted_paths = security
+        .and_then(|s| s.get("encryptedPaths")).and_then(|v| v.as_array())
+        .map(|a| !a.is_empty()).unwrap_or(false);
+
+    if requires_pin && has_encrypted_paths {
+        *state.pending_files.lock().unwrap() = Some(files);
+        *state.pending_manifest.lock().unwrap() = Some(manifest);
+        *state.pending_path.lock().unwrap() = Some(path.to_string());
+        return Ok(LoadResult::PinRequired { app_name, app_id });
+    }
+
+    complete_load(path, files, &manifest, app, state)
+}
+
+/// Phase 2: create the lock, set up databases, store everything in AppState.
+fn complete_load(
+    path: &str,
+    files: HashMap<String, Vec<u8>>,
+    manifest: &serde_json::Value,
+    app: &AppHandle,
+    state: &AppState,
+) -> Result<LoadResult, String> {
+    let manifest_json = serde_json::to_string(manifest).map_err(|e| e.to_string())?;
     let app_id = manifest["id"].as_str().unwrap_or("unknown").to_string();
 
-    // --- Permissions ---
     let permissions: Vec<String> = manifest
-        .get("permissions")
-        .and_then(|v| v.as_array())
+        .get("permissions").and_then(|v| v.as_array())
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
         .unwrap_or_default();
 
@@ -240,58 +442,42 @@ fn load_uix_impl(path: &str, app: &AppHandle, state: &AppState) -> Result<String
              Delete '{lock_path}' to open it."
         ));
     }
-    let lock_content = format!(
-        "{{\"pid\":{},\"opened_at\":{}}}",
-        std::process::id(),
-        now_ms()
-    );
-    std::fs::write(&lock_path, lock_content.as_bytes())
+    std::fs::write(&lock_path, format!("{{\"pid\":{},\"opened_at\":{}}}", std::process::id(), now_ms()).as_bytes())
         .map_err(|e| format!("Cannot create lock file: {e}"))?;
 
-    // --- state.db: persisted per app-id so cart survives viewer restarts ---
+    // --- Per-app data directory ---
     let data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Cannot get app data dir: {e}"))?
-        .join(&app_id);
+        .path().app_data_dir()
+        .map_err(|e| format!("Cannot get app data dir: {e}"))?.join(&app_id);
     std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
 
+    // --- state.db ---
     let state_db_path = data_dir.join("state.db");
-
-    // On first run: seed from the archive's state.db if manifest.state.seed == true.
     let should_seed = manifest
-        .get("state")
-        .and_then(|s| s.get("seed"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    if !state_db_path.exists() {
-        if should_seed {
-            if let Some(seed) = files.get("state.db") {
-                std::fs::write(&state_db_path, seed).map_err(|e| e.to_string())?;
-            }
+        .get("state").and_then(|s| s.get("seed")).and_then(|v| v.as_bool()).unwrap_or(false);
+    if !state_db_path.exists() && should_seed {
+        if let Some(seed) = files.get("state.db") {
+            std::fs::write(&state_db_path, seed).map_err(|e| e.to_string())?;
         }
-        // else: rusqlite creates a fresh file
     }
-
     let state_conn = rusqlite::Connection::open(&state_db_path)
         .map_err(|e| format!("Cannot open state.db: {e}"))?;
     ensure_state_schema(&state_conn, &app_id)?;
 
-    // --- data.db: read-only, extracted fresh from .uix each run ---
+    // --- data.db (read-only copy) ---
     let data_conn = if let Some(bytes) = files.get("data.db") {
         let tmp = std::env::temp_dir().join(format!("dotuix_{app_id}_data.db"));
         std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
-        let conn = rusqlite::Connection::open_with_flags(
-            &tmp,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-        )
-        .map_err(|e| format!("Cannot open data.db: {e}"))?;
-        Some(conn)
+        Some(rusqlite::Connection::open_with_flags(&tmp, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| format!("Cannot open data.db: {e}"))?)
     } else {
         None
     };
 
+    // --- Increment opens counter ---
+    increment_open_count(&data_dir);
+
+    // --- Commit to AppState ---
     *state.files.lock().unwrap() = files;
     *state.state_db.lock().unwrap() = Some(state_conn);
     *state.data_db.lock().unwrap() = data_conn;
@@ -300,7 +486,7 @@ fn load_uix_impl(path: &str, app: &AppHandle, state: &AppState) -> Result<String
     *state.state_db_path.lock().unwrap() = Some(state_db_path);
     *state.permissions.lock().unwrap() = permissions;
 
-    Ok(manifest_json)
+    Ok(LoadResult::Loaded { manifest: manifest_json })
 }
 
 // ---------------------------------------------------------------------------
@@ -607,7 +793,7 @@ fn exec_raw_sql(
 async fn pick_and_load_uix(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<String, String> {
+) -> Result<LoadResult, String> {
     use tauri_plugin_dialog::DialogExt;
     use tokio::sync::oneshot;
 
@@ -622,7 +808,7 @@ async fn pick_and_load_uix(
         .map_err(|_| "Dialog closed unexpectedly".to_string())?
         .ok_or_else(|| "No file selected".to_string())?;
 
-    load_uix_impl(&file.to_string(), &app, &state)
+    probe_uix_inner(&file.to_string(), &app, &state)
 }
 
 #[tauri::command]
@@ -630,8 +816,8 @@ fn load_uix(
     path: String,
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<String, String> {
-    load_uix_impl(&path, &app, &state)
+) -> Result<LoadResult, String> {
+    probe_uix_inner(&path, &app, &state)
 }
 
 /// Returns (and clears) the .uix path that was passed as a CLI argument on launch.
@@ -640,6 +826,49 @@ fn load_uix(
 fn get_initial_file(state: State<'_, AppState>) -> Option<String> {
     state.initial_path.lock().unwrap().take()
 }
+
+/// Complete loading a PIN-protected .uix file.
+/// The pending files must already have been stored by a previous `load_uix` / `pick_and_load_uix`
+/// call that returned `{ status: "pin_required" }`.
+#[tauri::command]
+fn unlock_with_pin(
+    pin: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<LoadResult, String> {
+    let path = state.pending_path.lock().unwrap().take()
+        .ok_or("No pending app to unlock — call load_uix first")?;
+    let mut files = state.pending_files.lock().unwrap().take()
+        .ok_or("No pending files to decrypt")?;
+    let manifest = state.pending_manifest.lock().unwrap().take()
+        .ok_or("No pending manifest")?;
+
+    // Read security parameters from manifest.
+    let security = manifest.get("security")
+        .ok_or("Manifest has no 'security' block")?;
+    let key_salt_b64 = security.get("keySalt").and_then(|v| v.as_str())
+        .ok_or("security.keySalt missing")?;
+    let iterations = security.get("kdfIterations").and_then(|v| v.as_u64())
+        .unwrap_or(200_000) as u32;
+    let encrypted_paths: Vec<String> = security
+        .get("encryptedPaths").and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+
+    let salt = base64_url_decode(key_salt_b64)?;
+    let key = derive_aes_key(&pin, &salt, iterations);
+
+    for ep in &encrypted_paths {
+        let encrypted = files.get(ep)
+            .ok_or_else(|| format!("Encrypted path not found in archive: {ep}"))?
+            .clone();
+        let decrypted = decrypt_aes_gcm(&encrypted, &key)?;
+        files.insert(ep.clone(), decrypted);
+    }
+
+    complete_load(&path, files, &manifest, &app, &state)
+}
+
 
 /// Return the manifest of the currently open .uix app.
 #[tauri::command]
@@ -907,6 +1136,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             pick_and_load_uix,
             load_uix,
+            unlock_with_pin,
             get_initial_file,
             get_manifest,
             uix_exit,

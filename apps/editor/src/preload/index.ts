@@ -64,6 +64,14 @@ const api = {
   ): Promise<string> =>
     ipcRenderer.invoke("db-insert-record", dbPath, type, body),
 
+  // Simple mode — create a .uix from a template + items
+  simplePackUix: (config: {
+    templateId: string;
+    appName: string;
+    recordType: string;
+    items: Record<string, string | number>[];
+  }): Promise<string | null> => ipcRenderer.invoke("simple-pack-uix", config),
+
   // Events from main → renderer
   onFileSaved: (cb: () => void) => {
     ipcRenderer.on("file-saved", cb);

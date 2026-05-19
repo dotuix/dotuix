@@ -4,7 +4,8 @@ import FileTree from "./components/FileTree";
 import EditorPane from "./components/EditorPane";
 import PreviewPane from "./components/PreviewPane";
 import DbViewer from "./components/DbViewer";
-import Toolbar from "./components/Toolbar";
+import Toolbar, { type EditorMode } from "./components/Toolbar";
+import SimpleMode from "./components/SimpleMode";
 
 declare global {
   interface Window {
@@ -30,6 +31,7 @@ export default function App() {
   const [bottomTab, setBottomTab] = useState<BottomTab>("preview");
   const [status, setStatus] = useState("");
   const [packing, setPacking] = useState(false);
+  const [editorMode, setEditorMode] = useState<EditorMode>("dev");
   const previewRef = useRef<{ reload: () => void }>(null);
 
   // ── Open project folder ─────────────────────────────────────────────────
@@ -119,13 +121,22 @@ export default function App() {
         openFile={openFile}
         packing={packing}
         status={status}
+        mode={editorMode}
         onOpenFolder={openFolder}
         onPack={packUix}
         onRefreshTree={refreshTree}
+        onModeChange={setEditorMode}
       />
 
-      {/* ── Three-pane body ── */}
-      <div className="flex flex-1 min-h-0">
+      {/* ── Simple mode ── */}
+      {editorMode === "simple" && <SimpleMode onStatus={setStatus} />}
+
+      {/* ── Three-pane body (dev mode) ── */}
+      <div
+        className={`flex flex-1 min-h-0 ${
+          editorMode === "simple" ? "hidden" : ""
+        }`}
+      >
         {/* Left: file tree */}
         <aside className="w-56 shrink-0 flex flex-col border-r border-[#2d2d2d] bg-surface-850 overflow-hidden">
           <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#858585]">

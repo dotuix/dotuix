@@ -7,7 +7,15 @@ import {
   nativeTheme,
 } from "electron";
 import { join } from "path";
-import { readdir, readFile, writeFile, stat } from "fs/promises";
+import {
+  readdir,
+  readFile,
+  writeFile,
+  stat,
+  mkdir,
+  copyFile,
+  rm,
+} from "fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -356,5 +364,90 @@ ipcMain.handle(
     db.close();
     await writeFile(dbPath, Buffer.from(out));
     return id;
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Simple mode — create a .uix from a template + user-supplied items
+// ---------------------------------------------------------------------------
+
+interface SimplePackConfig {
+  templateId: string;
+  appName: string;
+  recordType: string;
+  items: Record<string, string | number>[];
+}
+
+ipcMain.handle(
+  "simple-pack-uix",
+  async (_e, config: SimplePackConfig): Promise<string | null> => {
+    const { templateId, appName, recordType, items } = config;
+
+    // Locate template — in monorepo: apps/editor → ../../templates/<id>
+    const templateDir = join(app.getAppPath(), "../../templates", templateId);
+    if (!existsSync(templateDir)) {
+      throw new Error(`Template '${templateId}' not found`);
+    }
+
+    const tmpDir = join(
+      (await import("node:os")).tmpdir(),
+      `dotuix-simple-${Date.now()}`,
+    );
+    await mkdir(tmpDir, { recursive: true });
+
+    try {
+      // Copy template files (we generate data.db ourselves)
+      for (const f of await readdir(templateDir)) {
+        if (f === "data.db") continue;
+        await copyFile(join(templateDir, f), join(tmpDir, f));
+      }
+
+      // Patch manifest.json with the new app name and a fresh id
+      const manifestPath = join(tmpDir, "manifest.json");
+      const manifest = JSON.parse(
+        await readFile(manifestPath, "utf8"),
+      ) as Record<string, unknown>;
+      manifest["id"] = `com.dotuix.simple.${Date.now()}`;
+      manifest["name"] = appName;
+      await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+
+      // Create data.db and populate with items
+      const SQL = await getSql();
+      const db = new SQL.Database();
+      db.run(
+        `CREATE TABLE records (
+          id TEXT PRIMARY KEY, type TEXT NOT NULL,
+          body TEXT NOT NULL DEFAULT '{}',
+          created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+        )`,
+      );
+      db.run("CREATE INDEX records_type_idx ON records(type)");
+      const now = Date.now();
+      items.forEach((item, idx) => {
+        db.run("INSERT INTO records VALUES (?, ?, ?, ?, ?)", [
+          `${recordType}:${idx + 1}`,
+          recordType,
+          JSON.stringify(item),
+          now,
+          now,
+        ]);
+      });
+      await writeFile(join(tmpDir, "data.db"), Buffer.from(db.export()));
+      db.close();
+
+      // Save dialog
+      const { filePath } = await dialog.showSaveDialog(mainWindow, {
+        defaultPath: `${
+          appName.replace(/[^\w\s\-]/g, "").trim() || "my-app"
+        }.uix`,
+        filters: [{ name: "UIX App", extensions: ["uix"] }],
+      });
+      if (!filePath) return null;
+
+      await UIX.pack(tmpDir, filePath);
+      return filePath;
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
   },
 );

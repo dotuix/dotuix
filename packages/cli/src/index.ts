@@ -18,6 +18,7 @@ import { resolve, basename, extname, join } from "node:path";
 import {
   UIX,
   unpackBuffer,
+  packBuffer,
   readManifestFromBuffer,
   createState,
   generateKeyPair,
@@ -476,6 +477,108 @@ async function cmdSign(args: string[]) {
 }
 
 // ---------------------------------------------------------------------------
+// encrypt
+// ---------------------------------------------------------------------------
+async function cmdEncrypt(args: string[]) {
+  const file = pos(args)[0];
+  const pin = opt(args, "--pin", "-p");
+  const out = opt(args, "-o", "--out");
+  const pathsArg = opt(args, "--paths");
+
+  if (!file || !pin) {
+    console.error(
+      c.red("✗") +
+        " Usage: dotuix encrypt <file.uix> --pin <PIN> [--paths a,b,...] [-o out.uix]",
+    );
+    process.exit(1);
+  }
+
+  const { createCipheriv, pbkdf2Sync, randomBytes } = await import(
+    "node:crypto"
+  );
+  const absFile = resolve(file);
+  const outFile = resolve(out ?? absFile);
+
+  const raw = new Uint8Array(readFileSync(absFile));
+  const files = unpackBuffer(raw) as Record<string, Uint8Array>;
+
+  const manifestStr = new TextDecoder().decode(files["manifest.json"]);
+  if (!manifestStr) {
+    console.error(c.red("✗") + " manifest.json not found in archive");
+    process.exit(1);
+  }
+  const manifest = JSON.parse(manifestStr) as Record<string, unknown>;
+
+  // Determine which paths to encrypt.
+  const allPaths = Object.keys(files);
+  let encryptedPaths: string[];
+  if (pathsArg) {
+    encryptedPaths = pathsArg
+      .split(",")
+      .map((s) => s.trim())
+      .filter((p) => allPaths.includes(p));
+  } else {
+    encryptedPaths = allPaths.filter(
+      (p) => p !== "manifest.json" && p !== "state.db" && p !== "data.db",
+    );
+  }
+
+  if (encryptedPaths.length === 0) {
+    console.error(c.red("✗") + " No paths matched for encryption");
+    process.exit(1);
+  }
+
+  // Key derivation.
+  const salt = randomBytes(32);
+  const iterations = 200_000;
+  const key = pbkdf2Sync(pin, salt, iterations, 32, "sha256");
+
+  // Encrypt each file: [12-byte nonce][ciphertext+GCM tag]
+  console.log(
+    c.muted(
+      `Encrypting ${encryptedPaths.length} file(s) in ${basename(absFile)} …`,
+    ),
+  );
+  for (const p of encryptedPaths) {
+    const plaintext = Buffer.from(files[p]!);
+    const nonce = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", key, nonce);
+    const encrypted = Buffer.concat([
+      cipher.update(plaintext),
+      cipher.final(),
+      cipher.getAuthTag(),
+    ]);
+    files[p] = new Uint8Array(Buffer.concat([nonce, encrypted]));
+  }
+
+  // Update manifest with security block.
+  manifest["security"] = {
+    ...((manifest["security"] as object) ?? {}),
+    auth: "pin",
+    kdfAlgorithm: "PBKDF2-SHA256",
+    kdfIterations: iterations,
+    keySalt: salt.toString("base64url"),
+    encryptedPaths,
+  };
+  files["manifest.json"] = new TextEncoder().encode(
+    JSON.stringify(manifest, null, 2),
+  );
+
+  const packed = packBuffer(files as Record<string, Uint8Array>);
+  writeFileSync(outFile, packed);
+  console.log(c.green("✓") + " Encrypted " + c.bold(outFile));
+  console.log(
+    `  ${c.muted("paths:")} ${encryptedPaths.length} file(s) encrypted`,
+  );
+  console.log(
+    `  ${c.muted("auth:")}  PIN (PBKDF2-SHA256, ${iterations} iterations)`,
+  );
+  console.log(
+    `\n  ${c.yellow("⚠")} The PIN is not stored — share it separately.\n`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // verify
 // ---------------------------------------------------------------------------
 async function cmdVerify(args: string[]) {
@@ -531,6 +634,9 @@ function printHelp() {
     )}   [-o <base>]                         Generate Ed25519 key pair
     ${c.cyan("sign")}     <file.uix> --key <k.priv> [-o out]  Sign a .uix file
     ${c.cyan("verify")}   <file.uix>                          Verify signature
+    ${c.cyan(
+      "encrypt",
+    )}  <file.uix> --pin <PIN> [-o out]     AES-256-GCM encrypt files
 
   ${c.bold("Examples:")}
     dotuix pack ./my-app
@@ -541,6 +647,7 @@ function printHelp() {
     dotuix keygen -o ministry-key
     dotuix sign briefing.uix --key ministry-key.priv
     dotuix verify briefing.uix
+    dotuix encrypt briefing.uix --pin 1234 -o briefing-locked.uix
 `);
 }
 
@@ -580,6 +687,9 @@ async function main() {
       break;
     case "verify":
       await cmdVerify(rest);
+      break;
+    case "encrypt":
+      await cmdEncrypt(rest);
       break;
     default:
       console.error(

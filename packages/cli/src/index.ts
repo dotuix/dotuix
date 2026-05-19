@@ -8,6 +8,9 @@
  *   info     <file.uix>                Print manifest details
  *   init     [name]                    Scaffold a new .uix project
  *   export   <file.uix> --type <t>     Export state records as JSON or CSV
+ *   keygen   [-o <base>]               Generate an Ed25519 key pair
+ *   sign     <file.uix> --key <k.priv> Sign a .uix file (Ed25519)
+ *   verify   <file.uix>                Verify the Ed25519 signature
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -17,6 +20,9 @@ import {
   unpackBuffer,
   readManifestFromBuffer,
   createState,
+  generateKeyPair,
+  sign,
+  verify,
 } from "@dotuix/core";
 import type { UIXRecord } from "@dotuix/core";
 
@@ -226,11 +232,7 @@ async function cmdInfo(args: string[]) {
     );
   }
   if (manifest.author) {
-    const a = manifest.author;
-    const who = [a.name, a.email ? `<${a.email}>` : "", a.url ?? ""]
-      .filter(Boolean)
-      .join(" ");
-    console.log(`  ${c.muted("author:")}      ${who}`);
+    console.log(`  ${c.muted("author:")}      ${manifest.author}`);
   }
   console.log(
     `  ${c.muted("files:")}       ${
@@ -410,6 +412,90 @@ async function cmdInit(args: string[]) {
 }
 
 // ---------------------------------------------------------------------------
+// keygen
+// ---------------------------------------------------------------------------
+function cmdKeygen(args: string[]) {
+  const base = (opt(args, "-o", "--out") ?? pos(args)[0] ?? "dotuix-key").replace(/\.(priv|pub)$/, "");
+  const privPath = resolve(`${base}.priv`);
+  const pubPath = resolve(`${base}.pub`);
+
+  if (existsSync(privPath) || existsSync(pubPath)) {
+    console.error(
+      c.red("✗") + ` Key files already exist: ${base}.priv / ${base}.pub`,
+    );
+    process.exit(1);
+  }
+
+  const kp = generateKeyPair();
+  writeFileSync(privPath, kp.privateKey, "utf8");
+  writeFileSync(pubPath, kp.publicKey, "utf8");
+
+  console.log(`
+  ${c.green("✓")} Key pair generated
+`);
+  console.log(`  ${c.muted("private:")} ${privPath}`);
+  console.log(`  ${c.muted("public:")}  ${pubPath}`);
+  console.log(`
+  ${c.yellow("⚠")} Keep ${basename(privPath)} secret — never share it.\n`);
+}
+
+// ---------------------------------------------------------------------------
+// sign
+// ---------------------------------------------------------------------------
+async function cmdSign(args: string[]) {
+  const file = pos(args)[0];
+  const keyFile = opt(args, "--key", "-k");
+  if (!file || !keyFile) {
+    console.error(
+      c.red("✗") +
+        " Usage: dotuix sign <file.uix> --key <keyfile.priv> [-o out.uix]",
+    );
+    process.exit(1);
+  }
+
+  const absFile = resolve(file);
+  const out = resolve(opt(args, "-o", "--out") ?? absFile);
+
+  const privKeyStr = readFileSync(resolve(keyFile), "utf8").trim();
+  const privKeyBytes = Buffer.from(privKeyStr, "base64url");
+  if (privKeyBytes.length !== 32) {
+    console.error(
+      c.red("✗") +
+        " Key file does not contain a valid 32-byte Ed25519 private key seed",
+    );
+    process.exit(1);
+  }
+
+  console.log(c.muted(`Signing ${basename(absFile)} …`));
+  sign(absFile, privKeyBytes, out);
+  console.log(c.green("✓") + " Signed " + c.bold(basename(out)));
+}
+
+// ---------------------------------------------------------------------------
+// verify
+// ---------------------------------------------------------------------------
+async function cmdVerify(args: string[]) {
+  const file = pos(args)[0];
+  if (!file) {
+    console.error(c.red("✗") + " Usage: dotuix verify <file.uix>");
+    process.exit(1);
+  }
+
+  const result = verify(resolve(file));
+
+  if (result.valid) {
+    console.log(c.green("✓") + " Signature valid");
+    console.log(`  ${c.muted("algorithm:")} Ed25519`);
+    console.log(`  ${c.muted("publicKey:")} ${result.publicKey}`);
+    if (result.signedAt)
+      console.log(`  ${c.muted("signedAt:")}  ${result.signedAt}`);
+  } else {
+    console.error(c.red("✗") + " " + (result.error ?? "Verification failed"));
+    process.exit(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // help
 // ---------------------------------------------------------------------------
 function printHelp() {
@@ -436,6 +522,11 @@ function printHelp() {
       "export",
     )}   <file.uix> --type <t>               Export state records
                [--format json|csv] [-o file]
+    ${c.cyan(
+      "keygen",
+    )}   [-o <base>]                         Generate Ed25519 key pair
+    ${c.cyan("sign")}     <file.uix> --key <k.priv> [-o out]  Sign a .uix file
+    ${c.cyan("verify")}   <file.uix>                          Verify signature
 
   ${c.bold("Examples:")}
     dotuix pack ./my-app
@@ -443,6 +534,9 @@ function printHelp() {
     dotuix info myapp.uix
     dotuix init my-restaurant
     dotuix export myapp.uix --type order --format csv -o orders.csv
+    dotuix keygen -o ministry-key
+    dotuix sign briefing.uix --key ministry-key.priv
+    dotuix verify briefing.uix
 `);
 }
 
@@ -473,6 +567,15 @@ async function main() {
       break;
     case "export":
       await cmdExport(rest);
+      break;
+    case "keygen":
+      cmdKeygen(rest);
+      break;
+    case "sign":
+      await cmdSign(rest);
+      break;
+    case "verify":
+      await cmdVerify(rest);
       break;
     default:
       console.error(

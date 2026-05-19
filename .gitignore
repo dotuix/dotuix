@@ -21,3 +21,4 @@ Thumbs.db
 # Editor
 .vscode/settings.json
 .idea/
+apps/editor/dist-electron/

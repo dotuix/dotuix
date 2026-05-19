@@ -27,6 +27,14 @@ export type {
   Permission,
   FindQuery,
 } from "./types.js";
+export {
+  generateKeyPair,
+  signBuffer,
+  sign,
+  verifyBuffer,
+  verify,
+} from "./sign.js";
+export type { KeyPair, VerifyResult } from "./sign.js";
 
 import { pack, packBuffer } from "./pack.js";
 import { unpack, unpackBuffer } from "./unpack.js";

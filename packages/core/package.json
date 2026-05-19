@@ -44,6 +44,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
     "fflate": "^0.8.2",
     "sql.js": "^1.12.0",
     "zod": "^3.24.1"

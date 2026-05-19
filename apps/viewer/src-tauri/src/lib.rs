@@ -28,6 +28,8 @@ struct AppState {
     state_db_path: Mutex<Option<std::path::PathBuf>>,
     /// Path to the .uix file set from argv on launch; consumed once by get_initial_file.
     initial_path: Mutex<Option<String>>,
+    /// manifest.permissions — gates raw-sql and other optional bridge capabilities.
+    permissions: Mutex<Vec<String>>,
 }
 
 impl Default for AppState {
@@ -40,6 +42,7 @@ impl Default for AppState {
             uix_path: Mutex::new(String::new()),
             state_db_path: Mutex::new(None),
             initial_path: Mutex::new(None),
+            permissions: Mutex::new(Vec::new()),
         }
     }
 }
@@ -222,6 +225,13 @@ fn load_uix_impl(path: &str, app: &AppHandle, state: &AppState) -> Result<String
 
     let app_id = manifest["id"].as_str().unwrap_or("unknown").to_string();
 
+    // --- Permissions ---
+    let permissions: Vec<String> = manifest
+        .get("permissions")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+
     // --- Lock file ---
     let lock_path = format!("{path}.lock");
     if std::path::Path::new(&lock_path).exists() {
@@ -288,6 +298,7 @@ fn load_uix_impl(path: &str, app: &AppHandle, state: &AppState) -> Result<String
     *state.app_id.lock().unwrap() = app_id;
     *state.uix_path.lock().unwrap() = path.to_string();
     *state.state_db_path.lock().unwrap() = Some(state_db_path);
+    *state.permissions.lock().unwrap() = permissions;
 
     Ok(manifest_json)
 }
@@ -386,11 +397,18 @@ fn bridge_script(manifest_json: &str) -> String {
   window.__uix = {{
     manifest: m,
     data: {{
-      find: function (opts)  {{ return relay('data_find',   {{ type: (opts && opts.type) || opts }}); }},
-      get:  function (id)    {{ return relay('data_get',    {{ id: id }}); }},
+      find: function (opts) {{
+        var q = (typeof opts === 'string') ? {{ type: opts }} : Object.assign({{}}, opts);
+        return relay('data_find', q);
+      }},
+      get:  function (id)              {{ return relay('data_get',  {{ id: id }}); }},
+      raw:  function (sql, params)     {{ return relay('data_raw',  {{ sql: sql, params: params || [] }}); }},
     }},
     state: {{
-      find:   function (opts)        {{ return relay('state_find',  {{ type: (opts && opts.type) || opts }}); }},
+      find:   function (opts) {{
+        var q = (typeof opts === 'string') ? {{ type: opts }} : Object.assign({{}}, opts);
+        return relay('state_find', q);
+      }},
       get:    function (id)          {{ return relay('state_get',   {{ id: id }}); }},
       insert: function (opts)        {{
         var body = opts.body;
@@ -405,6 +423,7 @@ fn bridge_script(manifest_json: &str) -> String {
       purge:  function (opts)        {{
         return relay('state_purge', {{ type: (opts && opts.type) || opts, older_than: opts.olderThan || '30d' }});
       }},
+      raw:    function (sql, params) {{ return relay('state_raw',  {{ sql: sql, params: params || [] }}); }},
     }},
     print: function () {{ window.print(); }},
     exit:  function () {{ return relay('uix_exit', {{}}); }},
@@ -412,6 +431,172 @@ fn bridge_script(manifest_json: &str) -> String {
 }})();
 </script>"#
     )
+}
+
+// ---------------------------------------------------------------------------
+// Query helpers
+// ---------------------------------------------------------------------------
+
+/// find() query parameters — all fields except type are optional.
+#[derive(serde::Deserialize, Default)]
+struct FindQuery {
+    #[serde(rename = "type")]
+    record_type: String,
+    /// Field equality filters applied via json_extract(body, '$.key') = value.
+    #[serde(rename = "where")]
+    filters: Option<HashMap<String, serde_json::Value>>,
+    /// Column or body field to sort by: "created_at", "updated_at", "id", or any body field.
+    #[serde(rename = "orderBy")]
+    order_by: Option<String>,
+    /// Maximum number of rows to return.
+    limit: Option<u32>,
+}
+
+/// Reject identifier strings that could be used for SQL injection.
+/// Only alphanumeric characters, underscores, and dots are allowed.
+fn validate_identifier(s: &str, context: &str) -> Result<(), String> {
+    if s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.') && !s.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Invalid {context}: '{s}'. Only alphanumeric characters, underscores, and dots are allowed."
+        ))
+    }
+}
+
+/// Convert a serde_json value into a boxed rusqlite ToSql parameter.
+fn json_to_sql_param(val: &serde_json::Value) -> Box<dyn rusqlite::ToSql> {
+    match val {
+        serde_json::Value::String(s) => Box::new(s.clone()),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() { Box::new(i) }
+            else if let Some(f) = n.as_f64() { Box::new(f) }
+            else { Box::new(n.to_string()) }
+        }
+        serde_json::Value::Bool(b) => Box::new(*b as i64),
+        serde_json::Value::Null => Box::new(rusqlite::types::Null),
+        other => Box::new(other.to_string()),
+    }
+}
+
+/// Convert a rusqlite runtime Value to a serde_json Value.
+fn sqlite_val_to_json(val: rusqlite::types::Value) -> serde_json::Value {
+    match val {
+        rusqlite::types::Value::Null       => serde_json::Value::Null,
+        rusqlite::types::Value::Integer(i) => serde_json::json!(i),
+        rusqlite::types::Value::Real(f)    => serde_json::json!(f),
+        rusqlite::types::Value::Text(s)    => serde_json::Value::String(s),
+        rusqlite::types::Value::Blob(b)    => {
+            // Encode as lowercase hex so callers can detect/decode binary data.
+            serde_json::Value::String(b.iter().map(|byte| format!("{byte:02x}")).collect())
+        }
+    }
+}
+
+/// Build and execute a filtered SELECT against a `records` table.
+fn query_records(conn: &rusqlite::Connection, query: &FindQuery) -> Result<Vec<Record>, String> {
+    let mut conditions: Vec<String> = vec!["type = ?1".to_string()];
+    let mut extra_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    if let Some(filters) = &query.filters {
+        for (key, val) in filters {
+            validate_identifier(key, "where field")?;
+            let idx = extra_params.len() + 2; // ?1 = type, ?2.. = filter values
+            conditions.push(format!("json_extract(body, '$.{key}') = ?{idx}"));
+            extra_params.push(json_to_sql_param(val));
+        }
+    }
+
+    let mut sql = format!(
+        "SELECT id, type, body, created_at, updated_at FROM records WHERE {}",
+        conditions.join(" AND ")
+    );
+
+    if let Some(order) = &query.order_by {
+        let order_sql = match order.as_str() {
+            "id" | "type" | "created_at" | "updated_at" => order.clone(),
+            col => {
+                validate_identifier(col, "orderBy")?;
+                format!("json_extract(body, '$.{col}')")
+            }
+        };
+        sql.push_str(&format!(" ORDER BY {order_sql}"));
+    }
+
+    if let Some(limit) = query.limit {
+        sql.push_str(&format!(" LIMIT {limit}"));
+    }
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let type_param: &dyn rusqlite::ToSql = &query.record_type;
+    let mut all_params: Vec<&dyn rusqlite::ToSql> = vec![type_param];
+    for p in &extra_params {
+        all_params.push(p.as_ref());
+    }
+
+    let rows = stmt
+        .query_map(all_params.as_slice(), |row| {
+            Ok(Record {
+                id: row.get(0)?,
+                r#type: row.get(1)?,
+                body: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+fn get_record(conn: &rusqlite::Connection, id: &str) -> Result<Option<Record>, String> {
+    let result = conn.query_row(
+        "SELECT id, type, body, created_at, updated_at FROM records WHERE id = ?1",
+        [id],
+        |row| {
+            Ok(Record {
+                id: row.get(0)?,
+                r#type: row.get(1)?,
+                body: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+            })
+        },
+    );
+    match result {
+        Ok(r) => Ok(Some(r)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Execute an arbitrary SQL query and return rows as JSON objects keyed by column name.
+fn exec_raw_sql(
+    conn: &rusqlite::Connection,
+    sql: &str,
+    params: &[serde_json::Value],
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+    let col_count = stmt.column_count();
+    let col_names: Vec<String> = (0..col_count)
+        .map(|i| stmt.column_name(i).unwrap_or("").to_string())
+        .collect();
+
+    let raw_params: Vec<Box<dyn rusqlite::ToSql>> = params.iter().map(json_to_sql_param).collect();
+    let param_refs: Vec<&dyn rusqlite::ToSql> = raw_params.iter().map(|b| b.as_ref()).collect();
+
+    let rows = stmt
+        .query_map(param_refs.as_slice(), |row| {
+            let mut obj = serde_json::Map::new();
+            for i in 0..col_count {
+                let val: rusqlite::types::Value = row.get(i)?;
+                obj.insert(col_names[i].clone(), sqlite_val_to_json(val));
+            }
+            Ok(serde_json::Value::Object(obj))
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -474,51 +659,12 @@ async fn uix_exit(app: AppHandle) {
 // Tauri commands -- data bridge (read-only product data from data.db)
 // ---------------------------------------------------------------------------
 
-fn query_records(conn: &rusqlite::Connection, type_filter: &str) -> Result<Vec<Record>, String> {
-    let mut stmt = conn
-        .prepare("SELECT id, type, body, created_at, updated_at FROM records WHERE type = ?1")
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([type_filter], |row| {
-            Ok(Record {
-                id: row.get(0)?,
-                r#type: row.get(1)?,
-                body: row.get(2)?,
-                created_at: row.get(3)?,
-                updated_at: row.get(4)?,
-            })
-        })
-        .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
-}
-
-fn get_record(conn: &rusqlite::Connection, id: &str) -> Result<Option<Record>, String> {
-    let result = conn.query_row(
-        "SELECT id, type, body, created_at, updated_at FROM records WHERE id = ?1",
-        [id],
-        |row| {
-            Ok(Record {
-                id: row.get(0)?,
-                r#type: row.get(1)?,
-                body: row.get(2)?,
-                created_at: row.get(3)?,
-                updated_at: row.get(4)?,
-            })
-        },
-    );
-    match result {
-        Ok(r) => Ok(Some(r)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
 #[tauri::command]
-fn data_find(r#type: String, state: State<'_, AppState>) -> Result<Vec<Record>, String> {
+fn data_find(query: FindQuery, state: State<'_, AppState>) -> Result<Vec<Record>, String> {
     let db = state.data_db.lock().unwrap();
     match db.as_ref() {
         None => Ok(vec![]),
-        Some(conn) => query_records(conn, &r#type),
+        Some(conn) => query_records(conn, &query),
     }
 }
 
@@ -531,15 +677,38 @@ fn data_get(id: String, state: State<'_, AppState>) -> Result<Option<Record>, St
     }
 }
 
+/// Execute raw SQL against data.db (SELECT only).
+/// Requires "raw-sql" in manifest.json permissions.
+#[tauri::command]
+fn data_raw(
+    sql: String,
+    params: Option<Vec<serde_json::Value>>,
+    state: State<'_, AppState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    {
+        let perms = state.permissions.lock().unwrap();
+        if !perms.contains(&"raw-sql".to_string()) {
+            return Err("Permission denied: 'raw-sql' is not declared in manifest.json permissions.".into());
+        }
+    }
+    // data.db is read-only by contract — restrict to SELECT statements.
+    if !sql.trim().to_lowercase().starts_with("select") {
+        return Err("data.raw() is read-only. Only SELECT statements are permitted.".into());
+    }
+    let db = state.data_db.lock().unwrap();
+    let conn = db.as_ref().ok_or("No app loaded")?;
+    exec_raw_sql(conn, &sql, &params.unwrap_or_default())
+}
+
 // ---------------------------------------------------------------------------
 // Tauri commands -- state bridge (mutable records in state.db)
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn state_find(r#type: String, state: State<'_, AppState>) -> Result<Vec<Record>, String> {
+fn state_find(query: FindQuery, state: State<'_, AppState>) -> Result<Vec<Record>, String> {
     let db = state.state_db.lock().unwrap();
     let conn = db.as_ref().ok_or("No app loaded")?;
-    query_records(conn, &r#type)
+    query_records(conn, &query)
 }
 
 #[tauri::command]
@@ -616,6 +785,25 @@ fn state_purge(
         )
         .map_err(|e| e.to_string())?;
     Ok(n as u64)
+}
+
+/// Execute raw SQL against state.db (read + write allowed).
+/// Requires "raw-sql" in manifest.json permissions.
+#[tauri::command]
+fn state_raw(
+    sql: String,
+    params: Option<Vec<serde_json::Value>>,
+    state: State<'_, AppState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    {
+        let perms = state.permissions.lock().unwrap();
+        if !perms.contains(&"raw-sql".to_string()) {
+            return Err("Permission denied: 'raw-sql' is not declared in manifest.json permissions.".into());
+        }
+    }
+    let db = state.state_db.lock().unwrap();
+    let conn = db.as_ref().ok_or("No app loaded")?;
+    exec_raw_sql(conn, &sql, &params.unwrap_or_default())
 }
 
 // ---------------------------------------------------------------------------
@@ -724,12 +912,14 @@ pub fn run() {
             uix_exit,
             data_find,
             data_get,
+            data_raw,
             state_find,
             state_get,
             state_insert,
             state_update,
             state_delete,
             state_purge,
+            state_raw,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -23,11 +23,19 @@ npm install -g @dotuix/cli
 The simplest path. Run `dotuix init` to get a working scaffold, then edit the files and pack.
 
 ```bash
+# Blank scaffold
 dotuix init my-app
 cd my-app
+
+# Start from a real starter template instead
+dotuix init my-menu   -t restaurant   # Gulf kiosk menu, Arabic, QAR, working cart
+dotuix init my-shop   -t catalog      # Product showcase with category filters
+dotuix init my-folio  -t portfolio    # Creative portfolio with sidebar filters
 ```
 
-This creates:
+The `--template` (`-t`) flag copies the full starter template — including demo data — and patches `manifest.id` and `name` to match your project name.
+
+Blank scaffold creates:
 
 ```
 my-app/
@@ -328,7 +336,8 @@ dotuix pack   <dir>             # pack folder → .uix
 dotuix unpack <file.uix>        # unpack → folder
 dotuix validate <file.uix>      # structural + offline checks
 dotuix info   <file.uix>        # print manifest
-dotuix init                     # scaffold a new project (restaurant template)
+dotuix init [name]              # blank scaffold
+dotuix init [name] -t restaurant|catalog|portfolio  # start from a template
 dotuix export <file.uix> --type order --format csv --output orders.csv
 dotuix keygen                   # generate an Ed25519 key pair
 dotuix sign   <file.uix> --key private.key

@@ -1,0 +1,95 @@
+{
+  "name": "dotuix",
+  "displayName": "dotuix",
+  "description": "Language support, IntelliSense, and commands for .uix files",
+  "version": "0.1.0",
+  "publisher": "intenttext",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dotuix/dotuix.git",
+    "directory": "packages/vscode-extension"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other",
+    "Linters",
+    "Snippets"
+  ],
+  "keywords": [
+    "uix",
+    "dotuix",
+    "kiosk",
+    "offline",
+    "portable"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/manifest.json",
+    "onLanguage:json",
+    "onCommand:dotuix.pack",
+    "onCommand:dotuix.validate",
+    "onCommand:dotuix.init"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "dotuix.pack",
+        "title": "dotuix: Pack project → .uix"
+      },
+      {
+        "command": "dotuix.validate",
+        "title": "dotuix: Validate .uix file"
+      },
+      {
+        "command": "dotuix.init",
+        "title": "dotuix: Init new project"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": "manifest.json",
+        "url": "./schemas/manifest.schema.json"
+      }
+    ],
+    "languages": [
+      {
+        "id": "uix",
+        "aliases": [
+          "UIX",
+          "uix"
+        ],
+        "extensions": [
+          ".uix"
+        ],
+        "icon": {
+          "light": "./icons/uix-file-light.svg",
+          "dark": "./icons/uix-file-dark.svg"
+        }
+      }
+    ],
+    "snippets": [
+      {
+        "language": "json",
+        "path": "./snippets/manifest.json"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "package": "vsce package",
+    "publish": "vsce publish",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.0.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.3"
+  }
+}

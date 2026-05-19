@@ -50,7 +50,7 @@ Open [viewer.dotuix.com](https://viewer.dotuix.com) (or run the web viewer local
 | Package                                        | Description                                                                                                              | Status         |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------- |
 | [`packages/core`](packages/core)               | Core library — pack, unpack, validate, sign, read/write SQLite                                                           | ✅ Stable      |
-| [`packages/cli`](packages/cli)                 | `dotuix` CLI — pack, unpack, validate, sign, verify, keygen, export, encrypt                                             | ✅ Stable      |
+| [`packages/cli`](packages/cli)                 | `dotuix` CLI — pack, unpack, validate, sign, verify, keygen, export, encrypt, init `--template`                          | ✅ Stable      |
 | [`packages/vite-plugin`](packages/vite-plugin) | Vite plugin — build React/Vue/Svelte/TS apps, outputs a `.uix` file                                                      | ✅ Stable      |
 | [`packages/viewer-core`](packages/viewer-core) | Shared viewer logic for web and desktop viewers                                                                          | 🔄 In progress |
 | [`apps/viewer`](apps/viewer)                   | Desktop viewer — Tauri + Rust, full `window.__uix` bridge, signature verification, PIN decryption, state persistence     | ✅ Stable      |

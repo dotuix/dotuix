@@ -27,7 +27,27 @@ type PlatformKey = "mac-arm" | "mac-intel" | "windows" | "linux" | "other";
 
 function detectPlatform(): PlatformKey {
   const ua = navigator.userAgent;
-  if (/Macintosh/.test(ua)) return "mac-arm"; // both buttons shown for all Mac users
+  if (/Macintosh/.test(ua)) {
+    // WebGL renderer reliably distinguishes Apple Silicon ("Apple GPU") from Intel
+    try {
+      const canvas = document.createElement("canvas");
+      const gl =
+        (canvas.getContext("webgl") as WebGLRenderingContext | null) ??
+        (canvas.getContext(
+          "experimental-webgl",
+        ) as WebGLRenderingContext | null);
+      if (gl) {
+        const ext = gl.getExtension("WEBGL_debug_renderer_info");
+        if (ext) {
+          const renderer = gl.getParameter(
+            ext.UNMASKED_RENDERER_WEBGL,
+          ) as string;
+          return /apple/i.test(renderer) ? "mac-arm" : "mac-intel";
+        }
+      }
+    } catch {}
+    return "mac-intel"; // safe fallback — Intel .dmg runs on both via Rosetta
+  }
   if (/Windows/.test(ua)) return "windows";
   if (/Linux/.test(ua)) return "linux";
   return "other";
@@ -40,7 +60,7 @@ interface ReleaseAsset {
 
 function usePlatformUrls() {
   const [urls, setUrls] = useState<Record<string, string>>({});
-  const [version, setVersion] = useState("v0.2.1");
+  const [version, setVersion] = useState("v0.2.3");
 
   useEffect(() => {
     fetch("https://api.github.com/repos/dotuix/dotuix/releases/latest")

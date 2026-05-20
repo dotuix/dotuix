@@ -1,0 +1,11 @@
+.git
+.gitignore
+node_modules
+**/node_modules
+**/.DS_Store
+apps/website
+apps/tauri-app
+packages/vscode-extension
+docs
+*.vsix
+*.tgz

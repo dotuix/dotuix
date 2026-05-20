@@ -30,8 +30,8 @@ COPY --from=builder /app/apps/mcp-server/package.json ./apps/mcp-server/package.
 
 WORKDIR /app/apps/mcp-server
 
-ENV PORT=3100
+ENV PORT=80
 ENV NODE_ENV=production
-EXPOSE 3100
+EXPOSE 80
 
 CMD ["node", "dist/index.js"]

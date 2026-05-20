@@ -25,6 +25,7 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/core/dist ./packages/core/dist
 COPY --from=builder /app/packages/core/package.json ./packages/core/package.json
+COPY --from=builder /app/packages/core/node_modules ./packages/core/node_modules
 COPY --from=builder /app/apps/mcp-server/dist ./apps/mcp-server/dist
 COPY --from=builder /app/apps/mcp-server/package.json ./apps/mcp-server/package.json
 COPY --from=builder /app/apps/mcp-server/node_modules ./apps/mcp-server/node_modules

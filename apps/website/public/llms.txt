@@ -602,6 +602,93 @@ const path = await createUIX({
 console.log(path); // absolute path to the packed .uix file
 ```
 
+**For AI agents using HTTP REST (GPT, Gemini, custom agents — no MCP required):**
+
+Call `POST https://dotuix-mcp.server.jadwal.io/api/create` directly. Read the
+spec first with `GET https://dotuix-mcp.server.jadwal.io/api/spec`.
+
+Request body (JSON):
+```json
+{
+  "name": "AlMadinaKiosk",
+  "manifest": {
+    "uix": "1.0",
+    "id": "com.almadina.kiosk",
+    "name": "Al Madina Restaurant",
+    "version": "1.0.0",
+    "entry": "index.html",
+    "mode": "kiosk",
+    "network": "blocked"
+  },
+  "files": [
+    { "path": "index.html", "content": "<!DOCTYPE html><html><head><link rel=\"stylesheet\" href=\"style.css\"></head><body><div id=\"app\"></div><script src=\"app.js\"></script></body></html>" },
+    { "path": "app.js",     "content": "/* see correct app.js pattern below */" },
+    { "path": "style.css",  "content": "body { font-family: sans-serif; }" }
+  ],
+  "dataRecords": [
+    { "id": "category:grills",      "type": "category", "body": { "nameEn": "Grills",      "nameAr": "مشويات",   "sort": 1 } },
+    { "id": "category:appetizers",  "type": "category", "body": { "nameEn": "Appetizers",  "nameAr": "مقبلات",   "sort": 2 } },
+    { "id": "menuItem:grill-001",   "type": "menuItem", "body": { "nameEn": "Mixed Grill", "nameAr": "مشاوي مشكلة", "price": 85, "currency": "QAR", "category": "grills",      "emoji": "🍖" } },
+    { "id": "menuItem:app-001",     "type": "menuItem", "body": { "nameEn": "Hummus",      "nameAr": "حمص",         "price": 18, "currency": "QAR", "category": "appetizers",  "emoji": "🥣" } },
+    { "id": "i18n:en", "type": "i18n", "body": { "lang": "en", "restaurant": "Al Madina", "yourOrder": "Your Order", "total": "Total", "placeOrder": "Place Order", "emptyCart": "Cart is empty", "add": "Add", "langBtn": "العربية" } },
+    { "id": "i18n:ar", "type": "i18n", "body": { "lang": "ar", "restaurant": "مطعم المدينة", "yourOrder": "طلبك", "total": "المجموع", "placeOrder": "تأكيد الطلب", "emptyCart": "السلة فارغة", "add": "أضف", "langBtn": "English" } }
+  ]
+}
+```
+
+Response:
+```json
+{ "downloadUrl": "https://dotuix-mcp.server.jadwal.io/download/<id>", "filename": "AlMadinaKiosk.uix", "expiresIn": "30 minutes" }
+```
+
+**Critical rules for `POST /api/create`:**
+- `files` is an array of `{ "path": string, "content": string }` — source files only
+- **DO NOT put data inside `files`** (e.g. no `dataRecords.json` file) — data goes in `dataRecords`
+- `dataRecords` is a separate top-level field — an array of `{ id, type, body }` records
+- The server converts `dataRecords` → `data.db` (SQLite) automatically
+- `body` in `dataRecords` is a **plain object** — the server stringifies it; do NOT pre-stringify
+- `manifest.json` is NOT included in `files` — it is the separate `manifest` field
+
+**Correct `app.js` pattern when using the REST API or MCP:**
+```javascript
+// CORRECT — use uix.data.find(), never uix.data.getAll() (does not exist)
+const uix = window.__uix;
+
+async function init() {
+  // find() returns an array of { id, type, body, created_at, updated_at }
+  // body is ALWAYS a JSON string — you must JSON.parse() before reading fields
+  const catRecords  = await uix.data.find({ type: "category" });
+  const itemRecords = await uix.data.find({ type: "menuItem" });
+  const i18nRecords = await uix.data.find({ type: "i18n" });
+
+  const categories = catRecords
+    .map(r => JSON.parse(r.body))   // body is a JSON string — always parse
+    .sort((a, b) => a.sort - b.sort);
+
+  const menuItems = itemRecords.map(r => JSON.parse(r.body));
+
+  const strings = {};
+  for (const r of i18nRecords) {
+    const b = JSON.parse(r.body);   // body is a JSON string — always parse
+    strings[b.lang] = b;
+  }
+
+  render(categories, menuItems, strings);
+}
+
+init().catch(err => {
+  document.getElementById("app").innerHTML = `<p style="color:red">Error: ${err.message}</p>`;
+});
+```
+
+**Common mistakes that cause a blank screen:**
+- ❌ `uix.data.getAll()` — does not exist; use `uix.data.find({ type: "..." })`
+- ❌ `window.__uix.storage` — does not exist; use `uix.state.insert/find`
+- ❌ `window.__uix.db` — does not exist; use `uix.data.find / uix.state.insert`
+- ❌ Putting a `dataRecords.json` file in `files[]` — the viewer never reads it; use `dataRecords` field
+- ❌ Reading `r.body.someField` directly — body is a JSON string; do `JSON.parse(r.body).someField`
+- ❌ Hardcoding menu data in `app.js` as JS arrays — always put content in `dataRecords`
+
 ---
 
 ## Packages and tools

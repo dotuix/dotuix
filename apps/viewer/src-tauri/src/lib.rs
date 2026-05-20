@@ -109,10 +109,9 @@ fn pid_is_running(pid: u32) -> bool {
     }
     #[cfg(windows)]
     {
-        use std::os::windows::io::RawHandle;
         const SYNCHRONIZE: u32 = 0x00100000;
         let handle = unsafe { windows_sys::Win32::System::Threading::OpenProcess(SYNCHRONIZE, 0, pid) };
-        if handle == 0 { return false; }
+        if handle == std::ptr::null_mut() { return false; }
         unsafe { windows_sys::Win32::Foundation::CloseHandle(handle) };
         true
     }

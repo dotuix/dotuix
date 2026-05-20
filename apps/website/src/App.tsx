@@ -27,7 +27,7 @@ type PlatformKey = "mac-arm" | "mac-intel" | "windows" | "linux" | "other";
 
 function detectPlatform(): PlatformKey {
   const ua = navigator.userAgent;
-  if (/Macintosh/.test(ua)) return "mac-arm"; // default Apple Silicon; Intel shown as secondary
+  if (/Macintosh/.test(ua)) return "mac-arm"; // both buttons shown for all Mac users
   if (/Windows/.test(ua)) return "windows";
   if (/Linux/.test(ua)) return "linux";
   return "other";
@@ -40,7 +40,7 @@ interface ReleaseAsset {
 
 function usePlatformUrls() {
   const [urls, setUrls] = useState<Record<string, string>>({});
-  const [version, setVersion] = useState("v0.2.0");
+  const [version, setVersion] = useState("v0.2.1");
 
   useEffect(() => {
     fetch("https://api.github.com/repos/dotuix/dotuix/releases/latest")
@@ -89,14 +89,14 @@ function PlatformDownloadButton() {
       text: "Download for macOS",
       hint: "Apple Silicon  ·  .dmg",
       key: "mac-arm",
-      altText: "Intel Mac",
+      altText: "Intel Mac  ·  .dmg",
       altKey: "mac-intel",
     },
     "mac-intel": {
       text: "Download for macOS (Intel)",
       hint: "Intel  ·  .dmg",
       key: "mac-intel",
-      altText: "Apple Silicon",
+      altText: "Apple Silicon  ·  .dmg",
       altKey: "mac-arm",
     },
     windows: {
@@ -140,9 +140,9 @@ function PlatformDownloadButton() {
             href={altUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-gray-500 hover:text-gray-300 underline underline-offset-2 transition-colors"
+            className="text-gray-400 hover:text-gray-200 underline underline-offset-2 transition-colors font-medium"
           >
-            {altText} →
+            ↓ {altText}
           </a>
         )}
         <a

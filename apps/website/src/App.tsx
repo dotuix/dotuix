@@ -1315,6 +1315,41 @@ const TOOLS = [
 // App
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// GitHub stars (client-side only, graceful fallback)
+// ---------------------------------------------------------------------------
+function GitHubStars() {
+  const [stars, setStars] = useState<number | null>(null);
+  useEffect(() => {
+    fetch("https://api.github.com/repos/dotuix/dotuix")
+      .then((r) => r.json())
+      .then(
+        (d) =>
+          typeof d.stargazers_count === "number" &&
+          setStars(d.stargazers_count),
+      )
+      .catch(() => {});
+  }, []);
+  if (stars === null) return null;
+  return (
+    <a
+      href="https://github.com/dotuix/dotuix"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 hover:text-white transition-colors"
+    >
+      <svg
+        viewBox="0 0 16 16"
+        className="w-3.5 h-3.5 fill-current"
+        aria-hidden="true"
+      >
+        <path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z" />
+      </svg>
+      {stars.toLocaleString()}
+    </a>
+  );
+}
+
 export function App() {
   return (
     <div className="min-h-screen bg-[#09090f] text-white">
@@ -1386,6 +1421,8 @@ export function App() {
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/15 bg-white/5 text-xs text-gray-400 mb-8">
           <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
           Open format · MIT · v0.2.1
+          <span className="text-white/20">·</span>
+          <GitHubStars />
         </div>
 
         {/* headline */}
@@ -1395,7 +1432,7 @@ export function App() {
             Runs offline.
           </span>
           <br />
-          No install.
+          No server.
         </h1>
 
         {/* category */}
@@ -1407,12 +1444,25 @@ export function App() {
         </p>
 
         {/* subtext */}
-        <p className="text-xl sm:text-2xl text-gray-400 max-w-4xl mx-auto mb-10 leading-relaxed">
-          A single portable file for AI-generated software, interactive reports,
-          simulations, and tools —{" "}
+        <p className="text-xl sm:text-2xl text-gray-400 max-w-3xl mx-auto mb-4 leading-relaxed">
+          Tell any AI what to build. It packages the result as a{" "}
+          <span className="text-gray-300">signed .uix file</span> and gives you
+          a download link —{" "}
           <span className="text-gray-300">
-            fully offline, signed, and self-contained.
+            no hosting, no deployment, no cloud.
           </span>
+        </p>
+        <p className="text-sm text-gray-500 mb-10">
+          Recipients open it in the{" "}
+          <a
+            href="https://github.com/dotuix/dotuix/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 hover:text-gray-400 transition-colors"
+          >
+            free desktop viewer
+          </a>{" "}
+          — macOS, Windows, Linux. No subscription.
         </p>
 
         {/* Platform download — primary CTA */}
@@ -1854,6 +1904,44 @@ export function App() {
             for IntelliSense, file icons, and one-click pack/validate.
           </p>
         </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* FAQ                                                                 */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="max-w-3xl mx-auto px-6 py-20 border-t border-white/8">
+        <h2 className="text-3xl font-bold text-center mb-12">FAQ</h2>
+        <dl className="space-y-8">
+          {(
+            [
+              [
+                "Do recipients need to install anything?",
+                "Yes — the free dotuix desktop viewer (~5 MB, macOS · Windows · Linux). Think of it like a PDF reader: install once, open any .uix file forever. There's no app store, no subscription, and no per-file fee.",
+              ],
+              [
+                "Can I open a .uix file in a browser?",
+                "Not yet. A web-based viewer is on the roadmap. For now, files open in the desktop app. If your use case needs browser support, let us know — it helps us prioritise.",
+              ],
+              [
+                "Do I need AI to create .uix files?",
+                "No. The CLI (dotuix init / pack / validate) and the Vite plugin work entirely without AI. AI generation is the fastest path, but you can hand-code any .uix file with a text editor.",
+              ],
+              [
+                "Is the format open? Can I build my own viewer?",
+                "Yes. The format is MIT licensed and has a normative CC-BY 4.0 specification at spec/spec.md. Anyone can implement a compatible viewer, packager, or tooling.",
+              ],
+              [
+                "What does 'no server' mean exactly?",
+                "You — the creator — need zero infrastructure. No hosting, no CDN, no cloud function, no API key for distribution. The file is self-contained: app code, data, and optionally a signature are all inside the .uix archive.",
+              ],
+            ] as [string, string][]
+          ).map(([q, a]) => (
+            <div key={q}>
+              <dt className="text-lg font-semibold text-white mb-2">{q}</dt>
+              <dd className="text-gray-400 leading-relaxed">{a}</dd>
+            </div>
+          ))}
+        </dl>
       </section>
 
       {/* ------------------------------------------------------------------ */}

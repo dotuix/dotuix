@@ -1,6 +1,6 @@
 {
   "name": "@dotuix/mcp",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "MCP server for dotuix — lets AI agents generate, pack, and validate .uix files",
   "keywords": [
     "uix",
@@ -38,6 +38,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@dotuix/cli": "workspace:*",
     "@dotuix/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "zod": "^3.24.1"

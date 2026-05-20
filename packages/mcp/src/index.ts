@@ -5,13 +5,22 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { createDataDb } from "@dotuix/core";
 
 const execFileAsync = promisify(execFile);
 
-const SPEC_URL = "https://dotuix.com/llms.txt";
+const SPEC_URL = "https://dotuix.uts.qa/llms.txt";
+
+// Resolve the dotuix CLI binary — works when @dotuix/cli is a dep or globally installed
+let DOTUIX_BIN = "dotuix";
+try {
+  DOTUIX_BIN = fileURLToPath(import.meta.resolve("@dotuix/cli/dist/index.js"));
+} catch {
+  /* fall back to PATH */
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -21,7 +30,7 @@ async function runDotuix(
   args: string[],
 ): Promise<{ stdout: string; stderr: string }> {
   try {
-    const { stdout, stderr } = await execFileAsync("dotuix", args, {
+    const { stdout, stderr } = await execFileAsync(DOTUIX_BIN, args, {
       timeout: 30_000,
     });
     return { stdout: stdout.trim(), stderr: stderr.trim() };
@@ -225,7 +234,7 @@ server.tool(
       args.push("-t", template);
     }
 
-    const { stdout } = await execFileAsync("dotuix", args, {
+    const { stdout } = await execFileAsync(DOTUIX_BIN, args, {
       cwd: parent,
       timeout: 30_000,
     });

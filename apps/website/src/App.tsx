@@ -219,6 +219,7 @@ Critical rules:
 ${vals.cuisine || vals.city ? "- Include Arabic + English labels" : ""}
 - DO NOT put a dataRecords.json inside files[] — data goes in the dataRecords field
 - DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
+- In the dataRecords array, body must be a plain object — never a pre-stringified JSON string
 
 Finally call:
 POST https://mcp.dotuix.uts.qa/api/create
@@ -265,6 +266,7 @@ Critical rules:
 - No external URLs
 - DO NOT put a dataRecords.json inside files[] — data goes in the dataRecords field
 - DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
+- In the dataRecords array, body must be a plain object — never a pre-stringified JSON string
 
 Finally call:
 POST https://mcp.dotuix.uts.qa/api/create
@@ -310,6 +312,7 @@ Critical rules:
 - No external URLs
 - DO NOT put a dataRecords.json inside files[] — data goes in the dataRecords field
 - DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
+- In the dataRecords array, body must be a plain object — never a pre-stringified JSON string
 
 Finally call:
 POST https://mcp.dotuix.uts.qa/api/create
@@ -356,6 +359,7 @@ Critical rules:
 - No external URLs
 - DO NOT put a dataRecords.json inside files[] — data goes in the dataRecords field
 - DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
+- In the dataRecords array, body must be a plain object — never a pre-stringified JSON string
 
 Finally call:
 POST https://mcp.dotuix.uts.qa/api/create
@@ -394,6 +398,7 @@ Critical rules:
 - Use uix.state.insert/find for user data (cart, preferences)
 - DO NOT put a dataRecords.json inside files[] — data goes in the dataRecords field
 - DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
+- In the dataRecords array, body must be a plain object — never a pre-stringified JSON string
 
 Finally call:
 POST https://mcp.dotuix.uts.qa/api/create

@@ -429,8 +429,9 @@ function AIPromptBuilder() {
           </div>
           <h2 className="text-3xl font-bold mb-3">Generate with any AI</h2>
           <p className="text-gray-400 max-w-xl mx-auto leading-relaxed">
-            No API key. No backend. Pick a template, fill in details, copy the
-            prompt into any AI — then pack the files it gives you with the CLI.
+            No API key. No install. Pick a template, fill in your details, copy
+            the prompt — the AI reads the spec, calls the API, and gives you a
+            download link.
           </p>
         </div>
 
@@ -509,11 +510,8 @@ function AIPromptBuilder() {
             )}
           </button>
           <p className="text-xs text-gray-500 leading-relaxed">
-            Paste into any AI. It will call the API and give you a download
-            link. Or save the files and run:{" "}
-            <code className="text-gray-400 bg-white/5 px-1.5 py-0.5 rounded">
-              dotuix pack ./folder
-            </code>
+            Paste into ChatGPT, Gemini, or Claude. The AI calls the API and
+            returns a download link — no files to save, no CLI needed.
           </p>
         </div>
       </div>
@@ -655,28 +653,23 @@ const GUIDE_PATHS = [
     tag: "ChatGPT  ·  Gemini  ·  Claude",
     steps: [
       {
-        title: "Use the prompt builder",
-        desc: "Scroll to the prompt builder below. Pick a template, fill in your details — restaurant, catalogue, portfolio, or describe something custom.",
+        title: "Use the prompt builder — or write your own",
+        desc: 'Use the template below, or just tell your AI: "Read https://dotuix-mcp.server.jadwal.io/api/spec then build me a [describe your app]. Give me the download link when done."',
         code: null,
       },
       {
         title: "Paste into any AI",
-        desc: "Copy the generated prompt and paste it into ChatGPT, Gemini, or Claude. The prompt includes the full spec URL and tells the AI exactly what files to produce.",
+        desc: "Copy the prompt and paste it into ChatGPT, Gemini, or Claude. The AI reads the spec — which tells it exactly how to call the API — then builds everything.",
         code: null,
       },
       {
-        title: "Save the files into a folder",
-        desc: "Create a folder (e.g. my-app/) and save each file the AI outputs: manifest.json, index.html, app.js, style.css.",
-        code: "my-app/\n├── manifest.json\n├── index.html\n├── app.js\n└── style.css",
+        title: "The AI calls the API for you",
+        desc: "The AI sends your app's manifest, files, and data records to the API. The server generates data.db, packs the .uix, and returns a download link — no files to save, no CLI needed.",
+        code: 'POST /api/create → { url: "https://.../download/abc123" }',
       },
       {
-        title: "Pack with the CLI",
-        desc: "Install the CLI once, then pack the folder into a single signed .uix file.",
-        code: "npm install -g @dotuix/cli\ndotuix pack ./my-app\n✓  my-app.uix — ready",
-      },
-      {
-        title: "Open in the desktop viewer",
-        desc: "Download the viewer (button at the top), open my-app.uix. Fully offline. No server.",
+        title: "Download and open",
+        desc: "Click the download link the AI gives you. Open the .uix file in the desktop viewer — fully offline, zero install beyond the viewer.",
         code: null,
       },
     ],

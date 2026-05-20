@@ -76,10 +76,14 @@ The fastest way to create a `.uix` file is to let an AI do it. The full format s
 
 ### With any AI (GPT, Gemini, Claude.ai)
 
-1. Open your AI of choice
-2. Say: _"Read https://dotuix.com/llms.txt and create a [describe your app] .uix project"_
-3. Save the generated files into a folder
-4. Run `dotuix pack ./folder` → done
+The simplest way — no config, no install:
+
+1. Open ChatGPT, Gemini, or Claude
+2. Say: _"Read https://dotuix-mcp.server.jadwal.io/api/spec then build me a [describe your app]. Give me the download link when done."_
+3. The AI reads the spec, calls `POST /api/create`, and returns a download URL
+4. Download and open in the viewer — done
+
+No file saving. No CLI. The API builds and packs the `.uix` on the server.
 
 ### Remote MCP — no install (Claude Desktop, Cursor, any MCP client)
 

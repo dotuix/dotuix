@@ -196,27 +196,28 @@ const AI_TEMPLATES = [
       { key: "city", placeholder: "City / location", required: false },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at /llms.txt
+      `Read the full dotuix format spec at https://dotuix-mcp.server.jadwal.io/api/spec
 
 Build a restaurant kiosk .uix file for ${vals.name || "my restaurant"}${
         vals.cuisine ? ` — ${vals.cuisine} cuisine` : ""
       }${vals.city ? `, ${vals.city}` : ""}.
 
-Output exactly these files (no other files):
-• manifest.json — id, name, version, entry, author
+Output exactly these files:
+• manifest.json — uix:"1.0", id, name, version, entry, mode:"kiosk", network:"blocked"
 • index.html — app shell
-• app.js — menu data and cart logic using the window.__uix bridge
+• app.js — reads menu via uix.data.find(), cart via uix.state.insert()
 • style.css — professional kiosk styling, touch-friendly
 
-Requirements:
-- No external URLs (fully offline)
-- If Gulf restaurant: include Arabic + English labels
-- At least 8 sample menu items across 3 categories
-- Working add-to-cart with order total
+And a dataRecords array with at least 8 menu items across 3 categories:
+[{ "id": "product:001", "type": "product", "body": { "name": "...", "price": 0, "category": "..." } }]
 
-After generating all files, tell me to run:
-  dotuix pack ./[folder-name]
-to create the final .uix file.`,
+Critical rules:
+- ALL content (items, categories) goes in dataRecords — never hardcode in app.js
+- Read data with: const items = await uix.data.find({ type: 'product' })
+- body is a JSON string — always JSON.parse(item.body) before reading fields
+- No external URLs (fully offline)
+${vals.cuisine || vals.city ? "- Include Arabic + English labels" : ""}
+Then call POST https://dotuix-mcp.server.jadwal.io/api/create with { name, manifest, files, dataRecords }.`,
   },
   {
     id: "catalog",
@@ -235,27 +236,28 @@ to create the final .uix file.`,
       },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at /llms.txt
+      `Read the full dotuix format spec at https://dotuix-mcp.server.jadwal.io/api/spec
 
 Build a product catalogue .uix file for ${
         vals.company || "my company"
       } selling ${vals.product || "products"}.
 
 Output exactly these files:
-• manifest.json
+• manifest.json — uix:"1.0", id, name, version, entry, mode:"kiosk", network:"blocked"
 • index.html
-• app.js — product data, category filters, search
+• app.js — reads products via uix.data.find(), category filters, search
 • style.css — clean exhibition/showroom styling
 
-Requirements:
-- No external URLs
-- At least ${
-        vals.count || "12"
-      } sample products with name, price, description, category
-- Filterable by category, searchable by name
-- Works offline, no server
+And a dataRecords array with at least ${vals.count || "12"} products:
+[{ "id": "product:001", "type": "product", "body": { "name": "...", "price": 0, "category": "...", "desc": "..." } }]
 
-After generating: dotuix pack ./[folder-name]`,
+Critical rules:
+- ALL products go in dataRecords — never hardcode in app.js
+- Read with: const items = await uix.data.find({ type: 'product' })
+- Always JSON.parse(item.body) before reading any field
+- No external URLs
+
+Then call POST https://dotuix-mcp.server.jadwal.io/api/create with { name, manifest, files, dataRecords }.`,
   },
   {
     id: "portfolio",
@@ -274,23 +276,27 @@ After generating: dotuix pack ./[folder-name]`,
       },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at /llms.txt
+      `Read the full dotuix format spec at https://dotuix-mcp.server.jadwal.io/api/spec
 
 Build a portfolio .uix file for ${vals.name || "me"}, a ${
         vals.role || "professional"
       }.${vals.projects ? ` Focus on: ${vals.projects}.` : ""}
 
 Output exactly these files:
-• manifest.json
+• manifest.json — uix:"1.0", id, name, version, entry, mode:"window"
 • index.html
-• app.js — portfolio data and interactivity
+• app.js — reads projects via uix.data.find(), interactivity
 • style.css — professional, modern design
 
-Sections: About, Projects (at least 4), Skills, Contact
-- No external URLs
-- Shareable as a single file
+And dataRecords for at least 4 projects and skills:
+[{ "id": "project:001", "type": "project", "body": { "title": "...", "desc": "...", "tags": [] } }]
 
-After generating: dotuix pack ./[folder-name]`,
+Critical rules:
+- ALL content (projects, skills) goes in dataRecords
+- Always JSON.parse(item.body) before reading any field
+- No external URLs
+
+Then call POST https://dotuix-mcp.server.jadwal.io/api/create with { name, manifest, files, dataRecords }.`,
   },
   {
     id: "report",
@@ -310,24 +316,27 @@ After generating: dotuix pack ./[folder-name]`,
       },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at /llms.txt
+      `Read the full dotuix format spec at https://dotuix-mcp.server.jadwal.io/api/spec
 
 Build an interactive report .uix file titled "${vals.title || "My Report"}".${
         vals.subject ? ` Subject: ${vals.subject}.` : ""
       }${vals.metrics ? ` Include: ${vals.metrics}.` : ""}
 
 Output exactly these files:
-• manifest.json
+• manifest.json — uix:"1.0", id, name, version, entry, mode:"window"
 • index.html
-• app.js — report data, charts, interactive filters
+• app.js — reads data via uix.data.find(), charts, filters
 • style.css — clean report/dashboard design
 
-Requirements:
-- No external URLs
-- Use sample/realistic data
-- Print-friendly layout option
+And dataRecords with sample data rows:
+[{ "id": "metric:001", "type": "metric", "body": { "label": "...", "value": 0, "period": "..." } }]
 
-After generating: dotuix pack ./[folder-name]`,
+Critical rules:
+- ALL data goes in dataRecords — never hardcode numbers in app.js
+- Always JSON.parse(item.body) before reading any field
+- No external URLs
+
+Then call POST https://dotuix-mcp.server.jadwal.io/api/create with { name, manifest, files, dataRecords }.`,
   },
   {
     id: "custom",
@@ -340,23 +349,26 @@ After generating: dotuix pack ./[folder-name]`,
       },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at /llms.txt
+      `Read the full dotuix format spec at https://dotuix-mcp.server.jadwal.io/api/spec
 
 Build a .uix file for: ${vals.description || "[describe your app]"}
 
 Output exactly these files:
-• manifest.json — id, name, version, entry, author fields
+• manifest.json — uix:"1.0", id, name, version, entry, mode, network:"blocked"
 • index.html — app shell
-• app.js — all app logic
+• app.js — all app logic, reads data via uix.data.find()
 • style.css — clean, professional design
 
-Rules:
-- No external URLs anywhere (fully offline)
-- Use window.__uix.db for any local data or storage
-- Responsive design
+And a dataRecords array for all content (items, categories, pages, etc.)
 
-After generating all files, tell me to run:
-  dotuix pack ./[folder-name]`,
+Critical rules:
+- ALL content goes in dataRecords — never hardcode data in app.js
+- Read data with: const items = await uix.data.find({ type: 'yourtype' })
+- Always JSON.parse(item.body) before reading any field
+- No external URLs (fully offline)
+- Use uix.state.insert/find for user data (cart, preferences)
+
+Then call POST https://dotuix-mcp.server.jadwal.io/api/create with { name, manifest, files, dataRecords } to get a download URL.`,
   },
 ];
 
@@ -471,7 +483,8 @@ function AIPromptBuilder() {
             )}
           </button>
           <p className="text-xs text-gray-500 leading-relaxed">
-            Paste into any AI. Save the files it outputs. Then:{" "}
+            Paste into any AI. It will call the API and give you a download
+            link. Or save the files and run:{" "}
             <code className="text-gray-400 bg-white/5 px-1.5 py-0.5 rounded">
               dotuix pack ./folder
             </code>
@@ -648,23 +661,28 @@ const GUIDE_PATHS = [
     tag: "Claude Desktop  ·  Cursor  ·  VS Code Copilot",
     steps: [
       {
-        title: "Install the MCP server",
-        desc: "Run once. This registers the dotuix create tool with your AI environment.",
-        code: "npx @dotuix/mcp",
+        title: "Connect — no install needed",
+        desc: "Add the remote MCP server URL to your AI client config. Works in Claude Desktop, Cursor, Windsurf — no npx, nothing to install.",
+        code: `// Claude Desktop: ~/Library/Application Support/Claude/claude_desktop_config.json\n// Cursor: .cursor/mcp.json\n{\n  "mcpServers": {\n    "dotuix": { "url": "https://dotuix-mcp.server.jadwal.io/mcp" }\n  }\n}`,
+      },
+      {
+        title: "Or run locally with npx",
+        desc: "Prefer offline / local execution? Install the stdio MCP server instead.",
+        code: `// Alternative — local stdio:\n{\n  "mcpServers": {\n    "dotuix": { "command": "npx", "args": ["-y", "@dotuix/mcp"] }\n  }\n}`,
       },
       {
         title: "Describe what you want",
-        desc: "Open Claude Desktop, Cursor, or VS Code Copilot. Start a new conversation and describe the app.",
+        desc: "Open Claude Desktop, Cursor, or VS Code Copilot. Describe the app — the agent reads the spec and generates everything.",
         code: '"Build an offline restaurant kiosk for\n Al Madina, Doha — Arabic + English."',
       },
       {
         title: "The AI packs it automatically",
-        desc: "The agent calls the create tool, generates all files, and signs the bundle in one step. No CLI needed.",
-        code: "# Agent calls internally:\ncreate({ manifest, files })\n✓  al-madina.uix — signed",
+        desc: "The agent calls get_spec → create (with dataRecords for all content). All menu items, products, and data go into data.db — nothing hardcoded in app.js.",
+        code: "# Agent calls internally:\ncreate({ manifest, files, dataRecords })\n✓  al-madina.uix — signed",
       },
       {
         title: "Open in the desktop viewer",
-        desc: "The agent tells you where the file was saved. Open it directly in the viewer.",
+        desc: "The agent returns the file path (local) or a download URL (remote). Open in the viewer — fully offline.",
         code: null,
       },
     ],
@@ -1204,8 +1222,14 @@ function FormatRefSection() {
 
 const TOOLS = [
   {
+    name: "Remote MCP Server",
+    desc: "Hosted MCP server — connect Claude Desktop, Cursor, or any MCP client with just a URL. No install. Also exposes a REST API for GPT and Gemini Actions.",
+    href: "https://dotuix-mcp.server.jadwal.io/health",
+    tag: "live",
+  },
+  {
     name: "@dotuix/mcp",
-    desc: "MCP server for Claude Desktop, Cursor, and VS Code Copilot. The canonical AI interface for creating .uix files — one conversation, one signed file.",
+    desc: "Local stdio MCP server for Claude Desktop, Cursor, and VS Code Copilot. The create tool accepts dataRecords — content goes into data.db, not app.js.",
     href: "https://www.npmjs.com/package/@dotuix/mcp",
     tag: "npm",
   },
@@ -1217,19 +1241,19 @@ const TOOLS = [
   },
   {
     name: "@dotuix/core",
-    desc: "Core library — pack, unpack, validate, sign, read/write SQLite.",
+    desc: "Core library — pack, unpack, validate, sign, read/write SQLite, createDataDb() for seeding data.db.",
     href: "https://www.npmjs.com/package/@dotuix/core",
     tag: "npm",
   },
   {
     name: "@dotuix/cli",
-    desc: "CLI — pack, validate, init, sign, encrypt, export. Install globally.",
+    desc: "CLI — pack, validate, init, sign, encrypt, export, seed (create data.db from JSON). Install globally.",
     href: "https://www.npmjs.com/package/@dotuix/cli",
     tag: "npm",
   },
   {
     name: "VS Code Extension",
-    desc: "Manifest IntelliSense, .uix file icon, pack & validate commands.",
+    desc: "Manifest IntelliSense, .uix file icon, pack & validate commands, and @dotuix chat participant for AI-assisted generation inside Copilot Chat.",
     href: "https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix",
     tag: "ext",
   },
@@ -1321,7 +1345,7 @@ export function App() {
         {/* badge */}
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/15 bg-white/5 text-xs text-gray-400 mb-8">
           <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
-          Open format · MIT · v0.2.0
+          Open format · MIT · v0.2.1
         </div>
 
         {/* headline */}

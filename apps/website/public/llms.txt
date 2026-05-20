@@ -192,18 +192,21 @@ const manifest = await uix.manifest();
 
 ### Data database — read-only (creator data shipped in the .uix)
 
+> **These are the only three methods on `uix.data`:** `find()`, `get()`, `raw()`.
+> There is no `getAll`, `findAll`, `fetchAll`, `getItems`, `query`, `list`, `all`, or any other
+> variant. If you need all records of a type, call `find({ type: "..." })` — it returns all of them.
+
 ```javascript
-// Find all records of a type
+// Returns ALL records of a type — no extra argument needed
 const products = await uix.data.find({ type: "product" });
 
-// Find with filters, sorting, pagination
+// Filtered, sorted, paginated
 const burgers = await uix.data.find({
   type: "product",
-  where: { category: "burgers" },
-  orderBy: { field: "name", direction: "asc" },
+  where: { category: "burgers" },   // json_extract(body, '$.category') = 'burgers'
+  orderBy: { field: "sort", direction: "asc" },  // or orderBy: "sort" (string shorthand)
   limit: 20,
 });
-// where clause: key = json_extract(body, '$.key') = value
 
 // Get a single record by id
 const product = await uix.data.get("product:001");
@@ -275,12 +278,21 @@ await uix.exit();
 
 These APIs do **not** exist — do not generate code that uses them:
 
+**Data retrieval — `find()` is the only method:**
+- `uix.data.getAll()` — use `uix.data.find({ type: "..." })`
+- `uix.data.findAll()` — use `uix.data.find({ type: "..." })`
+- `uix.data.fetchAll()` — use `uix.data.find({ type: "..." })`
+- `uix.data.getItems()` — use `uix.data.find({ type: "..." })`
+- `uix.data.query()` / `uix.data.list()` / `uix.data.all()` — none of these exist
+
+**Other non-existent APIs:**
 - `uix.storage.set / uix.storage.get` — use `uix.state.insert / uix.state.find` instead
 - `uix.notify()` — use your own in-app UI (toast div, alert, banner)
 - `uix.fetch()` — network is blocked by default (`"network": "blocked"`)
 - `uix.version()` — not exposed
 - `uix.fs` — no host filesystem access
 - `uix.sendAction() / uix.dispatch() / uix.emit()` — no event or action bus exists
+- `window.__uix.db` — does not exist; use `uix.data.find / uix.state.insert`
 
 **Correct pattern for saving data (e.g. checkout / order submission):**
 ```javascript
@@ -660,8 +672,8 @@ Response:
 
 **Correct `app.js` pattern when using the REST API or MCP:**
 ```javascript
-// CORRECT — use uix.data.find(), never uix.data.getAll() (does not exist)
-const uix = window.__uix;
+// uix is available as a global — no import or assignment needed
+// uix === window.__uix === window.uix — use whichever; plain `uix` is preferred
 
 async function init() {
   // find() returns an array of { id, type, body, created_at, updated_at }
@@ -691,12 +703,14 @@ init().catch(err => {
 ```
 
 **Common mistakes that cause a blank screen:**
-- ❌ `uix.data.getAll()` — does not exist; use `uix.data.find({ type: "..." })`
+- ❌ `uix.data.getAll()` / `findAll()` / `fetchAll()` — none of these exist; only `uix.data.find({ type: "..." })`
 - ❌ `window.__uix.storage` — does not exist; use `uix.state.insert/find`
 - ❌ `window.__uix.db` — does not exist; use `uix.data.find / uix.state.insert`
 - ❌ Putting a `dataRecords.json` file in `files[]` — the viewer never reads it; use `dataRecords` field
 - ❌ Reading `r.body.someField` directly — body is a JSON string; do `JSON.parse(r.body).someField`
 - ❌ Hardcoding menu data in `app.js` as JS arrays — always put content in `dataRecords`
+- ❌ Wrapping init logic in a bare async IIFE with no error handler — errors are silently swallowed;
+   always end with `.catch(err => document.getElementById('app').innerHTML = err.message)`
 
 ---
 

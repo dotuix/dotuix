@@ -640,6 +640,7 @@ fn bridge_script(manifest_json: &str) -> String {
   window.__uix = {{
     manifest: function() {{ return m; }},
     data: {{
+
       find: function (opts) {{
         var q = (typeof opts === 'string') ? {{ type: opts }} : Object.assign({{}}, opts);
         return relay('data_find', {{ query: q }});
@@ -671,6 +672,8 @@ fn bridge_script(manifest_json: &str) -> String {
     print: function () {{ window.print(); }},
     exit:  function () {{ return relay('uix_exit', {{}}); }},
   }};
+  // Convenience alias — uix.data.find() works without window.__uix prefix
+  window.uix = window.__uix;
 }})();
 </script>"#
     )
@@ -688,9 +691,10 @@ struct FindQuery {
     /// Field equality filters applied via json_extract(body, '$.key') = value.
     #[serde(rename = "where")]
     filters: Option<HashMap<String, serde_json::Value>>,
-    /// Column or body field to sort by: "created_at", "updated_at", "id", or any body field.
+    /// Column or body field to sort by. Accepts either a plain string ("created_at", "sort", …)
+    /// or an object { field: "sort", direction: "asc"|"desc" } as documented in llms.txt.
     #[serde(rename = "orderBy")]
-    order_by: Option<String>,
+    order_by: Option<serde_json::Value>,
     /// Maximum number of rows to return.
     limit: Option<u32>,
 }
@@ -755,15 +759,26 @@ fn query_records(conn: &rusqlite::Connection, query: &FindQuery) -> Result<Vec<R
         conditions.join(" AND ")
     );
 
-    if let Some(order) = &query.order_by {
-        let order_sql = match order.as_str() {
-            "id" | "type" | "created_at" | "updated_at" => order.clone(),
-            col => {
+    if let Some(order_val) = &query.order_by {
+        let (col, dir) = match order_val {
+            serde_json::Value::String(s) => (s.as_str(), "ASC"),
+            serde_json::Value::Object(obj) => {
+                let field = obj.get("field").and_then(|v| v.as_str()).unwrap_or("created_at");
+                let dir = obj.get("direction").and_then(|v| v.as_str())
+                    .map(|d| if d.eq_ignore_ascii_case("desc") { "DESC" } else { "ASC" })
+                    .unwrap_or("ASC");
+                (field, dir)
+            }
+            _ => ("created_at", "ASC"),
+        };
+        let col_sql = match col {
+            "id" | "type" | "created_at" | "updated_at" => col.to_string(),
+            _ => {
                 validate_identifier(col, "orderBy")?;
                 format!("json_extract(body, '$.{col}')")
             }
         };
-        sql.push_str(&format!(" ORDER BY {order_sql}"));
+        sql.push_str(&format!(" ORDER BY {col_sql} {dir}"));
     }
 
     if let Some(limit) = query.limit {

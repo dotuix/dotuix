@@ -15,6 +15,7 @@ RUN pnpm install --filter @dotuix/mcp-server... --frozen-lockfile
 # Copy and build source
 COPY packages/core ./packages/core
 COPY apps/mcp-server ./apps/mcp-server
+COPY apps/website/public/llms.txt ./llms.txt
 RUN pnpm --filter @dotuix/core build
 RUN pnpm --filter @dotuix/mcp-server build
 
@@ -31,6 +32,7 @@ WORKDIR /app
 COPY --from=builder /standalone/node_modules ./node_modules
 COPY --from=builder /standalone/package.json ./package.json
 COPY --from=builder /app/apps/mcp-server/dist ./dist
+COPY --from=builder /app/llms.txt ./llms.txt
 
 ENV PORT=80
 ENV NODE_ENV=production

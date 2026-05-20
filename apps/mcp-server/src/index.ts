@@ -17,6 +17,7 @@
  */
 
 import * as http from "node:http";
+import * as fs from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
@@ -24,7 +25,7 @@ import { packBuffer, validateBuffer, createDataDb } from "@dotuix/core";
 import type { DataRecord } from "@dotuix/core";
 import { randomUUID } from "node:crypto";
 
-const SPEC_URL = "https://dotuix.com/llms.txt";
+const SPEC_PATH = new URL("../../llms.txt", import.meta.url);
 const DOWNLOAD_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const BASE_URL = process.env.BASE_URL ?? "https://dotuix-mcp.server.jadwal.io";
 const PORT = Number(process.env.PORT ?? 3100);
@@ -324,18 +325,17 @@ const httpServer = http.createServer(async (req, res) => {
     return;
   }
 
-  // REST: GET /api/spec — returns llms.txt (for AI system prompts)
+  // REST: GET /api/spec — returns llms.txt bundled in the image
   if (url.pathname === "/api/spec" && req.method === "GET") {
     try {
-      const r = await fetch(SPEC_URL);
-      const text = await r.text();
+      const text = await fs.readFile(SPEC_PATH, "utf8");
       res.writeHead(200, {
         "Content-Type": "text/plain; charset=utf-8",
         "Access-Control-Allow-Origin": "*",
       });
       res.end(text);
     } catch {
-      sendJson(res, 502, { error: "Could not fetch spec" });
+      sendJson(res, 502, { error: "llms.txt not found in image" });
     }
     return;
   }

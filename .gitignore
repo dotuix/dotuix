@@ -28,3 +28,5 @@ Thumbs.db
 apps/editor/dist-electron/
 *.priv
 dotuix-key.*
+gov-key.*
+*.pub

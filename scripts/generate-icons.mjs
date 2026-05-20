@@ -149,15 +149,6 @@ async function main() {
   await ico([16, 24, 32, 48, 64, 128, 256], "apps/editor/build/icon.ico");
   await icns("apps/editor/build/icon.icns");
 
-  // ── Web viewer ───────────────────────────────────────────────────────────
-  console.log("\nWeb viewer (apps/web-viewer/public/):");
-  dir("apps/web-viewer/public");
-  await png(512, "apps/web-viewer/public/logo.png");
-  await png(180, "apps/web-viewer/public/apple-touch-icon.png");
-  await png(192, "apps/web-viewer/public/icon-192.png");
-  await png(512, "apps/web-viewer/public/icon-512.png");
-  await ico([16, 32], "apps/web-viewer/public/favicon.ico");
-
   // ── Shared assets (for README, docs, og:image, etc.) ────────────────────
   console.log("\nShared assets (docs/assets/):");
   dir("docs/assets");

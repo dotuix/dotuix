@@ -8,7 +8,6 @@
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": [
-    "@dotuix/cli",
-    "@dotuix/viewer-core"
+    "@dotuix/cli"
   ]
 }

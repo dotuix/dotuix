@@ -14,256 +14,140 @@
 
 `.uix` is a **portable executable document format**. Like PDF — but it runs.
 
-A `.uix` file is a ZIP archive containing an HTML app, assets, and optional SQLite databases. You open it in a viewer (browser or desktop) and it runs fully offline, with no install, no URL, and no server. The viewer enforces a sandboxed runtime, an optional Ed25519 signature, and optional AES-256-GCM encryption — making `.uix` suitable for anything from a restaurant kiosk to a classified government briefing.
+A `.uix` file is a standard ZIP archive containing an HTML/JS app, optional SQLite databases, and a `manifest.json`. Open it in a viewer and it runs fully offline — no install, no URL, no server. The viewer enforces a sandboxed runtime, optional Ed25519 signature verification, and optional AES-256-GCM encryption.
 
-| Format       | Interactive | Offline | One File | No Install                          |
-| ------------ | ----------- | ------- | -------- | ----------------------------------- |
-| PDF          | No          | Yes     | Yes      | Yes (viewer pre-installed)          |
-| PWA          | Yes         | Partial | No       | No (tied to URL + browser cache)    |
-| Electron app | Yes         | Yes     | No       | No (installer required)             |
-| Raw HTML     | Yes         | Yes     | No       | Yes (but no kiosk, no distribution) |
-| **`.uix`**   | **Yes**     | **Yes** | **Yes**  | **Yes (once viewer is installed)**  |
-
-**Target use cases:** any interactive experience that needs to be self-contained, offline, and distributable as a single file — from government briefings to restaurant kiosks.
+| Format       | Interactive | Offline | Single File | No Install                         |
+| ------------ | ----------- | ------- | ----------- | ---------------------------------- |
+| PDF          | No          | Yes     | Yes         | Yes (viewer pre-installed)         |
+| PWA          | Yes         | Partial | No          | No (tied to URL + browser cache)   |
+| Electron app | Yes         | Yes     | No          | No (installer required)            |
+| Raw HTML     | Yes         | Yes     | No          | Yes (no kiosk mode, no signing)    |
+| **`.uix`**   | **Yes**     | **Yes** | **Yes**     | **Yes (once viewer is installed)** |
 
 ---
 
 ## Use cases
 
-`.uix` is a general-purpose executable document format. The scope is not limited to kiosks — any HTML/JS application that benefits from portability, offline operation, or tamper-evident distribution is a candidate.
+Any interactive experience that benefits from portability, offline operation, or tamper-evident distribution.
 
-| Domain                        | What a `.uix` file delivers                                                                                                                                              |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Classified briefings**      | Encrypted, signed, expiry-limited documents for air-gapped environments — interactive maps, timelines, and data; viewer enforces access controls before any content runs |
-| **Legal and regulatory**      | A jurisdiction's statutes, regulations, and precedents in one file — full-text search via SQLite FTS5, cross-referenced, bilingual, no server required                   |
-| **Government and compliance** | Offline forms with embedded validation rules; citizen fills and submits when connectivity is available — no paper, no always-on server                                   |
-| **Healthcare**                | Drug-interaction references, dosage calculators, and treatment-protocol databases for remote or low-connectivity clinics — offline, no account, no app install           |
-| **Audit and reporting**       | Interactive audit reports: drill-down charts, compliance checklists the recipient marks as resolved, frozen and signed findings the auditor cannot modify after delivery |
-| **Education**                 | Self-contained simulations, exercises, and quizzes with progress tracked in `state.db` — works on any device, distributable on a USB drive                               |
-| **Sales and tendering**       | Business proposals with live budget calculators, interactive Gantt charts, and embedded annexes — signed and frozen on submission, interaction analytics included        |
-| **Digital publishing**        | Interactive books, textbooks, and reference works with full JavaScript, SQLite search, and correct Arabic/RTL typography — everything EPUB cannot do                     |
-| **Restaurant & retail**       | Kiosk menus, product catalogues, and showroom experiences — offline, no WiFi, no app install; the included restaurant template ships ready to customize                  |
+| Domain | What a `.uix` file delivers |
+| --- | --- |
+| **Restaurant & retail kiosks** | Offline menu or catalogue — no WiFi, no app install, no server |
+| **Classified briefings** | Encrypted, signed, expiry-limited documents for air-gapped environments |
+| **Legal & regulatory** | Statutes and precedents in one file — SQLite FTS5 full-text search, bilingual |
+| **Government & compliance** | Offline forms with embedded validation; submit when connectivity is available |
+| **Healthcare** | Drug references, dosage calculators, treatment protocols — remote clinics |
+| **Audit & reporting** | Interactive reports: drill-down charts, signed findings |
+| **Education** | Self-contained exercises with progress tracked in `state.db` |
+| **Sales & tendering** | Proposals with live calculators and embedded annexes — signed on submission |
+| **Digital publishing** | Interactive books and reference works with SQLite search and RTL typography |
 
 ---
 
 ## Try it now
 
-Open [dotuix.uts.qa](https://dotuix.uts.qa) (or run the web viewer locally — see below), drag a `.uix` file onto the page, and it renders instantly in your browser.
+Drag any `.uix` file onto [dotuix.uts.qa](https://dotuix.uts.qa) — it renders instantly in your browser.
 
----
-
-## Packages
-
-| Package                                                  | Description                                                                                                                           | npm / download                                                                               | Status                      |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------- |
-| [`packages/core`](packages/core)                         | Core library — pack, unpack, validate, sign, read/write SQLite; includes `createDataDb()` for seeding `data.db`                       | [`@dotuix/core`](https://www.npmjs.com/package/@dotuix/core)                                 | ✅ Published                |
-| [`packages/cli`](packages/cli)                           | `dotuix` CLI — pack, unpack, validate, sign, keygen, export, encrypt, init `--template`, **seed** (create `data.db` from JSON)        | [`@dotuix/cli`](https://www.npmjs.com/package/@dotuix/cli)                                   | ✅ Published                |
-| [`packages/mcp`](packages/mcp)                           | Local stdio MCP server — Claude Desktop, Cursor, VS Code Copilot; `create` tool accepts `dataRecords` to seed `data.db`               | [`@dotuix/mcp`](https://www.npmjs.com/package/@dotuix/mcp)                                   | ✅ Published                |
-| [`packages/ai`](packages/ai)                             | `createUIX({ manifest, files })` — one-function SDK for AI-generated scripts; auto-stamps `ai` provenance                             | [`@dotuix/ai`](https://www.npmjs.com/package/@dotuix/ai)                                     | ✅ Published                |
-| [`packages/vscode-extension`](packages/vscode-extension) | VS Code extension — manifest IntelliSense, pack/validate/init commands, `.uix` file icon, **`@dotuix` chat participant** (AI builder) | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix) | ✅ Published                |
-| [`packages/vite-plugin`](packages/vite-plugin)           | Vite plugin — build React/Vue/Svelte/TS apps, outputs a `.uix` file                                                                   | [`@dotuix/vite-plugin`](https://www.npmjs.com/package/@dotuix/vite-plugin)                   | ✅ Published                |
-| [`packages/viewer-core`](packages/viewer-core)           | Shared viewer logic for web and desktop viewers                                                                                       | —                                                                                            | ⬜ Planned                  |
-| [`apps/viewer`](apps/viewer)                             | Desktop viewer — Tauri + Rust, full `window.__uix` bridge, signature verification, PIN decryption, state persistence, developer mode  | —                                                                                            | ✅ Stable                   |
-| [`apps/mcp-server`](apps/mcp-server)                     | Remote HTTP MCP server — deployed at `mcp.dotuix.uts.qa`; exposes `get_spec`, `create`, `validate` + REST API for GPT/Gemini          | `POST /api/create` · `GET /openapi.json`                                                     | ✅ Live                     |
-| [`apps/web-viewer`](apps/web-viewer)                     | Browser viewer — drag-and-drop, runs in any modern browser                                                                            | —                                                                                            | ✅ Built · not yet deployed |
-| [`apps/website`](apps/website)                           | dotuix.com — public landing page (Vite + React + Tailwind)                                                                            | [dotuix.com](https://dotuix.com)                                                             | ✅ Built · deploy pending   |
-
----
-
-## Create with AI (recommended)
-
-The fastest way to create a `.uix` file is to let an AI do it. The full format spec lives at `dotuix.com/llms.txt` — any LLM can read it and generate a complete, valid `.uix` project from a single prompt.
-
-### With any AI (GPT, Gemini, Claude.ai)
-
-The simplest way — no config, no install:
-
-1. Open ChatGPT, Gemini, or Claude
-2. Say: _"Read https://mcp.dotuix.uts.qa/api/spec then build me a [describe your app]. Give me the download link when done."_
-3. The AI reads the spec, calls `POST /api/create`, and returns a download URL
-4. Download and open in the viewer — done
-
-No file saving. No CLI. The API builds and packs the `.uix` on the server.
-
-### Remote MCP — no install (Claude Desktop, Cursor, any MCP client)
-
-Connect directly to the hosted MCP server with just a URL — no `npx`, no local packages:
-
-```json
-// Claude Desktop: ~/Library/Application Support/Claude/claude_desktop_config.json
-// Cursor: .cursor/mcp.json   |   Windsurf: .windsurf/mcp.json
-{
-  "mcpServers": {
-    "dotuix": { "url": "https://mcp.dotuix.uts.qa/mcp" }
-  }
-}
-```
-
-### Local MCP — Claude Desktop, Cursor, VS Code Copilot
-
-Install the MCP server locally for offline use:
-
-```json
-{
-  "mcpServers": {
-    "dotuix": { "command": "npx", "args": ["-y", "@dotuix/mcp"] }
-  }
-}
-```
-
-Then say: _"Create a restaurant menu .uix for Al Madina with 10 items in QAR, pack it to ~/Desktop/menu.uix"_
-
-The agent calls `get_spec` → `create` (with `dataRecords` for all content) and hands you a ready-to-open `.uix` file. The `ai.generatedBy` field is stamped automatically.
-
-### VS Code — `@dotuix` chat participant
-
-Install the VS Code extension and use `@dotuix` directly in GitHub Copilot Chat:
-
-```
-@dotuix Build a restaurant kiosk for Al Madina, Doha — Arabic + English, QAR prices
-```
-
-The participant generates all files, seeds `data.db`, packs the `.uix`, and gives you Open / Show in Explorer buttons — no CLI needed.
-
-### REST API — GPT, Gemini, custom agents
-
-The hosted server exposes a plain REST API compatible with Custom GPTs and Gemini function calling:
-
-- `GET  https://mcp.dotuix.uts.qa/api/spec` — returns `llms.txt` for the AI system prompt
-- `POST https://mcp.dotuix.uts.qa/api/create` — generates `.uix`, returns a download URL (30-min TTL)
-- `GET  https://mcp.dotuix.uts.qa/openapi.json` — OpenAPI 3.0 spec (import into Custom GPT Actions)
-
-For **ChatGPT Custom GPT**: create a new GPT, add an Action, import from `https://mcp.dotuix.uts.qa/openapi.json`. The GPT calls `getSpec` then `createUix` and returns a download link.
-
-See [`apps/mcp-server`](apps/mcp-server) for self-hosting.
-
-### From AI-generated Node.js code (`@dotuix/ai`)
-
-When AI writes a script that needs to produce a `.uix` file programmatically:
-
-```typescript
-import { createUIX } from "@dotuix/ai";
-
-const path = await createUIX({
-  manifest: {
-    uix: "1.0",
-    id: "com.example.menu",
-    name: "My Menu",
-    version: "1.0.0",
-    entry: "index.html",
-    mode: "kiosk",
-  },
-  files: {
-    "index.html": "<html><body><h1>Menu</h1></body></html>",
-    "app.js": "/* ... */",
-  },
-});
-console.log(path); // absolute path to the packed .uix
-```
-
-`createUIX` handles temp dirs, auto-stamps `ai.generatedBy`, packs, and returns the path.
-
----
-
-## Install
-
-```bash
-# Core library (Node.js / bundlers)
-npm install @dotuix/core
-
-# CLI (global)
-npm install -g @dotuix/cli
-dotuix --help
-
-# VS Code extension
-# Search "dotuix" in the Extensions panel, or:
-code --install-extension intenttext.dotuix
-```
-
-The VS Code extension adds:
-
-- JSON schema validation and autocomplete for `manifest.json`
-- File icon for `.uix` files in the explorer
-- Commands: **dotuix: Pack**, **dotuix: Validate**, **dotuix: Init** (with template picker)
-
----
-
-## Quick start (local dev)
-
-```bash
-# 1. Install dependencies
-pnpm install
-
-# 2. Build core library
-pnpm --filter @dotuix/core build
-
-# 3. Start the web viewer dev server
-pnpm --filter @dotuix/web-viewer dev
-# → http://localhost:5173
-```
-
-### Pack the restaurant demo
-
-```bash
-node --input-type=module --eval "
-  import { UIX } from './packages/core/dist/index.js';
-  await UIX.pack('./templates/restaurant', './restaurant.uix');
-  console.log('done → restaurant.uix');
-"
-```
-
-Then drag `restaurant.uix` onto the viewer at `http://localhost:5173`.
-
-### Build a React / Vue / Svelte / TypeScript app as `.uix`
-
-Add the plugin to your `vite.config.ts`:
-
-```ts
-import { dotuix } from "@dotuix/vite-plugin";
-
-export default {
-  plugins: [dotuix()],
-};
-```
-
-Add a `manifest.json` to your project root (see [the format spec](#the-format)), then:
-
-```bash
-vite dev    # live dev server + mock window.__uix bridge auto-injected
-vite build  # compiles TS/JSX → bundles → packs → outputs <appName>.uix
-```
-
-The plugin sets `base: './'` automatically so all asset URLs stay relative inside the archive. TypeScript and any framework are compiled by Vite before packing — the `.uix` always contains plain HTML + JS.
+Download the desktop viewer at [dotuix.uts.qa](https://dotuix.uts.qa) for full kiosk mode, PIN auth, and signature verification.
 
 ---
 
 ## The format
 
-A `.uix` file is a standard ZIP containing:
+A `.uix` file is a standard ZIP:
 
 ```
 myapp.uix (ZIP)
-├── manifest.json        ← required: id, name, version, entry, permissions…
-├── index.html           ← entry point (declared in manifest.entry)
+├── manifest.json   ← required
+├── index.html      ← entry point (declared in manifest.entry)
 ├── app.js
 ├── style.css
-├── assets/              ← media files (images, video, audio, fonts)
-│   ├── images/
-│   ├── videos/
-│   ├── audio/
-│   └── fonts/
-├── files/               ← any other file the app needs (PDF, JSON, CSV, …)
-├── data.db              ← optional: read-only SQLite (creator data)
-└── state.db             ← optional: read-write SQLite (user session)
+├── assets/         ← images, video, audio, fonts (convention, not enforced)
+├── files/          ← any other file the app needs
+├── data.db         ← optional: read-only SQLite (creator content)
+└── state.db        ← optional: read-write SQLite (user state, persisted)
 ```
 
-`assets/` and `files/` are conventions, not requirements — files can live anywhere in the archive and are referenced by relative path from HTML.
+The viewer injects `window.__uix` (aliased as `window.uix`) into the running app — a bridge exposing `data.find`, `state.insert`, etc. The app has no access to the host filesystem.
 
-The viewer injects `window.__uix` into the running app — a postMessage-based bridge that exposes `data.find`, `state.insert`, etc. without giving the app access to the host filesystem.
+### manifest.json
+
+```json
+{
+  "uix": "1.0",
+  "id": "com.example.myapp",
+  "name": "My App",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "mode": "kiosk",
+  "network": "blocked",
+  "permissions": []
+}
+```
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `uix` | Yes | Format version. Always `"1.0"`. |
+| `id` | Yes | Reverse-domain identifier. e.g. `"com.example.myapp"`. Used for state isolation. |
+| `name` | Yes | Human-readable app name shown in viewer chrome. |
+| `version` | Yes | SemVer app version. e.g. `"1.0.0"`. |
+| `entry` | Yes | Path to the entry HTML file inside the archive. |
+| `mode` | Yes | `"kiosk"` (locked UI, no address bar) or `"window"` (developer toolbar). |
+| `network` | No | `"blocked"` (default) or `"allowed"`. |
+| `permissions` | No | `["local-storage"]`, `["print"]`, `["raw-sql"]` |
+| `minViewer` | No | Minimum viewer version required. |
+| `expires` | No | ISO 8601 date — viewer refuses expired files before unpacking. |
+| `state.seed` | No | `true` = copy `state.db` from archive as initial user state on first open. |
+| `security` | No | PIN auth + AES-256-GCM encryption block. |
+| `signature` | No | Ed25519 signature block. |
+| `ai` | No | AI provenance block — informational only, no effect on behaviour. |
+
+### The `window.uix` bridge
+
+```javascript
+// Data database — read-only (creator content from data.db)
+const records = await uix.data.find({ type: 'product' });
+const record  = await uix.data.get('product:001');
+
+// State database — read-write (user state, persisted across opens)
+const saved   = await uix.state.find({ type: 'cart_item' });
+const rec     = await uix.state.insert({ type: 'cart_item', body: { id, name, price } });
+await uix.state.update(rec.id, { id, name, price, qty: 2 });
+await uix.state.delete(rec.id);
+await uix.state.purge({ type: 'session_log', olderThan: '24h' });
+
+// App
+const manifest = await uix.manifest();
+uix.print();        // system print dialog
+await uix.exit();   // return to viewer home
+```
+
+**Record shape** (returned by `find`, `get`, `insert`):
+```
+{ id, type, body, created_at, updated_at }
+              ↑ always a JSON string — JSON.parse(r.body) to read fields
+```
+
+- **Writing** (`insert`, `update`): pass a plain object to `body` — the bridge JSON-stringifies it.
+- **Reading** (`find`, `get`): `body` comes back as a string — always `JSON.parse(r.body)` first.
+
+**State must be restored on startup** — it is never auto-injected:
+```javascript
+async function init() {
+  const raw   = await uix.data.find({ type: 'product' });     // creator data
+  const saved = await uix.state.find({ type: 'cart_item' });  // user state
+  const products = raw.map(r => JSON.parse(r.body));
+  const cart     = saved.map(r => JSON.parse(r.body));
+  render(products, cart);
+}
+init().catch(err => {
+  document.getElementById('app').innerHTML = '<p style="color:red">' + err.message + '</p>';
+});
+```
 
 ### Security (opt-in)
 
-Regular apps (restaurant menus, shop catalogues) omit the `security` field entirely and are unaffected. For classified or access-controlled content, add a `security` block to `manifest.json`:
+Regular apps omit the `security` field entirely. For classified or access-controlled content:
 
 ```json
 {
@@ -284,35 +168,145 @@ Regular apps (restaurant menus, shop catalogues) omit the `security` field entir
 }
 ```
 
-| Feature               | How it works                                                                                                                                       |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PIN auth              | Viewer prompts before opening; key derived with PBKDF2-SHA256 — no server involved                                                                 |
-| Encrypted files       | AES-256-GCM; decrypted in memory after auth; app uses normal relative paths                                                                        |
-| Max opens             | Tracked by viewer locally (`~/.dotuix/sessions.db`) — file cannot bypass it                                                                        |
-| Screenshot prevention | Viewer blocks OS screenshot API while file is open (desktop only)                                                                                  |
-| Tamper detection      | Ed25519 signature over all app file hashes (excluding `state.db`, which is user-writable); viewer refuses if app files were modified after signing |
-
-Full spec: [`docs/plan.md`](docs/plan.md)
+| Feature | How it works |
+| --- | --- |
+| PIN auth | Viewer prompts before opening; key derived with PBKDF2-SHA256 — no server |
+| Encrypted files | AES-256-GCM; decrypted in memory after auth; app uses normal relative paths |
+| Max opens | Tracked locally in `~/.dotuix/sessions.db` |
+| Screenshot prevention | Viewer blocks OS screenshot API while open (desktop only) |
+| Tamper detection | Ed25519 signature over all app file hashes; viewer refuses if files were modified |
 
 ---
 
-## Guides
+## Packages
 
-**Business owners** — create a `.uix` file in minutes using the editor, no code required, with clear explanations of every security option in plain language:
-→ [guides/for-business-owners.md](guides/for-business-owners.md)
+| Package | What it does | Status |
+| --- | --- | --- |
+| [`packages/core`](packages/core) | Core library — `pack`, `unpack`, `validate`, `sign`, `createDataDb`. Used by all other packages. | ✅ [`@dotuix/core`](https://www.npmjs.com/package/@dotuix/core) |
+| [`packages/cli`](packages/cli) | `dotuix` CLI — `pack`, `unpack`, `validate`, `sign`, `keygen`, `encrypt`, `init --template`, `seed` | ✅ [`@dotuix/cli`](https://www.npmjs.com/package/@dotuix/cli) |
+| [`packages/mcp`](packages/mcp) | Local stdio MCP server — Claude Desktop, Cursor, VS Code Copilot; `create` tool seeds `data.db` | ✅ [`@dotuix/mcp`](https://www.npmjs.com/package/@dotuix/mcp) |
+| [`packages/ai`](packages/ai) | `createUIX({ manifest, files })` — one-function SDK; auto-stamps `ai` provenance block | ✅ [`@dotuix/ai`](https://www.npmjs.com/package/@dotuix/ai) |
+| [`packages/vite-plugin`](packages/vite-plugin) | Vite plugin — compile React/Vue/Svelte/TS, inject mock bridge in dev, output `.uix` on build | ✅ [`@dotuix/vite-plugin`](https://www.npmjs.com/package/@dotuix/vite-plugin) |
+| [`packages/vscode-extension`](packages/vscode-extension) | VS Code extension — manifest IntelliSense, pack/validate/init commands, `@dotuix` chat participant | ✅ [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix) |
+| [`apps/viewer`](apps/viewer) | Desktop viewer — Tauri + Rust, full bridge, signature verification, PIN decryption | ✅ Stable |
+| [`apps/mcp-server`](apps/mcp-server) | Remote HTTP MCP server at `mcp.dotuix.uts.qa` — `get_spec`, `create`, `validate` + REST API | ✅ Live |
+| [`apps/website`](apps/website) | Public website at [dotuix.uts.qa](https://dotuix.uts.qa) | ✅ Live |
 
-**Developers** — every method for creating `.uix` files (plain HTML, React/Vue/Svelte with the Vite plugin, programmatic Node.js), the full bridge API, all security scenarios with code examples (signing, PIN encryption, expiry, max opens), and CLI reference:
-→ [guides/for-developers.md](guides/for-developers.md)
+---
+
+## Create with AI
+
+The full format spec lives at `mcp.dotuix.uts.qa/api/spec` — any LLM can read it and generate a complete `.uix` from a single prompt.
+
+### Any AI (ChatGPT, Gemini, Claude)
+
+1. Open ChatGPT, Gemini, or Claude
+2. Say: _"Read https://mcp.dotuix.uts.qa/api/spec then build me a [describe your app]. Give me the download link."_
+3. The AI reads the spec, calls `POST /api/create`, returns a download URL (30-min TTL)
+4. Download and open in the viewer
+
+### Remote MCP — no install
+
+```json
+// Claude Desktop · Cursor · Windsurf
+{ "mcpServers": { "dotuix": { "url": "https://mcp.dotuix.uts.qa/mcp" } } }
+```
+
+### Local MCP — offline
+
+```json
+{ "mcpServers": { "dotuix": { "command": "npx", "args": ["-y", "@dotuix/mcp"] } } }
+```
+
+### REST API
+
+- `GET  https://mcp.dotuix.uts.qa/api/spec` — format spec
+- `POST https://mcp.dotuix.uts.qa/api/create` — build `.uix`, returns download URL
+- `GET  https://mcp.dotuix.uts.qa/openapi.json` — OpenAPI 3.0 (import into Custom GPT Actions)
+
+### Programmatic — `@dotuix/ai`
+
+```typescript
+import { createUIX } from "@dotuix/ai";
+
+const path = await createUIX({
+  manifest: { uix: "1.0", id: "com.example.menu", name: "My Menu", version: "1.0.0", entry: "index.html", mode: "kiosk" },
+  files: {
+    "index.html": "<html><body><h1>Menu</h1></body></html>",
+    "app.js": "/* ... */",
+  },
+});
+// → absolute path to the packed .uix file
+```
+
+---
+
+## Install
+
+```bash
+npm install @dotuix/core          # library
+npm install -g @dotuix/cli        # CLI
+code --install-extension intenttext.dotuix   # VS Code extension
+```
+
+---
+
+## Quick start
+
+```bash
+pnpm install
+pnpm --filter @dotuix/core build
+
+# Pack a template
+dotuix pack templates/restaurant restaurant.uix
+
+# Init from template
+dotuix init my-menu -t restaurant
+dotuix init my-shop -t catalog
+dotuix init my-folio -t portfolio
+```
+
+### Build a React / Vue / Svelte app as `.uix`
+
+```ts
+// vite.config.ts
+import { dotuix } from "@dotuix/vite-plugin";
+export default { plugins: [dotuix()] };
+```
+
+```bash
+vite dev    # mock bridge auto-injected
+vite build  # compile → pack → output <appName>.uix
+```
 
 ---
 
 ## Templates
 
-| Template                                       | Description                                                      |
-| ---------------------------------------------- | ---------------------------------------------------------------- |
-| [`templates/restaurant`](templates/restaurant) | Gulf restaurant kiosk menu — Arabic, QAR prices, working cart    |
-| [`templates/catalog`](templates/catalog)       | Product showcase — category filters, SKU, pricing (light theme)  |
-| [`templates/portfolio`](templates/portfolio)   | Creative portfolio — sidebar category filters, year badge (dark) |
+Starter source files in [`templates/`](templates/) — copy and customise.
+
+| Template | Description |
+| --- | --- |
+| [`templates/restaurant`](templates/restaurant) | Gulf kiosk menu — Arabic, QAR prices, cart with `state.db` persistence |
+| [`templates/catalog`](templates/catalog) | Product showcase — category filters, SKU, pricing |
+| [`templates/portfolio`](templates/portfolio) | Creative portfolio — sidebar filters, project cards |
+
+---
+
+## Demos
+
+Ready-to-open `.uix` files in [`demos/`](demos/).
+
+| File | What it demonstrates |
+| --- | --- |
+| [`hello-world.uix`](demos/hello-world.uix) | Minimal .uix — single HTML file, no database |
+| [`persistent-counter.uix`](demos/persistent-counter.uix) | `uix.state` — counter persists across closes; `insert`, `update`, `delete` |
+| [`intake-form.uix`](demos/intake-form.uix) | Form submissions saved in `state.db`, restored on reopen |
+| [`staff-directory.uix`](demos/staff-directory.uix) | `uix.data.find` — department filter + search over `data.db` |
+| [`sales-dashboard.uix`](demos/sales-dashboard.uix) | Bar charts + KPIs from `data.db`, category filter, data table |
+| [`restaurant-kiosk.uix`](demos/restaurant-kiosk.uix) | Full kiosk — menu from `data.db`, cart in `state.db` |
+| [`product-catalogue.uix`](demos/product-catalogue.uix) | Product catalogue with categories and search |
+| [`gov-briefing-demo.uix`](demos/gov-briefing-demo.uix) | PIN-encrypted, signed briefing — security features demo |
 
 ---
 

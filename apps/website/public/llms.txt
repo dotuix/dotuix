@@ -504,7 +504,7 @@ To generate a `.uix` file using any AI agent (GPT, Gemini, Claude, etc.):
 4. Run: `dotuix pack ./generated-app` to produce the `.uix` file
 
 **For AI agents with tool use — remote MCP (no install):**
-Any MCP-capable agent can connect to `https://dotuix.com/mcp` with just a URL.
+Any MCP-capable agent can connect to `https://dotuix-mcp.server.jadwal.io/mcp` with just a URL.
 No `npx`, no local packages. The remote server exposes `get_spec`, `create`, and `validate`.
 
 Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
@@ -512,7 +512,7 @@ Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json
 {
   "mcpServers": {
     "dotuix": {
-      "url": "https://dotuix.com/mcp"
+      "url": "https://dotuix-mcp.server.jadwal.io/mcp"
     }
   }
 }
@@ -523,20 +523,20 @@ Cursor / Windsurf (`.cursor/mcp.json` or `.windsurf/mcp.json` at workspace root)
 {
   "mcpServers": {
     "dotuix": {
-      "url": "https://dotuix.com/mcp"
+      "url": "https://dotuix-mcp.server.jadwal.io/mcp"
     }
   }
 }
 ```
 
 OpenAI ChatGPT (GPT-4o with tool use via Actions / custom GPT):
-Add a custom action pointing to `https://dotuix.com/mcp` — the server is
+Add a custom action pointing to `https://dotuix-mcp.server.jadwal.io/mcp` — the server is
 MCP-compliant (Streamable HTTP transport). Use the OpenAPI spec at
-`https://dotuix.com/mcp/openapi.json` if the client requires it.
+`https://dotuix-mcp.server.jadwal.io/mcp/openapi.json` if the client requires it.
 
 Gemini (Google AI Studio / Gemini API with function calling):
 Pass `get_spec`, `create`, and `validate` as function declarations to
-`tools[]` in your API call, with `https://dotuix.com/mcp` as the endpoint.
+`tools[]` in your API call, with `https://dotuix-mcp.server.jadwal.io/mcp` as the endpoint.
 
 **For AI agents with tool use — local MCP (stdio):**
 Install `@dotuix/mcp`. The agent calls `get_spec` first to read this spec, then

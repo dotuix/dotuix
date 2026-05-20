@@ -26,7 +26,7 @@ import { randomUUID } from "node:crypto";
 
 const SPEC_URL = "https://dotuix.com/llms.txt";
 const DOWNLOAD_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const BASE_URL = process.env.BASE_URL ?? "https://dotuix.com";
+const BASE_URL = process.env.BASE_URL ?? "https://dotuix-mcp.server.jadwal.io";
 const PORT = Number(process.env.PORT ?? 3100);
 
 // ---------------------------------------------------------------------------

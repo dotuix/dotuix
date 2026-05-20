@@ -1390,12 +1390,12 @@ export function App() {
 
         {/* headline */}
         <h1 className="text-6xl sm:text-7xl lg:text-8xl font-bold tracking-tight mb-6 leading-[1.05]">
-          The{" "}
+          One file.{" "}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400">
-            executable
+            Runs offline.
           </span>
           <br />
-          document format.
+          No install.
         </h1>
 
         {/* category */}

@@ -369,6 +369,48 @@ export async function openDataBuffer(
   return new UIXDataDB(db, opts.permissions ?? []);
 }
 
+// ---------------------------------------------------------------------------
+// createDataDb — create a fresh data.db and seed it with records
+// ---------------------------------------------------------------------------
+
+export interface DataRecord {
+  /** Optional explicit id. Auto-generated as "type:uuid" if omitted. */
+  id?: string;
+  type: string;
+  body: Record<string, unknown>;
+}
+
+/**
+ * Create a fresh `data.db` seeded with the given records.
+ * Returns the raw SQLite bytes ready to be written as `data.db` inside a
+ * `.uix` project directory before packing.
+ *
+ * @example
+ * ```ts
+ * const bytes = await createDataDb([
+ *   { type: "product", body: { name: "Hummus", price: 18 } },
+ *   { type: "category", body: { name: "Appetizers", sort: 1 } },
+ * ]);
+ * await writeFile(join(projectDir, "data.db"), bytes);
+ * ```
+ */
+export async function createDataDb(records: DataRecord[]): Promise<Uint8Array> {
+  const SQL = await getSql();
+  const db = new SQL.Database();
+  db.run(DDL_RECORDS);
+  for (const rec of records) {
+    const id = rec.id ?? `${rec.type}:${crypto.randomUUID()}`;
+    db.run("INSERT INTO records (id, type, body) VALUES (?, ?, ?)", [
+      id,
+      rec.type,
+      JSON.stringify(rec.body),
+    ]);
+  }
+  const bytes = db.export();
+  db.close();
+  return bytes;
+}
+
 export interface CreateStateOptions {
   /** Format version from manifest.uix, e.g. "1.0" */
   uixVersion: string;

@@ -7,6 +7,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
+import { createDataDb } from "@dotuix/core";
 
 const execFileAsync = promisify(execFile);
 
@@ -92,7 +93,7 @@ server.tool(
               "const records  = await uix.data.find({ type: 'product' });",
               "const one      = await uix.data.get('product:001');",
               "const inserted = await uix.state.insert({ type: 'cart_item', body: { qty: 1 } });",
-              "await uix.state.update(inserted.id, { body: { qty: 2 } });",
+              "await uix.state.update(inserted.id, { qty: 2 });",
               "await uix.state.delete(inserted.id);",
               "```",
               "",
@@ -317,10 +318,11 @@ server.tool(
 server.tool(
   "create",
   "Create a complete .uix file in one atomic step — ideal for AI-generated apps. " +
-    "Provide the manifest as a JSON object and all source files as { path, content } pairs. " +
-    "The tool initialises the project directory, writes your files, auto-stamps the ai provenance block, " +
-    "and packs everything into a ready-to-use .uix file. Returns the output path. " +
-    "Use this instead of chaining init → write_files → pack.",
+    "Provide the manifest as a JSON object, all source files as { path, content } pairs, " +
+    "and optionally creator records to seed into data.db. " +
+    "The tool initialises the project directory, writes your files, seeds data.db if records are supplied, " +
+    "auto-stamps the ai provenance block, and packs everything into a ready-to-use .uix file. " +
+    "Returns the absolute output path. Use this instead of chaining init → write_files → pack.",
   {
     name: z
       .string()
@@ -342,6 +344,31 @@ server.tool(
       .describe(
         "Source files (index.html, app.js, style.css, …). Do NOT include manifest.json here.",
       ),
+    dataRecords: z
+      .array(
+        z.object({
+          id: z
+            .string()
+            .optional()
+            .describe(
+              "Optional explicit id, e.g. 'product:001'. Auto-generated as '<type>:<uuid>' when omitted.",
+            ),
+          type: z
+            .string()
+            .describe("Record type, e.g. 'product', 'category', 'article'."),
+          body: z
+            .record(z.unknown())
+            .describe(
+              "Record body as a plain object — the schema is entirely app-defined.",
+            ),
+        }),
+      )
+      .optional()
+      .describe(
+        "Creator records to seed into data.db (read-only content: menu items, products, catalog). " +
+          "Use this instead of hardcoding content arrays in app.js. " +
+          "App reads them at runtime with uix.data.find({ type: 'product' }).",
+      ),
     directory: z
       .string()
       .optional()
@@ -355,7 +382,7 @@ server.tool(
         "Override the ai.generatedBy stamp, e.g. 'claude-opus-4'. Defaults to '@dotuix/mcp'.",
       ),
   },
-  async ({ name, manifest, files, directory, generatedBy }) => {
+  async ({ name, manifest, files, dataRecords, directory, generatedBy }) => {
     const parent = directory
       ? resolve(directory)
       : join(tmpdir(), `dotuix-${randomUUID()}`);
@@ -390,9 +417,24 @@ server.tool(
       await writeFile(fullPath, file.content, "utf8");
     }
 
+    // Seed data.db if creator records were provided
+    if (dataRecords && dataRecords.length > 0) {
+      const bytes = await createDataDb(
+        dataRecords as Array<{
+          id?: string;
+          type: string;
+          body: Record<string, unknown>;
+        }>,
+      );
+      await writeFile(join(projectDir, "data.db"), bytes);
+    }
+
     // Pack
     const outputPath = join(parent, `${name}.uix`);
     const { stdout } = await runDotuix(["pack", projectDir, "-o", outputPath]);
+
+    const filesWritten = ["manifest.json", ...files.map((f) => f.path)];
+    if (dataRecords && dataRecords.length > 0) filesWritten.push("data.db");
 
     return {
       content: [
@@ -401,7 +443,8 @@ server.tool(
           text: formatJsonResult({
             success: true,
             path: outputPath,
-            filesWritten: ["manifest.json", ...files.map((f) => f.path)],
+            filesWritten,
+            dataRecordsSeeded: dataRecords?.length ?? 0,
             output: stdout.trim(),
           }),
         },

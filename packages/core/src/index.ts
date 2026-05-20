@@ -8,11 +8,12 @@ export {
   openDataBuffer,
   openStateFromFile,
   createState,
+  createDataDb,
   configureSqlJs,
   UIXDataDB,
   UIXStateDB,
 } from "./db.js";
-export type { CreateStateOptions } from "./db.js";
+export type { CreateStateOptions, DataRecord } from "./db.js";
 export {
   parseManifest,
   safeParseManifest,

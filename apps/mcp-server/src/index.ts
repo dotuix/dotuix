@@ -25,7 +25,7 @@ import { packBuffer, validateBuffer, createDataDb } from "@dotuix/core";
 import type { DataRecord } from "@dotuix/core";
 import { randomUUID } from "node:crypto";
 
-const SPEC_PATH = new URL("../../llms.txt", import.meta.url);
+const SPEC_PATH = new URL("../llms.txt", import.meta.url);
 const DOWNLOAD_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const BASE_URL = process.env.BASE_URL ?? "https://dotuix-mcp.server.jadwal.io";
 const PORT = Number(process.env.PORT ?? 3100);

@@ -2,5 +2,11 @@
   "buildCommand": "pnpm build",
   "outputDirectory": "dist",
   "installCommand": "pnpm install",
-  "framework": "vite"
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/llms.txt",
+      "destination": "https://mcp.dotuix.uts.qa/api/spec"
+    }
+  ]
 }

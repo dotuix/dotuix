@@ -26,6 +26,7 @@ import {
 type PlatformKey = "mac-arm" | "mac-intel" | "windows" | "linux" | "other";
 
 function detectPlatform(): PlatformKey {
+  if (typeof navigator === "undefined") return "other";
   const ua = navigator.userAgent;
   if (/Macintosh/.test(ua)) {
     // WebGL renderer reliably distinguishes Apple Silicon ("Apple GPU") from Intel

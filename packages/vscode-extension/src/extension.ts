@@ -4,6 +4,7 @@ import { existsSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
+import { UixInspectorProvider } from "./uixInspector.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -154,6 +155,11 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("dotuix.validate", cmdValidate),
     vscode.commands.registerCommand("dotuix.init", cmdInit),
     vscode.commands.registerCommand("dotuix.open", cmdOpen),
+    vscode.window.registerCustomEditorProvider(
+      UixInspectorProvider.viewType,
+      new UixInspectorProvider(context.extensionUri),
+      { webviewOptions: { retainContextWhenHidden: true } },
+    ),
   );
 
   // -------------------------------------------------------------------------

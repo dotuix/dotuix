@@ -324,6 +324,164 @@ const httpServer = http.createServer(async (req, res) => {
     return;
   }
 
+  // REST: GET /api/spec — returns llms.txt (for AI system prompts)
+  if (url.pathname === "/api/spec" && req.method === "GET") {
+    try {
+      const r = await fetch(SPEC_URL);
+      const text = await r.text();
+      res.writeHead(200, {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(text);
+    } catch {
+      sendJson(res, 502, { error: "Could not fetch spec" });
+    }
+    return;
+  }
+
+  // REST: POST /api/create — GPT/Gemini compatible endpoint
+  if (url.pathname === "/api/create" && req.method === "POST") {
+    try {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw.toString("utf8")) as {
+        name: string;
+        manifest: Record<string, unknown>;
+        files: Array<{ path: string; content: string }>;
+        dataRecords?: Array<{
+          id?: string;
+          type: string;
+          body: Record<string, unknown>;
+        }>;
+      };
+      if (!body.name || !body.manifest || !Array.isArray(body.files)) {
+        sendJson(res, 400, { error: "name, manifest, and files are required" });
+        return;
+      }
+      const bytes = await buildUix({
+        name: body.name,
+        manifest: body.manifest,
+        files: body.files,
+        dataRecords: body.dataRecords,
+        generatedBy: "dotuix-rest-api",
+      });
+      const filename = `${body.name.replace(/[^a-z0-9-]/gi, "-")}.uix`;
+      const id = storeFile(bytes, filename);
+      sendJson(res, 200, {
+        downloadUrl: `${BASE_URL}/download/${id}`,
+        filename,
+        expiresIn: "30 minutes",
+      });
+    } catch (e) {
+      sendJson(res, 500, { error: (e as Error).message });
+    }
+    return;
+  }
+
+  // REST: GET /openapi.json — OpenAPI 3.0 spec for Custom GPT / Gemini actions
+  if (url.pathname === "/openapi.json" && req.method === "GET") {
+    const spec = {
+      openapi: "3.0.0",
+      info: {
+        title: "dotuix API",
+        version: "1.0.0",
+        description: "Generate .uix kiosk and interactive app files with AI.",
+      },
+      servers: [{ url: BASE_URL }],
+      paths: {
+        "/api/spec": {
+          get: {
+            operationId: "getSpec",
+            summary: "Get the full .uix format specification",
+            description:
+              "Returns llms.txt — read this first before calling create.",
+            responses: {
+              "200": {
+                description: "Spec text",
+                content: { "text/plain": { schema: { type: "string" } } },
+              },
+            },
+          },
+        },
+        "/api/create": {
+          post: {
+            operationId: "createUix",
+            summary: "Generate and pack a .uix file",
+            description:
+              "Provide manifest, HTML/JS/CSS files, and optional data records. Returns a download URL valid for 30 minutes.",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["name", "manifest", "files"],
+                    properties: {
+                      name: {
+                        type: "string",
+                        description: "App identifier, e.g. my-restaurant",
+                      },
+                      manifest: {
+                        type: "object",
+                        description:
+                          "manifest.json content (uix, id, name, version, entry, mode)",
+                      },
+                      files: {
+                        type: "array",
+                        description: "Source files to pack",
+                        items: {
+                          type: "object",
+                          required: ["path", "content"],
+                          properties: {
+                            path: { type: "string", example: "index.html" },
+                            content: { type: "string" },
+                          },
+                        },
+                      },
+                      dataRecords: {
+                        type: "array",
+                        description:
+                          "Seed records for data.db. Put ALL creator content here — menu items, products, pages, etc.",
+                        items: {
+                          type: "object",
+                          required: ["type", "body"],
+                          properties: {
+                            id: { type: "string" },
+                            type: { type: "string", example: "product" },
+                            body: { type: "object" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              "200": {
+                description: "Download URL for the generated .uix file",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      properties: {
+                        downloadUrl: { type: "string", format: "uri" },
+                        filename: { type: "string" },
+                        expiresIn: { type: "string" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    sendJson(res, 200, spec);
+    return;
+  }
+
   sendJson(res, 404, { error: "Not found" });
 });
 

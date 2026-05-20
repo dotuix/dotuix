@@ -733,9 +733,9 @@ init().catch(err => {
 
 ## Links
 
-- Website: https://dotuix.com
+- Website: https://dotuix.uts.qa
 - GitHub: https://github.com/dotuix/dotuix
 - npm (@dotuix/core): https://www.npmjs.com/package/@dotuix/core
 - npm (@dotuix/cli): https://www.npmjs.com/package/@dotuix/cli
 - VS Code Extension: https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix
-- Format spec (this file): https://dotuix.com/llms.txt
+- Format spec (this file): https://dotuix.uts.qa/llms.txt

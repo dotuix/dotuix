@@ -1,7 +1,7 @@
 /**
  * @dotuix/mcp-server — Remote HTTP MCP server
  *
- * Hosted at https://dotuix.com/mcp
+ * Hosted at https://mcp.dotuix.uts.qa
  *
  * Implements MCP Streamable HTTP transport so any MCP-capable AI client
  * (Claude Desktop, Cursor, Windsurf) can connect with just a URL — no local

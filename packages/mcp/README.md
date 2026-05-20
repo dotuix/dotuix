@@ -7,7 +7,7 @@ generate, pack, and validate `.uix` files through tool calls.
 
 | Tool          | Description                                                                                      |
 | ------------- | ------------------------------------------------------------------------------------------------ |
-| `get_spec`    | Returns the full `.uix` format spec from dotuix.com/llms.txt                                     |
+| `get_spec`    | Returns the full `.uix` format spec from dotuix.uts.qa/llms.txt                                  |
 | `create`      | **One-shot**: manifest + files in → packed `.uix` path out. AI provenance stamped automatically. |
 | `init`        | Scaffolds a new project from a template (blank / restaurant / catalog / portfolio)               |
 | `write_files` | Writes generated HTML/JS/CSS into a project directory (auto-stamps `ai` block in manifest)       |
@@ -111,6 +111,6 @@ path to the finished `.uix` file.
 
 ## Links
 
-- [dotuix.com](https://dotuix.com)
+- [dotuix.uts.qa](https://dotuix.uts.qa)
 - [GitHub](https://github.com/dotuix/dotuix)
-- [Format spec (llms.txt)](https://dotuix.com/llms.txt)
+- [Format spec (llms.txt)](https://dotuix.uts.qa/llms.txt)

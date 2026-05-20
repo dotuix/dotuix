@@ -1,7 +1,7 @@
 {
   "name": "@dotuix/website",
   "version": "1.0.0",
-  "description": "dotuix.com — public landing page",
+  "description": "dotuix.uts.qa — public landing page",
   "private": true,
   "type": "module",
   "scripts": {

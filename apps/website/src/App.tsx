@@ -1535,7 +1535,7 @@ export function App() {
               href="/llms.txt"
               className="text-purple-400 hover:text-purple-300 underline underline-offset-2"
             >
-              dotuix.com/llms.txt
+              dotuix.uts.qa/llms.txt
             </a>{" "}
             with any AI (GPT, Gemini, Claude) to generate the files yourself and
             pack with the CLI.

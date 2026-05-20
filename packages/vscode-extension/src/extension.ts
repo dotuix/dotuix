@@ -177,7 +177,7 @@ export function deactivate() {}
 // Chat participant handler
 // ---------------------------------------------------------------------------
 
-const SPEC_URL = "https://dotuix.com/llms.txt";
+const SPEC_URL = "https://dotuix.uts.qa/llms.txt";
 
 const SYSTEM_PROMPT = `You are a dotuix .uix app generator.
 A .uix file is a self-contained offline app (ZIP: manifest.json + HTML/JS/CSS + optional data.db + state.db).

@@ -60,12 +60,12 @@ Returns the absolute path to the packed `.uix` file.
 
 ### `CreateUIXOptions`
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `manifest` | `Record<string, unknown>` | Yes | `manifest.json` content. The `ai` block is merged and stamped automatically. |
-| `files` | `Record<string, string>` | Yes | Source files as `{ "relative/path": "utf-8 content" }`. Do not include `manifest.json`. |
-| `output` | `string` | No | Absolute path for the output `.uix` file. Defaults to a temp directory. |
-| `generatedBy` | `string` | No | Overrides `ai.generatedBy`. Defaults to `"@dotuix/ai"`. |
+| Field         | Type                      | Required | Description                                                                             |
+| ------------- | ------------------------- | -------- | --------------------------------------------------------------------------------------- |
+| `manifest`    | `Record<string, unknown>` | Yes      | `manifest.json` content. The `ai` block is merged and stamped automatically.            |
+| `files`       | `Record<string, string>`  | Yes      | Source files as `{ "relative/path": "utf-8 content" }`. Do not include `manifest.json`. |
+| `output`      | `string`                  | No       | Absolute path for the output `.uix` file. Defaults to a temp directory.                 |
+| `generatedBy` | `string`                  | No       | Overrides `ai.generatedBy`. Defaults to `"@dotuix/ai"`.                                 |
 
 ### The `ai` provenance block
 
@@ -96,12 +96,12 @@ The final manifest will have `generatedBy` and `generatedAt` merged in.
 
 ## When to use which package
 
-| Scenario | Use |
-|---|---|
-| Talking to Claude Desktop / Cursor / Copilot | [`@dotuix/mcp`](https://www.npmjs.com/package/@dotuix/mcp) |
-| AI writes a Node.js script that creates a `.uix` | **`@dotuix/ai`** |
-| Packing a manually written app | [`@dotuix/cli`](https://www.npmjs.com/package/@dotuix/cli) (`dotuix pack`) |
-| Programmatic pack/unpack/validate in any context | [`@dotuix/core`](https://www.npmjs.com/package/@dotuix/core) |
+| Scenario                                         | Use                                                                        |
+| ------------------------------------------------ | -------------------------------------------------------------------------- |
+| Talking to Claude Desktop / Cursor / Copilot     | [`@dotuix/mcp`](https://www.npmjs.com/package/@dotuix/mcp)                 |
+| AI writes a Node.js script that creates a `.uix` | **`@dotuix/ai`**                                                           |
+| Packing a manually written app                   | [`@dotuix/cli`](https://www.npmjs.com/package/@dotuix/cli) (`dotuix pack`) |
+| Programmatic pack/unpack/validate in any context | [`@dotuix/core`](https://www.npmjs.com/package/@dotuix/core)               |
 
 ## Requirements
 
@@ -110,6 +110,6 @@ The final manifest will have `generatedBy` and `generatedAt` merged in.
 
 ## Links
 
-- [dotuix.com](https://dotuix.com)
-- [Format spec (llms.txt)](https://dotuix.com/llms.txt)
+- [dotuix.uts.qa](https://dotuix.uts.qa)
+- [Format spec (llms.txt)](https://dotuix.uts.qa/llms.txt)
 - [GitHub](https://github.com/dotuix/dotuix)

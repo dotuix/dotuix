@@ -160,6 +160,23 @@ in agent-driven interfaces.
 
 ---
 
+## Data architecture
+
+Always follow this split — it is the core pattern of every .uix app:
+
+| What | Where | How |
+|---|---|---|
+| Content (menu items, products, articles, catalog) | `data.db` | creator populates before packing; app reads via `uix.data.find()` |
+| User state (cart, settings, session, orders) | `state.db` | app reads/writes via `uix.state.*` at runtime |
+| UI logic, rendering, event handlers | `app.js` | plain JavaScript — no data hardcoded here |
+
+**Do not hardcode content in `app.js`.** If you have menu items, products, or
+any creator-defined data, put them in `data.db` as records and load them with
+`uix.data.find({ type: "product" })`. Hardcoded JS arrays cannot be updated
+without repacking the entire file.
+
+---
+
 ## The window.__uix bridge API
 
 The viewer injects `window.__uix` (also aliased as `window.uix`) into the
@@ -234,14 +251,15 @@ await uix.state.raw("DELETE FROM records WHERE type = ?", ["session_log"]);
 interface Record {
   id: string;          // e.g. "product:001", "cart_item:a1b2c3"
   type: string;        // e.g. "product", "cart_item"
-  body: object;        // App-defined JSON — shape entirely up to the app
+  body: string;        // JSON string — always JSON.parse(record.body) to read fields
   created_at: number;  // Unix timestamp — set on insert, never changed
   updated_at: number;  // Unix timestamp — updated on every update call
 }
 ```
 
-The `body` field is an arbitrary JSON object. The viewer never inspects it.
-The app decides all type names and all body shapes.
+The `body` field is stored as a JSON string in SQLite.
+- **Writing** (`insert`, `update`): pass a plain object — the bridge JSON-stringifies it automatically.
+- **Reading** (`find`, `get`): `body` comes back as a string — always call `JSON.parse(record.body)` before accessing fields.
 
 ### Utilities
 
@@ -280,7 +298,8 @@ async function placeOrder(cartItems, total) {
 ```javascript
 async function restoreCart() {
   const saved = await uix.state.find({ type: "cart_item" });
-  // saved is an array of Record objects; read saved[i].body for your data
+  // body is a JSON string — always parse it before reading fields
+  return saved.map(r => JSON.parse(r.body));
 }
 ```
 
@@ -350,12 +369,13 @@ To generate a valid `.uix`, create a folder with these files and run
   const manifest = await uix.manifest();
   document.querySelector('h1').textContent = manifest.name;
 
-  // Load creator data
+  // Load creator data — body is a JSON string, always JSON.parse before reading fields
   const products = await uix.data.find({ type: "product" });
   const app = document.getElementById('app');
-  app.innerHTML = products.map(p =>
-    `<div class="product">${p.body.name} — ${p.body.price}</div>`
-  ).join('');
+  app.innerHTML = products.map(p => {
+    const b = JSON.parse(p.body);
+    return `<div class="product">${b.name} — ${b.price}</div>`;
+  }).join('');
 })();
 ```
 
@@ -397,15 +417,19 @@ INSERT INTO records (id, type, body) VALUES
   async function addToCart(productId, qty, price) {
     const existing = await uix.state.find({ type: "cart_item", where: { productId } });
     if (existing.length > 0) {
-      await uix.state.update(existing[0].id, { body: { ...existing[0].body, qty: existing[0].body.qty + qty } });
+      const b = JSON.parse(existing[0].body); // body is always a JSON string
+      await uix.state.update(existing[0].id, { ...b, qty: b.qty + qty });
     } else {
       await uix.state.insert({ type: "cart_item", body: { productId, qty, price } });
     }
   }
 
-  // Get cart total
+  // Get cart total — parse body before reading fields
   const cartItems = await uix.state.find({ type: "cart_item" });
-  const total = cartItems.reduce((sum, item) => sum + item.body.qty * item.body.price, 0);
+  const total = cartItems.reduce((sum, item) => {
+    const b = JSON.parse(item.body);
+    return sum + b.qty * b.price;
+  }, 0);
 })();
 ```
 

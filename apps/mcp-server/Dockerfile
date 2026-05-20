@@ -9,7 +9,7 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY packages/core/package.json ./packages/core/
 COPY apps/mcp-server/package.json ./apps/mcp-server/
 
-# Install only production deps for the mcp-server (and its workspace deps)
+# Install deps (including dev, needed for building)
 RUN pnpm install --filter @dotuix/mcp-server... --frozen-lockfile
 
 # Copy and build source
@@ -18,19 +18,19 @@ COPY apps/mcp-server ./apps/mcp-server
 RUN pnpm --filter @dotuix/core build
 RUN pnpm --filter @dotuix/mcp-server build
 
+# Create a standalone deployment — pnpm resolves all workspace: deps and
+# produces a real node_modules (no symlinks). @dotuix/core dist/ is included
+# via its "files" field. All external deps are real copies, not symlinks.
+RUN pnpm deploy --filter @dotuix/mcp-server --prod /standalone
+
 # ── Runtime stage ───────────────────────────────────────────────────────────
 FROM node:22-alpine AS runner
 WORKDIR /app
 
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/packages/core/dist ./packages/core/dist
-COPY --from=builder /app/packages/core/package.json ./packages/core/package.json
-COPY --from=builder /app/packages/core/node_modules ./packages/core/node_modules
-COPY --from=builder /app/apps/mcp-server/dist ./apps/mcp-server/dist
-COPY --from=builder /app/apps/mcp-server/package.json ./apps/mcp-server/package.json
-COPY --from=builder /app/apps/mcp-server/node_modules ./apps/mcp-server/node_modules
-
-WORKDIR /app/apps/mcp-server
+# Self-contained node_modules from pnpm deploy — no symlinks, no missing deps
+COPY --from=builder /standalone/node_modules ./node_modules
+COPY --from=builder /standalone/package.json ./package.json
+COPY --from=builder /app/apps/mcp-server/dist ./dist
 
 ENV PORT=80
 ENV NODE_ENV=production

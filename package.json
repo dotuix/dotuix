@@ -16,7 +16,7 @@
     "version": "changeset version",
     "release": "turbo build && changeset publish",
     "generate-icons": "node scripts/generate-icons.mjs",
-    "deploy:mcp": "caprover deploy -n $CAPROVER_NAME -b main -a dotuix-mcp"
+    "deploy:mcp": "caprover deploy -d"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

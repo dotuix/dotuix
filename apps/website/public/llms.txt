@@ -262,6 +262,27 @@ These APIs do **not** exist — do not generate code that uses them:
 - `uix.fetch()` — network is blocked by default (`"network": "blocked"`)
 - `uix.version()` — not exposed
 - `uix.fs` — no host filesystem access
+- `uix.sendAction() / uix.dispatch() / uix.emit()` — no event or action bus exists
+
+**Correct pattern for saving data (e.g. checkout / order submission):**
+```javascript
+// Save an order at checkout — use uix.state.insert, not sendAction
+async function placeOrder(cartItems, total) {
+  await uix.state.insert({
+    type: "order",
+    body: { items: cartItems, total, placedAt: new Date().toISOString() },
+  });
+  // then clear the in-memory cart and show confirmation in your own UI
+}
+```
+
+**Correct pattern for restoring cart on load:**
+```javascript
+async function restoreCart() {
+  const saved = await uix.state.find({ type: "cart_item" });
+  // saved is an array of Record objects; read saved[i].body for your data
+}
+```
 
 ---
 

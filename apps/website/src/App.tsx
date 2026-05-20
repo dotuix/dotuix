@@ -1436,6 +1436,48 @@ export function App() {
       </section>
 
       {/* ------------------------------------------------------------------ */}
+      {/* MCP callout                                                         */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="max-w-6xl mx-auto px-6 py-16 border-t border-white/8">
+        <div className="max-w-2xl mx-auto rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-900/20 to-blue-900/10 p-8 text-center">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple-400/30 bg-purple-500/10 text-xs text-purple-300 mb-5">
+            <Sparkles className="w-3 h-3" /> Claude Desktop · Cursor · VS Code
+            Copilot
+          </div>
+          <h2 className="text-2xl font-bold mb-3">
+            AI generates it. You receive a file.
+          </h2>
+          <p className="text-gray-400 mb-6 leading-relaxed text-sm">
+            AI can build any interactive experience — dashboard, compliance
+            tool, simulation, report. The delivery problem has always been
+            deployment. Install{" "}
+            <span className="text-white font-mono">@dotuix/mcp</span> and that
+            problem disappears: describe what you want, receive one signed .uix
+            file. No hosting. No deployment. No URL.
+          </p>
+          <div className="space-y-3 text-left mb-5">
+            <CopyBox value="npx @dotuix/mcp" />
+          </div>
+          <p className="text-gray-500 text-xs">
+            Or share{" "}
+            <a
+              href="/llms.txt"
+              className="text-purple-400 hover:text-purple-300 underline underline-offset-2"
+            >
+              dotuix.com/llms.txt
+            </a>{" "}
+            with any AI (GPT, Gemini, Claude) to generate the files yourself and
+            pack with the CLI.
+          </p>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* AI prompt builder                                                   */}
+      {/* ------------------------------------------------------------------ */}
+      <AIPromptBuilder />
+
+      {/* ------------------------------------------------------------------ */}
       {/* Comparison                                                          */}
       {/* ------------------------------------------------------------------ */}
       <section className="max-w-6xl mx-auto px-6 py-20 border-t border-white/8">
@@ -1794,49 +1836,7 @@ export function App() {
       </section>
 
       {/* ------------------------------------------------------------------ */}
-      {/* MCP callout                                                         */}
-      {/* ------------------------------------------------------------------ */}
-      <section className="max-w-6xl mx-auto px-6 py-16 border-t border-white/8">
-        <div className="max-w-2xl mx-auto rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-900/20 to-blue-900/10 p-8 text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple-400/30 bg-purple-500/10 text-xs text-purple-300 mb-5">
-            <Sparkles className="w-3 h-3" /> Claude Desktop · Cursor · VS Code
-            Copilot
-          </div>
-          <h2 className="text-2xl font-bold mb-3">
-            AI generates it. You receive a file.
-          </h2>
-          <p className="text-gray-400 mb-6 leading-relaxed text-sm">
-            AI can build any interactive experience — dashboard, compliance
-            tool, simulation, report. The delivery problem has always been
-            deployment. Install{" "}
-            <span className="text-white font-mono">@dotuix/mcp</span> and that
-            problem disappears: describe what you want, receive one signed .uix
-            file. No hosting. No deployment. No URL.
-          </p>
-          <div className="space-y-3 text-left mb-5">
-            <CopyBox value="npx @dotuix/mcp" />
-          </div>
-          <p className="text-gray-500 text-xs">
-            Or share{" "}
-            <a
-              href="/llms.txt"
-              className="text-purple-400 hover:text-purple-300 underline underline-offset-2"
-            >
-              dotuix.com/llms.txt
-            </a>{" "}
-            with any AI (GPT, Gemini, Claude) to generate the files yourself and
-            pack with the CLI.
-          </p>
-        </div>
-      </section>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* AI prompt builder                                                   */}
-      {/* ------------------------------------------------------------------ */}
-      <AIPromptBuilder />
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Footer                                                              */}
+      {/* Footer                                                              */
       {/* ------------------------------------------------------------------ */}
       <footer className="border-t border-white/8 py-12 px-6">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500">

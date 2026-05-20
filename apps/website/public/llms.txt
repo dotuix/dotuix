@@ -500,26 +500,36 @@ To generate a `.uix` file using any AI agent (GPT, Gemini, Claude, etc.):
 
 1. Share this spec URL with your AI: `https://dotuix.com/llms.txt`
 2. Describe what you want: "Create a restaurant menu .uix for a Gulf Arabic restaurant with 10 items in QAR"
-3. The AI generates: `manifest.json`, `index.html`, `app.js`, `style.css`, and optionally a SQL seed script for `data.db`
+3. The AI generates: `manifest.json`, `index.html`, `app.js`, `style.css`, and the content records for `data.db` (menu items, categories, etc.)
 4. Run: `dotuix pack ./generated-app` to produce the `.uix` file
 
 **For AI agents with tool use (Claude Desktop, Cursor, Windsurf):**
-Install `@dotuix/mcp`. The agent can call the `create` tool to generate and
-pack a complete `.uix` in a single step:
+Install `@dotuix/mcp`. The agent calls `get_spec` first to read this spec, then
+calls `create` to generate and pack a complete `.uix` in a single step.
+Pass `dataRecords` to seed `data.db` — never hardcode content in `app.js`:
 
 ```json
 {
   "tool": "create",
   "name": "my-restaurant",
-  "manifest": { "uix": "1.0", "id": "com.example.menu", "name": "My Menu", "version": "1.0.0", "entry": "index.html", "mode": "kiosk" },
+  "manifest": { "uix": "1.0", "id": "com.almadina.menu", "name": "Al Madina", "version": "1.0.0", "entry": "index.html", "mode": "kiosk" },
   "files": [
     { "path": "index.html", "content": "<html>...</html>" },
-    { "path": "app.js", "content": "..." }
+    { "path": "app.js", "content": "(async () => { const products = await uix.data.find({ type: 'product' }); /* render */ })();" },
+    { "path": "style.css", "content": "..." }
+  ],
+  "dataRecords": [
+    { "id": "product:001", "type": "product", "body": { "name": "Mixed Grill", "price": 85, "currency": "QAR", "category": "grills" } },
+    { "id": "product:002", "type": "product", "body": { "name": "Hummus",      "price": 18, "currency": "QAR", "category": "appetizers" } },
+    { "id": "category:grills",      "type": "category", "body": { "name": "Grills",      "sort": 1 } },
+    { "id": "category:appetizers",  "type": "category", "body": { "name": "Appetizers",  "sort": 2 } }
   ]
 }
 ```
 
-The `ai.generatedBy` and `ai.generatedAt` fields are stamped automatically.
+The MCP server creates `data.db`, seeds it with your records, and packs
+everything. `ai.generatedBy` and `ai.generatedAt` are stamped automatically.
+The returned `path` is the absolute path to the ready `.uix` file on disk.
 
 **For AI-generated Node.js scripts:**
 Use `@dotuix/ai` — a one-function SDK that handles temp dirs, manifest stamping,

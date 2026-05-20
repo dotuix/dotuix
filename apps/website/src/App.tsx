@@ -223,7 +223,8 @@ ${vals.cuisine || vals.city ? "- Include Arabic + English labels" : ""}
 Finally call:
 POST https://mcp.dotuix.uts.qa/api/create
 Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
-Give me the download URL from the response.`,
+If the API call succeeds, reply with the download URL.
+If you cannot make HTTP requests, output the complete JSON request body as plain text — do NOT create a ZIP or any file attachment. A ZIP cannot contain a real SQLite database so it will never work.`,
   },
   {
     id: "catalog",
@@ -268,7 +269,8 @@ Critical rules:
 Finally call:
 POST https://mcp.dotuix.uts.qa/api/create
 Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
-Give me the download URL from the response.`,
+If the API call succeeds, reply with the download URL.
+If you cannot make HTTP requests, output the complete JSON request body as plain text — do NOT create a ZIP or any file attachment. A ZIP cannot contain a real SQLite database so it will never work.`,
   },
   {
     id: "portfolio",
@@ -312,7 +314,8 @@ Critical rules:
 Finally call:
 POST https://mcp.dotuix.uts.qa/api/create
 Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
-Give me the download URL from the response.`,
+If the API call succeeds, reply with the download URL.
+If you cannot make HTTP requests, output the complete JSON request body as plain text — do NOT create a ZIP or any file attachment. A ZIP cannot contain a real SQLite database so it will never work.`,
   },
   {
     id: "report",
@@ -357,7 +360,8 @@ Critical rules:
 Finally call:
 POST https://mcp.dotuix.uts.qa/api/create
 Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
-Give me the download URL from the response.`,
+If the API call succeeds, reply with the download URL.
+If you cannot make HTTP requests, output the complete JSON request body as plain text — do NOT create a ZIP or any file attachment. A ZIP cannot contain a real SQLite database so it will never work.`,
   },
   {
     id: "custom",
@@ -394,7 +398,8 @@ Critical rules:
 Finally call:
 POST https://mcp.dotuix.uts.qa/api/create
 Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
-Give me the download URL from the response.`,
+If the API call succeeds, reply with the download URL.
+If you cannot make HTTP requests, output the complete JSON request body as plain text — do NOT create a ZIP or any file attachment. A ZIP cannot contain a real SQLite database so it will never work.`,
   },
 ];
 

@@ -48,7 +48,7 @@ A `.uix` file is a ZIP archive containing an HTML app, assets, and optional SQLi
 
 ## Try it now
 
-Open [viewer.dotuix.com](https://viewer.dotuix.com) (or run the web viewer locally — see below), drag a `.uix` file onto the page, and it renders instantly in your browser.
+Open [dotuix.uts.qa](https://dotuix.uts.qa) (or run the web viewer locally — see below), drag a `.uix` file onto the page, and it renders instantly in your browser.
 
 ---
 

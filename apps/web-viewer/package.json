@@ -1,7 +1,7 @@
 {
   "name": "@dotuix/web-viewer",
   "version": "0.1.0",
-  "description": "Web viewer — viewer.dotuix.com (Vite + React)",
+  "description": "Web viewer — dotuix.uts.qa (Vite + React)",
   "private": true,
   "type": "module",
   "scripts": {

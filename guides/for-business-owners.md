@@ -13,7 +13,7 @@ A `.uix` file is a single file that contains your entire interactive app — you
 3. Pick a template (restaurant menu, product catalogue, or portfolio)
 4. Type in your items
 5. Click **Export .uix**
-6. Send the file to anyone — they open it in the [free viewer](https://viewer.dotuix.com)
+6. Send the file to anyone — they open it in the [free viewer](https://dotuix.uts.qa)
 
 That's it. No code, no installation, no server.
 
@@ -68,7 +68,7 @@ The file is ready. Open it with the Finder (double-click) to verify it looks cor
 
 ### Option 1 — Web browser (free, no install)
 
-Go to [viewer.dotuix.com](https://viewer.dotuix.com) and drag the `.uix` file onto the page. It opens instantly in any modern browser. Works on a phone, tablet, or computer.
+Go to [dotuix.uts.qa](https://dotuix.uts.qa) and drag the `.uix` file onto the page. It opens instantly in any modern browser. Works on a phone, tablet, or computer.
 
 ### Option 2 — Desktop viewer (better for kiosks)
 
@@ -197,7 +197,7 @@ The Simple mode editor uses fixed template designs. For custom branding — your
 
 **What devices does the `.uix` file work on?**
 
-- Any modern browser (Chrome, Safari, Firefox, Edge) at [viewer.dotuix.com](https://viewer.dotuix.com)
+- Any modern browser (Chrome, Safari, Firefox, Edge) at [dotuix.uts.qa](https://dotuix.uts.qa)
 - macOS, Windows, Linux via the desktop viewer
 - Tablets running iOS or Android can open it in a browser
 

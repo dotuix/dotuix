@@ -217,7 +217,13 @@ Critical rules:
 - body is a JSON string — always JSON.parse(item.body) before reading fields
 - No external URLs (fully offline)
 ${vals.cuisine || vals.city ? "- Include Arabic + English labels" : ""}
-Then call POST https://dotuix-mcp.server.jadwal.io/api/create with { name, manifest, files, dataRecords }.`,
+- DO NOT put a dataRecords.json inside files[] — data goes in the dataRecords field
+- DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
+
+Finally call:
+POST https://dotuix-mcp.server.jadwal.io/api/create
+Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
+Give me the download URL from the response.`,
   },
   {
     id: "catalog",
@@ -256,8 +262,13 @@ Critical rules:
 - Read with: const items = await uix.data.find({ type: 'product' })
 - Always JSON.parse(item.body) before reading any field
 - No external URLs
+- DO NOT put a dataRecords.json inside files[] — data goes in the dataRecords field
+- DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
 
-Then call POST https://dotuix-mcp.server.jadwal.io/api/create with { name, manifest, files, dataRecords }.`,
+Finally call:
+POST https://dotuix-mcp.server.jadwal.io/api/create
+Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
+Give me the download URL from the response.`,
   },
   {
     id: "portfolio",
@@ -295,8 +306,13 @@ Critical rules:
 - ALL content (projects, skills) goes in dataRecords
 - Always JSON.parse(item.body) before reading any field
 - No external URLs
+- DO NOT put a dataRecords.json inside files[] — data goes in the dataRecords field
+- DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
 
-Then call POST https://dotuix-mcp.server.jadwal.io/api/create with { name, manifest, files, dataRecords }.`,
+Finally call:
+POST https://dotuix-mcp.server.jadwal.io/api/create
+Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
+Give me the download URL from the response.`,
   },
   {
     id: "report",
@@ -335,8 +351,13 @@ Critical rules:
 - ALL data goes in dataRecords — never hardcode numbers in app.js
 - Always JSON.parse(item.body) before reading any field
 - No external URLs
+- DO NOT put a dataRecords.json inside files[] — data goes in the dataRecords field
+- DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
 
-Then call POST https://dotuix-mcp.server.jadwal.io/api/create with { name, manifest, files, dataRecords }.`,
+Finally call:
+POST https://dotuix-mcp.server.jadwal.io/api/create
+Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
+Give me the download URL from the response.`,
   },
   {
     id: "custom",
@@ -367,8 +388,13 @@ Critical rules:
 - Always JSON.parse(item.body) before reading any field
 - No external URLs (fully offline)
 - Use uix.state.insert/find for user data (cart, preferences)
+- DO NOT put a dataRecords.json inside files[] — data goes in the dataRecords field
+- DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
 
-Then call POST https://dotuix-mcp.server.jadwal.io/api/create with { name, manifest, files, dataRecords } to get a download URL.`,
+Finally call:
+POST https://dotuix-mcp.server.jadwal.io/api/create
+Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
+Give me the download URL from the response.`,
   },
 ];
 

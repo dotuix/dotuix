@@ -171,9 +171,6 @@ filesystem — only through this bridge.
 ```javascript
 const manifest = await uix.manifest();
 // Returns the full manifest.json as a plain object
-
-const viewerVersion = await uix.version();
-// Returns the viewer version string e.g. "1.0.0"
 ```
 
 ### Data database — read-only (creator data shipped in the .uix)
@@ -215,14 +212,17 @@ const record = await uix.state.insert({
 // Find records
 const cartItems = await uix.state.find({ type: "cart_item" });
 
-// Update (merges body)
-await uix.state.update("cart_item:uuid", { body: { qty: 3 } });
+// Get single record by id
+const item = await uix.state.get("cart_item:uuid");
+
+// Update — second argument is the new body object (replaces the existing body)
+await uix.state.update("cart_item:uuid", { qty: 3, price: 35.0 });
 
 // Delete
 await uix.state.delete("cart_item:uuid");
 
-// Purge records older than N seconds
-await uix.state.purge({ type: "session_log", olderThan: 86400 });
+// Purge records older than a duration (units: s, m, h, d, y)
+await uix.state.purge({ type: "session_log", olderThan: "24h" });
 
 // Raw SQL — requires "raw-sql" permission
 await uix.state.raw("DELETE FROM records WHERE type = ?", ["session_log"]);
@@ -242,6 +242,26 @@ interface Record {
 
 The `body` field is an arbitrary JSON object. The viewer never inspects it.
 The app decides all type names and all body shapes.
+
+### Utilities
+
+```javascript
+// Trigger the system print dialog
+uix.print();
+
+// Close the .uix file and return to viewer home screen
+await uix.exit();
+```
+
+### What the bridge does NOT provide
+
+These APIs do **not** exist — do not generate code that uses them:
+
+- `uix.storage.set / uix.storage.get` — use `uix.state.insert / uix.state.find` instead
+- `uix.notify()` — use your own in-app UI (toast div, alert, banner)
+- `uix.fetch()` — network is blocked by default (`"network": "blocked"`)
+- `uix.version()` — not exposed
+- `uix.fs` — no host filesystem access
 
 ---
 
@@ -490,7 +510,7 @@ console.log(path); // absolute path to the packed .uix file
 | `@dotuix/cli` | `npm install -g @dotuix/cli` | CLI: dotuix pack / validate / init / sign / encrypt / export |
 | `@dotuix/mcp` | `npm install @dotuix/mcp` | MCP server: lets AI agents generate and pack .uix files via tool calls |
 | `@dotuix/ai` | `npm install @dotuix/ai` | One-function SDK for AI-generated code: `createUIX({ manifest, files })` → `.uix` path |
-| `@dotuix/vite-plugin` | workspace | Vite plugin: build React/Vue/Svelte/TS apps → .uix |
+| `@dotuix/vite-plugin` | `npm install @dotuix/vite-plugin` | Vite plugin: build React/Vue/Svelte/TS apps → .uix |
 | VS Code extension | `intenttext.dotuix` | Manifest IntelliSense, .uix file icon, pack/validate commands |
 
 ## Links

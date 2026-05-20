@@ -639,7 +639,7 @@ fn bridge_script(manifest_json: &str) -> String {
   }});
 
   window.__uix = {{
-    manifest: m,
+    manifest: function() {{ return m; }},
     data: {{
       find: function (opts) {{
         var q = (typeof opts === 'string') ? {{ type: opts }} : Object.assign({{}}, opts);

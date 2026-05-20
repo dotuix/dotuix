@@ -3,7 +3,7 @@
   "private": true,
   "displayName": "dotuix",
   "description": "Language support, IntelliSense, and commands for .uix files",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "publisher": "intenttext",
   "license": "MIT",
   "icon": "icons/icon.png",
@@ -32,7 +32,8 @@
     "onLanguage:json",
     "onCommand:dotuix.pack",
     "onCommand:dotuix.validate",
-    "onCommand:dotuix.init"
+    "onCommand:dotuix.init",
+    "onChatParticipant:dotuix.create"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -80,6 +81,14 @@
       {
         "language": "json",
         "path": "./snippets/manifest.json"
+      }
+    ],
+    "chatParticipants": [
+      {
+        "id": "dotuix.create",
+        "name": "dotuix",
+        "description": "Generate .uix kiosk and interactive apps with AI — no setup needed",
+        "isSticky": false
       }
     ]
   },

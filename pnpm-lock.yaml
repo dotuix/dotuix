@@ -27,6 +27,28 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  apps/mcp-server:
+    dependencies:
+      '@dotuix/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@hono/node-server':
+        specifier: ^1.14.2
+        version: 1.19.14(hono@4.12.21)
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.12.0
+        version: 1.29.0(zod@3.25.76)
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.14)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   apps/viewer:
     dependencies:
       '@monaco-editor/react':

@@ -33,8 +33,9 @@ import {
   generateKeyPair,
   sign,
   verify,
+  createDataDb,
 } from "@dotuix/core";
-import type { UIXRecord } from "@dotuix/core";
+import type { UIXRecord, DataRecord } from "@dotuix/core";
 
 // ---------------------------------------------------------------------------
 // ANSI colours (no deps)
@@ -658,6 +659,47 @@ async function cmdVerify(args: string[]) {
 }
 
 // ---------------------------------------------------------------------------
+// seed — create data.db from a JSON records file
+// ---------------------------------------------------------------------------
+async function cmdSeed(args: string[]) {
+  const positional = positionals(args);
+  const input = positional[0];
+  if (!input) {
+    console.error(
+      c.red("✗") +
+        " Usage: dotuix seed <records.json> [-o data.db]\n" +
+        "  records.json must be a JSON array of { id?, type, body } objects.",
+    );
+    process.exit(1);
+  }
+  const inputPath = resolve(input);
+  if (!existsSync(inputPath)) {
+    console.error(c.red("✗") + ` File not found: ${inputPath}`);
+    process.exit(1);
+  }
+
+  let records: DataRecord[];
+  try {
+    records = JSON.parse(readFileSync(inputPath, "utf8"));
+    if (!Array.isArray(records))
+      throw new Error("Root value must be a JSON array");
+  } catch (e) {
+    console.error(
+      c.red("✗") + ` Invalid JSON in ${input}: ${(e as Error).message}`,
+    );
+    process.exit(1);
+  }
+
+  const outPath = resolve(flag(args, "-o", "--output") ?? "data.db");
+  const bytes = await createDataDb(records);
+  writeFileSync(outPath, bytes);
+  console.log(
+    c.green("✓") +
+      ` Seeded ${c.bold(String(records.length))} records → ${c.cyan(outPath)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // help
 // ---------------------------------------------------------------------------
 function printHelp() {
@@ -692,6 +734,9 @@ function printHelp() {
     ${c.cyan(
       "encrypt",
     )}  <file.uix> --pin <PIN> [-o out]     AES-256-GCM encrypt files
+    ${c.cyan(
+      "seed",
+    )}    <records.json> [-o data.db]         Create data.db from JSON records
 
   ${c.bold("Examples:")}
     dotuix pack ./my-app
@@ -746,6 +791,9 @@ async function main() {
       break;
     case "encrypt":
       await cmdEncrypt(rest);
+      break;
+    case "seed":
+      await cmdSeed(rest);
       break;
     default:
       console.error(

@@ -15,7 +15,7 @@ RUN pnpm install --filter @dotuix/mcp-server... --frozen-lockfile
 # Copy and build source
 COPY packages/core ./packages/core
 COPY apps/mcp-server ./apps/mcp-server
-COPY apps/website/public/llms.txt ./llms.txt
+COPY llms.txt ./llms.txt
 RUN pnpm --filter @dotuix/core build
 RUN pnpm --filter @dotuix/mcp-server build
 

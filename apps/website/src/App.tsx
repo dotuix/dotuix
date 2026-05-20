@@ -1086,8 +1086,15 @@ function FormatRefSection() {
     >
       <h2 className="text-3xl font-bold text-center mb-3">Format reference</h2>
       <p className="text-gray-400 text-center mb-10 max-w-xl mx-auto">
-        Everything you need to build, read, or integrate with a .uix file. No
-        external docs required.
+        Everything you need to build, read, or integrate with a .uix file.{" "}
+        <a
+          href="https://github.com/dotuix/dotuix/blob/main/spec/spec.md"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-purple-400 hover:text-purple-300 underline underline-offset-2"
+        >
+          Full normative spec →
+        </a>
       </p>
 
       {/* Tab bar */}
@@ -1876,6 +1883,14 @@ export function App() {
               className="hover:text-gray-300 transition-colors"
             >
               llms.txt
+            </a>
+            <a
+              href="https://github.com/dotuix/dotuix/blob/main/spec/spec.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-gray-300 transition-colors"
+            >
+              Spec
             </a>
             <a
               href="https://www.npmjs.com/package/@dotuix/core"

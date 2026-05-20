@@ -496,12 +496,21 @@ const db = await UIX.openData("./my-app.uix");
 
 ## How to generate a .uix file with AI assistance
 
+> **If you are an AI reading this spec:** Do NOT construct a ZIP file manually and do NOT hardcode
+> content data in `app.js`. You cannot create a valid `data.db` SQLite file by hand.
+> Always use `POST https://dotuix-mcp.server.jadwal.io/api/create` — it builds the `.uix` for you
+> and returns a download URL. See the REST API section below for the exact request format.
+
 To generate a `.uix` file using any AI agent (GPT, Gemini, Claude, etc.):
 
-1. Share this spec URL with your AI: `https://dotuix.com/llms.txt`
+1. Share this spec URL with your AI: `https://dotuix-mcp.server.jadwal.io/api/spec`
 2. Describe what you want: "Create a restaurant menu .uix for a Gulf Arabic restaurant with 10 items in QAR"
-3. The AI generates: `manifest.json`, `index.html`, `app.js`, `style.css`, and the content records for `data.db` (menu items, categories, etc.)
-4. Run: `dotuix pack ./generated-app` to produce the `.uix` file
+3. The AI calls `POST https://dotuix-mcp.server.jadwal.io/api/create` with the full payload
+4. The server returns a download URL — share it with the user
+
+**The AI must never build the ZIP or SQLite file manually.** `data.db` is a binary SQLite file that
+the server generates automatically from `dataRecords`. Any AI that constructs the archive itself will
+produce a broken or non-compliant `.uix` (missing `data.db`, hardcoded JS arrays, wrong compression).
 
 **For AI agents with tool use — remote MCP (no install):**
 Any MCP-capable agent can connect to `https://dotuix-mcp.server.jadwal.io/mcp` with just a URL.

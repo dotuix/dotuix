@@ -205,7 +205,7 @@ Build a restaurant kiosk .uix file for ${vals.name || "my restaurant"}${
 Output exactly these files:
 • manifest.json — uix:"1.0", id, name, version, entry, mode:"kiosk", network:"blocked"
 • index.html — app shell
-• app.js — reads menu via uix.data.find(), cart via uix.state.insert()
+• app.js — reads menu via uix.data.find(), cart persisted via uix.state.insert() and restored via uix.state.find() on startup
 • style.css — professional kiosk styling, touch-friendly
 
 And a dataRecords array with at least 8 menu items across 3 categories:
@@ -216,6 +216,8 @@ Critical rules:
 - Read data with: const items = await uix.data.find({ type: 'product' })
 - body is a JSON string — always JSON.parse(item.body) before reading fields
 - No external URLs (fully offline)
+- State is NEVER auto-injected: if you use uix.state.insert(), you MUST call uix.state.find() on startup to restore it, e.g.: const saved = await uix.state.find({ type: 'cart_item' }); cart = saved.map(r => JSON.parse(r.body));
+- uix.state.insert() requires a body field: { type: 'cart_item', body: { id, name, price } } — never pass data as top-level fields
 ${vals.cuisine || vals.city ? "- Include Arabic + English labels" : ""}
 - DO NOT put a dataRecords.json inside files[] — data goes in the dataRecords field
 - DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
@@ -395,7 +397,8 @@ Critical rules:
 - Read data with: const items = await uix.data.find({ type: 'yourtype' })
 - Always JSON.parse(item.body) before reading any field
 - No external URLs (fully offline)
-- Use uix.state.insert/find for user data (cart, preferences)
+- Use uix.state.insert/find for user data (cart, preferences); always restore state on startup with uix.state.find()
+- uix.state.insert() requires a body field: { type: '...', body: { ...data } } — never pass data as top-level fields
 - DO NOT put a dataRecords.json inside files[] — data goes in the dataRecords field
 - DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
 - In the dataRecords array, body must be a plain object — never a pre-stringified JSON string

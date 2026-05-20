@@ -676,11 +676,11 @@ Response:
 // uix === window.__uix === window.uix — use whichever; plain `uix` is preferred
 
 async function init() {
+  // 1. Load creator data from data.db (read-only)
   // find() returns an array of { id, type, body, created_at, updated_at }
   // body is ALWAYS a JSON string — you must JSON.parse() before reading fields
   const catRecords  = await uix.data.find({ type: "category" });
   const itemRecords = await uix.data.find({ type: "menuItem" });
-  const i18nRecords = await uix.data.find({ type: "i18n" });
 
   const categories = catRecords
     .map(r => JSON.parse(r.body))   // body is a JSON string — always parse
@@ -688,13 +688,15 @@ async function init() {
 
   const menuItems = itemRecords.map(r => JSON.parse(r.body));
 
-  const strings = {};
-  for (const r of i18nRecords) {
-    const b = JSON.parse(r.body);   // body is a JSON string — always parse
-    strings[b.lang] = b;
-  }
+  // 2. Restore user state from state.db (REQUIRED on every startup)
+  // uix.state is NOT auto-injected — you must read it back yourself.
+  // If you write with uix.state.insert() but never call uix.state.find() here,
+  // state will appear empty every time the app opens.
+  const savedCart = await uix.state.find({ type: "cart_item" });
+  const cart = savedCart.map(r => JSON.parse(r.body)); // body is a JSON string — always parse
 
-  render(categories, menuItems, strings);
+  // 3. Render
+  render(categories, menuItems, cart);
 }
 
 init().catch(err => {
@@ -711,6 +713,10 @@ init().catch(err => {
 - ❌ Hardcoding menu data in `app.js` as JS arrays — always put content in `dataRecords`
 - ❌ Wrapping init logic in a bare async IIFE with no error handler — errors are silently swallowed;
    always end with `.catch(err => document.getElementById('app').innerHTML = err.message)`
+- ❌ Calling `uix.state.insert()` without `uix.state.find()` on startup — state is **never** auto-injected;
+   always restore it in `init()`: `const saved = await uix.state.find({ type: '...' }); cart = saved.map(r => JSON.parse(r.body));`
+- ❌ Passing extra fields directly to `uix.state.insert()` instead of using `body` — always use `{ type, body: { ...yourData } }`,
+   otherwise `item.body` will be null when you read it back
 
 ---
 

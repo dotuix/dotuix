@@ -510,14 +510,14 @@ const db = await UIX.openData("./my-app.uix");
 
 > **If you are an AI reading this spec:** Do NOT construct a ZIP file manually and do NOT hardcode
 > content data in `app.js`. You cannot create a valid `data.db` SQLite file by hand.
-> Always use `POST https://dotuix-mcp.server.jadwal.io/api/create` — it builds the `.uix` for you
+> Always use `POST https://mcp.dotuix.uts.qa/api/create` — it builds the `.uix` for you
 > and returns a download URL. See the REST API section below for the exact request format.
 
 To generate a `.uix` file using any AI agent (GPT, Gemini, Claude, etc.):
 
-1. Share this spec URL with your AI: `https://dotuix-mcp.server.jadwal.io/api/spec`
+1. Share this spec URL with your AI: `https://mcp.dotuix.uts.qa/api/spec`
 2. Describe what you want: "Create a restaurant menu .uix for a Gulf Arabic restaurant with 10 items in QAR"
-3. The AI calls `POST https://dotuix-mcp.server.jadwal.io/api/create` with the full payload
+3. The AI calls `POST https://mcp.dotuix.uts.qa/api/create` with the full payload
 4. The server returns a download URL — share it with the user
 
 **The AI must never build the ZIP or SQLite file manually.** `data.db` is a binary SQLite file that
@@ -525,7 +525,7 @@ the server generates automatically from `dataRecords`. Any AI that constructs th
 produce a broken or non-compliant `.uix` (missing `data.db`, hardcoded JS arrays, wrong compression).
 
 **For AI agents with tool use — remote MCP (no install):**
-Any MCP-capable agent can connect to `https://dotuix-mcp.server.jadwal.io/mcp` with just a URL.
+Any MCP-capable agent can connect to `https://mcp.dotuix.uts.qa/mcp` with just a URL.
 No `npx`, no local packages. The remote server exposes `get_spec`, `create`, and `validate`.
 
 Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
@@ -533,7 +533,7 @@ Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json
 {
   "mcpServers": {
     "dotuix": {
-      "url": "https://dotuix-mcp.server.jadwal.io/mcp"
+      "url": "https://mcp.dotuix.uts.qa/mcp"
     }
   }
 }
@@ -544,20 +544,20 @@ Cursor / Windsurf (`.cursor/mcp.json` or `.windsurf/mcp.json` at workspace root)
 {
   "mcpServers": {
     "dotuix": {
-      "url": "https://dotuix-mcp.server.jadwal.io/mcp"
+      "url": "https://mcp.dotuix.uts.qa/mcp"
     }
   }
 }
 ```
 
 OpenAI ChatGPT (GPT-4o with tool use via Actions / custom GPT):
-Add a custom action pointing to `https://dotuix-mcp.server.jadwal.io/mcp` — the server is
+Add a custom action pointing to `https://mcp.dotuix.uts.qa/mcp` — the server is
 MCP-compliant (Streamable HTTP transport). Use the OpenAPI spec at
-`https://dotuix-mcp.server.jadwal.io/mcp/openapi.json` if the client requires it.
+`https://mcp.dotuix.uts.qa/mcp/openapi.json` if the client requires it.
 
 Gemini (Google AI Studio / Gemini API with function calling):
 Pass `get_spec`, `create`, and `validate` as function declarations to
-`tools[]` in your API call, with `https://dotuix-mcp.server.jadwal.io/mcp` as the endpoint.
+`tools[]` in your API call, with `https://mcp.dotuix.uts.qa/mcp` as the endpoint.
 
 **For AI agents with tool use — local MCP (stdio):**
 Install `@dotuix/mcp`. The agent calls `get_spec` first to read this spec, then
@@ -625,8 +625,8 @@ console.log(path); // absolute path to the packed .uix file
 
 **For AI agents using HTTP REST (GPT, Gemini, custom agents — no MCP required):**
 
-Call `POST https://dotuix-mcp.server.jadwal.io/api/create` directly. Read the
-spec first with `GET https://dotuix-mcp.server.jadwal.io/api/spec`.
+Call `POST https://mcp.dotuix.uts.qa/api/create` directly. Read the
+spec first with `GET https://mcp.dotuix.uts.qa/api/spec`.
 
 Request body (JSON):
 ```json
@@ -659,7 +659,7 @@ Request body (JSON):
 
 Response:
 ```json
-{ "downloadUrl": "https://dotuix-mcp.server.jadwal.io/download/<id>", "filename": "AlMadinaKiosk.uix", "expiresIn": "30 minutes" }
+{ "downloadUrl": "https://mcp.dotuix.uts.qa/download/<id>", "filename": "AlMadinaKiosk.uix", "expiresIn": "30 minutes" }
 ```
 
 **Critical rules for `POST /api/create`:**

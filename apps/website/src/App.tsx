@@ -196,7 +196,7 @@ const AI_TEMPLATES = [
       { key: "city", placeholder: "City / location", required: false },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at https://dotuix-mcp.server.jadwal.io/api/spec
+      `Read the full dotuix format spec at https://mcp.dotuix.uts.qa/api/spec
 
 Build a restaurant kiosk .uix file for ${vals.name || "my restaurant"}${
         vals.cuisine ? ` — ${vals.cuisine} cuisine` : ""
@@ -221,7 +221,7 @@ ${vals.cuisine || vals.city ? "- Include Arabic + English labels" : ""}
 - DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
 
 Finally call:
-POST https://dotuix-mcp.server.jadwal.io/api/create
+POST https://mcp.dotuix.uts.qa/api/create
 Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
 Give me the download URL from the response.`,
   },
@@ -242,7 +242,7 @@ Give me the download URL from the response.`,
       },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at https://dotuix-mcp.server.jadwal.io/api/spec
+      `Read the full dotuix format spec at https://mcp.dotuix.uts.qa/api/spec
 
 Build a product catalogue .uix file for ${
         vals.company || "my company"
@@ -266,7 +266,7 @@ Critical rules:
 - DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
 
 Finally call:
-POST https://dotuix-mcp.server.jadwal.io/api/create
+POST https://mcp.dotuix.uts.qa/api/create
 Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
 Give me the download URL from the response.`,
   },
@@ -287,7 +287,7 @@ Give me the download URL from the response.`,
       },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at https://dotuix-mcp.server.jadwal.io/api/spec
+      `Read the full dotuix format spec at https://mcp.dotuix.uts.qa/api/spec
 
 Build a portfolio .uix file for ${vals.name || "me"}, a ${
         vals.role || "professional"
@@ -310,7 +310,7 @@ Critical rules:
 - DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
 
 Finally call:
-POST https://dotuix-mcp.server.jadwal.io/api/create
+POST https://mcp.dotuix.uts.qa/api/create
 Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
 Give me the download URL from the response.`,
   },
@@ -332,7 +332,7 @@ Give me the download URL from the response.`,
       },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at https://dotuix-mcp.server.jadwal.io/api/spec
+      `Read the full dotuix format spec at https://mcp.dotuix.uts.qa/api/spec
 
 Build an interactive report .uix file titled "${vals.title || "My Report"}".${
         vals.subject ? ` Subject: ${vals.subject}.` : ""
@@ -355,7 +355,7 @@ Critical rules:
 - DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
 
 Finally call:
-POST https://dotuix-mcp.server.jadwal.io/api/create
+POST https://mcp.dotuix.uts.qa/api/create
 Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
 Give me the download URL from the response.`,
   },
@@ -370,7 +370,7 @@ Give me the download URL from the response.`,
       },
     ],
     buildPrompt: (vals: Record<string, string>) =>
-      `Read the full dotuix format spec at https://dotuix-mcp.server.jadwal.io/api/spec
+      `Read the full dotuix format spec at https://mcp.dotuix.uts.qa/api/spec
 
 Build a .uix file for: ${vals.description || "[describe your app]"}
 
@@ -392,7 +392,7 @@ Critical rules:
 - DO NOT call uix.data.getAll() — use uix.data.find({ type: '...' })
 
 Finally call:
-POST https://dotuix-mcp.server.jadwal.io/api/create
+POST https://mcp.dotuix.uts.qa/api/create
 Body: { "name": "...", "manifest": {...}, "files": [{"path":"index.html","content":"..."}, {"path":"app.js","content":"..."}, {"path":"style.css","content":"..."}], "dataRecords": [{"id":"...","type":"...","body":{...}}] }
 Give me the download URL from the response.`,
   },
@@ -654,7 +654,7 @@ const GUIDE_PATHS = [
     steps: [
       {
         title: "Use the prompt builder — or write your own",
-        desc: 'Use the template below, or just tell your AI: "Read https://dotuix-mcp.server.jadwal.io/api/spec then build me a [describe your app]. Give me the download link when done."',
+        desc: 'Use the template below, or just tell your AI: "Read https://mcp.dotuix.uts.qa/api/spec then build me a [describe your app]. Give me the download link when done."',
         code: null,
       },
       {
@@ -682,7 +682,7 @@ const GUIDE_PATHS = [
       {
         title: "Connect — no install needed",
         desc: "Add the remote MCP server URL to your AI client config. Works in Claude Desktop, Cursor, Windsurf — no npx, nothing to install.",
-        code: `// Claude Desktop: ~/Library/Application Support/Claude/claude_desktop_config.json\n// Cursor: .cursor/mcp.json\n{\n  "mcpServers": {\n    "dotuix": { "url": "https://dotuix-mcp.server.jadwal.io/mcp" }\n  }\n}`,
+        code: `// Claude Desktop: ~/Library/Application Support/Claude/claude_desktop_config.json\n// Cursor: .cursor/mcp.json\n{\n  "mcpServers": {\n    "dotuix": { "url": "https://mcp.dotuix.uts.qa/mcp" }\n  }\n}`,
       },
       {
         title: "Or run locally with npx",
@@ -1243,7 +1243,7 @@ const TOOLS = [
   {
     name: "Remote MCP Server",
     desc: "Hosted MCP server — connect Claude Desktop, Cursor, or any MCP client with just a URL. No install. Also exposes a REST API for GPT and Gemini Actions.",
-    href: "https://dotuix-mcp.server.jadwal.io/health",
+    href: "https://mcp.dotuix.uts.qa/health",
     tag: "live",
   },
   {

@@ -54,19 +54,19 @@ Open [viewer.dotuix.com](https://viewer.dotuix.com) (or run the web viewer local
 
 ## Packages
 
-| Package                                                  | Description                                                                                                                            | npm / download                                                                               | Status                      |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------- |
-| [`packages/core`](packages/core)                         | Core library — pack, unpack, validate, sign, read/write SQLite; includes `createDataDb()` for seeding `data.db`                        | [`@dotuix/core`](https://www.npmjs.com/package/@dotuix/core)                                 | ✅ Published                |
-| [`packages/cli`](packages/cli)                           | `dotuix` CLI — pack, unpack, validate, sign, keygen, export, encrypt, init `--template`, **seed** (create `data.db` from JSON)         | [`@dotuix/cli`](https://www.npmjs.com/package/@dotuix/cli)                                   | ✅ Published                |
-| [`packages/mcp`](packages/mcp)                           | Local stdio MCP server — Claude Desktop, Cursor, VS Code Copilot; `create` tool accepts `dataRecords` to seed `data.db`                | [`@dotuix/mcp`](https://www.npmjs.com/package/@dotuix/mcp)                                   | ✅ Published                |
-| [`packages/ai`](packages/ai)                             | `createUIX({ manifest, files })` — one-function SDK for AI-generated scripts; auto-stamps `ai` provenance                              | [`@dotuix/ai`](https://www.npmjs.com/package/@dotuix/ai)                                     | ✅ Published                |
-| [`packages/vscode-extension`](packages/vscode-extension) | VS Code extension — manifest IntelliSense, pack/validate/init commands, `.uix` file icon, **`@dotuix` chat participant** (AI builder)  | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix) | ✅ Published                |
-| [`packages/vite-plugin`](packages/vite-plugin)           | Vite plugin — build React/Vue/Svelte/TS apps, outputs a `.uix` file                                                                    | [`@dotuix/vite-plugin`](https://www.npmjs.com/package/@dotuix/vite-plugin)                   | ✅ Published                |
-| [`packages/viewer-core`](packages/viewer-core)           | Shared viewer logic for web and desktop viewers                                                                                        | —                                                                                            | ⬜ Planned                  |
-| [`apps/viewer`](apps/viewer)                             | Desktop viewer — Tauri + Rust, full `window.__uix` bridge, signature verification, PIN decryption, state persistence, developer mode   | —                                                                                            | ✅ Stable                   |
-| [`apps/mcp-server`](apps/mcp-server)                     | Remote HTTP MCP server — deployed at `dotuix-mcp.server.jadwal.io`; exposes `get_spec`, `create`, `validate` + REST API for GPT/Gemini | `POST /api/create` · `GET /openapi.json`                                                     | ✅ Live                     |
-| [`apps/web-viewer`](apps/web-viewer)                     | Browser viewer — drag-and-drop, runs in any modern browser                                                                             | —                                                                                            | ✅ Built · not yet deployed |
-| [`apps/website`](apps/website)                           | dotuix.com — public landing page (Vite + React + Tailwind)                                                                             | [dotuix.com](https://dotuix.com)                                                             | ✅ Built · deploy pending   |
+| Package                                                  | Description                                                                                                                           | npm / download                                                                               | Status                      |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------- |
+| [`packages/core`](packages/core)                         | Core library — pack, unpack, validate, sign, read/write SQLite; includes `createDataDb()` for seeding `data.db`                       | [`@dotuix/core`](https://www.npmjs.com/package/@dotuix/core)                                 | ✅ Published                |
+| [`packages/cli`](packages/cli)                           | `dotuix` CLI — pack, unpack, validate, sign, keygen, export, encrypt, init `--template`, **seed** (create `data.db` from JSON)        | [`@dotuix/cli`](https://www.npmjs.com/package/@dotuix/cli)                                   | ✅ Published                |
+| [`packages/mcp`](packages/mcp)                           | Local stdio MCP server — Claude Desktop, Cursor, VS Code Copilot; `create` tool accepts `dataRecords` to seed `data.db`               | [`@dotuix/mcp`](https://www.npmjs.com/package/@dotuix/mcp)                                   | ✅ Published                |
+| [`packages/ai`](packages/ai)                             | `createUIX({ manifest, files })` — one-function SDK for AI-generated scripts; auto-stamps `ai` provenance                             | [`@dotuix/ai`](https://www.npmjs.com/package/@dotuix/ai)                                     | ✅ Published                |
+| [`packages/vscode-extension`](packages/vscode-extension) | VS Code extension — manifest IntelliSense, pack/validate/init commands, `.uix` file icon, **`@dotuix` chat participant** (AI builder) | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix) | ✅ Published                |
+| [`packages/vite-plugin`](packages/vite-plugin)           | Vite plugin — build React/Vue/Svelte/TS apps, outputs a `.uix` file                                                                   | [`@dotuix/vite-plugin`](https://www.npmjs.com/package/@dotuix/vite-plugin)                   | ✅ Published                |
+| [`packages/viewer-core`](packages/viewer-core)           | Shared viewer logic for web and desktop viewers                                                                                       | —                                                                                            | ⬜ Planned                  |
+| [`apps/viewer`](apps/viewer)                             | Desktop viewer — Tauri + Rust, full `window.__uix` bridge, signature verification, PIN decryption, state persistence, developer mode  | —                                                                                            | ✅ Stable                   |
+| [`apps/mcp-server`](apps/mcp-server)                     | Remote HTTP MCP server — deployed at `mcp.dotuix.uts.qa`; exposes `get_spec`, `create`, `validate` + REST API for GPT/Gemini          | `POST /api/create` · `GET /openapi.json`                                                     | ✅ Live                     |
+| [`apps/web-viewer`](apps/web-viewer)                     | Browser viewer — drag-and-drop, runs in any modern browser                                                                            | —                                                                                            | ✅ Built · not yet deployed |
+| [`apps/website`](apps/website)                           | dotuix.com — public landing page (Vite + React + Tailwind)                                                                            | [dotuix.com](https://dotuix.com)                                                             | ✅ Built · deploy pending   |
 
 ---
 
@@ -79,7 +79,7 @@ The fastest way to create a `.uix` file is to let an AI do it. The full format s
 The simplest way — no config, no install:
 
 1. Open ChatGPT, Gemini, or Claude
-2. Say: _"Read https://dotuix-mcp.server.jadwal.io/api/spec then build me a [describe your app]. Give me the download link when done."_
+2. Say: _"Read https://mcp.dotuix.uts.qa/api/spec then build me a [describe your app]. Give me the download link when done."_
 3. The AI reads the spec, calls `POST /api/create`, and returns a download URL
 4. Download and open in the viewer — done
 
@@ -94,7 +94,7 @@ Connect directly to the hosted MCP server with just a URL — no `npx`, no local
 // Cursor: .cursor/mcp.json   |   Windsurf: .windsurf/mcp.json
 {
   "mcpServers": {
-    "dotuix": { "url": "https://dotuix-mcp.server.jadwal.io/mcp" }
+    "dotuix": { "url": "https://mcp.dotuix.uts.qa/mcp" }
   }
 }
 ```
@@ -129,11 +129,11 @@ The participant generates all files, seeds `data.db`, packs the `.uix`, and give
 
 The hosted server exposes a plain REST API compatible with Custom GPTs and Gemini function calling:
 
-- `GET  https://dotuix-mcp.server.jadwal.io/api/spec` — returns `llms.txt` for the AI system prompt
-- `POST https://dotuix-mcp.server.jadwal.io/api/create` — generates `.uix`, returns a download URL (30-min TTL)
-- `GET  https://dotuix-mcp.server.jadwal.io/openapi.json` — OpenAPI 3.0 spec (import into Custom GPT Actions)
+- `GET  https://mcp.dotuix.uts.qa/api/spec` — returns `llms.txt` for the AI system prompt
+- `POST https://mcp.dotuix.uts.qa/api/create` — generates `.uix`, returns a download URL (30-min TTL)
+- `GET  https://mcp.dotuix.uts.qa/openapi.json` — OpenAPI 3.0 spec (import into Custom GPT Actions)
 
-For **ChatGPT Custom GPT**: create a new GPT, add an Action, import from `https://dotuix-mcp.server.jadwal.io/openapi.json`. The GPT calls `getSpec` then `createUix` and returns a download link.
+For **ChatGPT Custom GPT**: create a new GPT, add an Action, import from `https://mcp.dotuix.uts.qa/openapi.json`. The GPT calls `getSpec` then `createUix` and returns a download link.
 
 See [`apps/mcp-server`](apps/mcp-server) for self-hosting.
 

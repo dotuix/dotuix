@@ -242,24 +242,6 @@ body,
   opacity: 1;
 }
 
-.dev-link {
-  background: none;
-  border: none;
-  color: #b5b4b0;
-  font-size: 0.7rem;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  padding: 4px 8px;
-  margin-top: 6px;
-  transition: color 0.12s;
-  font-family: inherit;
-}
-
-.dev-link:hover {
-  color: #706f6b;
-}
-
 /* ── Viewer (loaded state) ────────────────────────────────────── */
 .viewer-root {
   display: flex;
@@ -267,6 +249,7 @@ body,
   height: 100%;
   width: 100%;
   background: #fff;
+  position: relative;
 }
 
 .viewer-toolbar {
@@ -388,6 +371,52 @@ body,
   width: 100%;
   border: none;
   display: block;
+}
+
+/* ── DB overlay ───────────────────────────────────────────────── */
+.db-overlay {
+  position: absolute;
+  top: 40px; /* below toolbar */
+  right: 0;
+  bottom: 0;
+  width: 520px;
+  max-width: 100%;
+  background: #fff;
+  border-left: 1px solid #e4e3de;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.08);
+}
+
+.db-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  height: 38px;
+  border-bottom: 1px solid #e4e3de;
+  background: #faf9f7;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #1a1917;
+  flex-shrink: 0;
+}
+
+.db-overlay-close {
+  background: transparent;
+  border: none;
+  color: #9d9c98;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 4px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.db-overlay-close:hover {
+  background: #f0efe9;
+  color: #1a1917;
 }
 
 /* ── PIN dialog ───────────────────────────────────────────────── */

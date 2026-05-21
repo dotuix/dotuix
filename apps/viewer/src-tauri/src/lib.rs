@@ -46,8 +46,7 @@ struct AppState {
     pending_manifest: Mutex<Option<serde_json::Value>>,
     /// .uix path whose load is awaiting PIN entry.
     pending_path: Mutex<Option<String>>,
-    /// Project folder currently open in developer mode; shared with devpreview:// protocol.
-    preview_dir: Arc<Mutex<Option<String>>>,
+
     /// Cached license payload for the currently open app; None when no license block or unlicensed.
     license_info: Mutex<Option<LicensePayload>>,
 }
@@ -71,7 +70,6 @@ impl Default for AppState {
             pending_files: Mutex::new(None),
             pending_manifest: Mutex::new(None),
             pending_path: Mutex::new(None),
-            preview_dir: Arc::new(Mutex::new(None)),
             license_info: Mutex::new(None),
         }
     }
@@ -2625,97 +2623,6 @@ fn uix_notify(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 // ---------------------------------------------------------------------------
-// Developer mode — types & helpers
-// ---------------------------------------------------------------------------
-
-#[derive(serde::Serialize, Clone)]
-struct DirEntry {
-    name: String,
-    path: String,
-    is_dir: bool,
-    children: Option<Vec<DirEntry>>,
-}
-
-fn read_dir_recursive(dir: &std::path::Path, depth: u32) -> Vec<DirEntry> {
-    if depth > 8 {
-        return vec![];
-    }
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return vec![];
-    };
-    let mut result: Vec<DirEntry> = rd
-        .filter_map(|e| e.ok())
-        .filter_map(|e| {
-            let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') {
-                return None;
-            }
-            let path = e.path();
-            let path_str = path.to_string_lossy().to_string();
-            if path.is_dir() {
-                Some(DirEntry {
-                    name,
-                    path: path_str,
-                    is_dir: true,
-                    children: Some(read_dir_recursive(&path, depth + 1)),
-                })
-            } else {
-                Some(DirEntry { name, path: path_str, is_dir: false, children: None })
-            }
-        })
-        .collect();
-    result.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-        (true, false) => std::cmp::Ordering::Less,
-        (false, true) => std::cmp::Ordering::Greater,
-        _ => a.name.cmp(&b.name),
-    });
-    result
-}
-
-fn pack_add_dir(
-    zip: &mut zip::ZipWriter<std::fs::File>,
-    base: &std::path::Path,
-    dir: &std::path::Path,
-) -> Result<(), String> {
-    const TEXT_EXTS: &[&str] = &[
-        "html", "htm", "js", "mjs", "cjs", "css", "json", "ts", "tsx", "jsx",
-        "svg", "txt", "md", "yaml", "yml", "xml",
-    ];
-    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let path = entry.path();
-        let rel = path.strip_prefix(base).map_err(|e| e.to_string())?;
-        let rel_str = rel.to_string_lossy().replace('\\', "/");
-        // Skip hidden paths
-        if rel_str.split('/').any(|seg| seg.starts_with('.')) {
-            continue;
-        }
-        if path.is_dir() {
-            pack_add_dir(zip, base, &path)?;
-        } else {
-            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-            let method = if TEXT_EXTS.contains(&ext.as_str()) {
-                zip::CompressionMethod::Deflated
-            } else {
-                zip::CompressionMethod::Stored
-            };
-            let opts = zip::write::SimpleFileOptions::default().compression_method(method);
-            zip.start_file(&rel_str, opts).map_err(|e| e.to_string())?;
-            let data = std::fs::read(&path).map_err(|e| e.to_string())?;
-            zip.write_all(&data).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
-}
-
-fn pack_dir_to_zip(src_dir: &str, out_path: &str) -> Result<(), String> {
-    let src = std::path::Path::new(src_dir);
-    let out_file = std::fs::File::create(out_path).map_err(|e| e.to_string())?;
-    let mut zip = zip::ZipWriter::new(out_file);
-    pack_add_dir(&mut zip, src, src)?;
-    zip.finish().map_err(|e| e.to_string())?;
-    Ok(())
-}
 
 #[derive(serde::Serialize)]
 struct DbLoadResult {
@@ -2724,95 +2631,17 @@ struct DbLoadResult {
 }
 
 // ---------------------------------------------------------------------------
-// Developer mode — Tauri commands
+
+#[tauri::command]
+fn get_state_db_dir(state: State<AppState>) -> Option<String> {
+    state.state_db_path.lock().unwrap()
+        .as_ref()
+        .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned()))
+}
+
 // ---------------------------------------------------------------------------
-
-#[tauri::command]
-async fn editor_open_folder(app: AppHandle) -> Result<Option<String>, String> {
-    use tauri_plugin_dialog::DialogExt;
-    use tokio::sync::oneshot;
-    let (tx, rx) = oneshot::channel();
-    app.dialog()
-        .file()
-        .pick_folder(move |maybe_path| { let _ = tx.send(maybe_path); });
-    let result = rx.await.map_err(|_| "Dialog closed unexpectedly".to_string())?;
-    Ok(result.map(|p| p.to_string()))
-}
-
-#[tauri::command]
-fn editor_read_dir(path: String) -> Result<Vec<DirEntry>, String> {
-    Ok(read_dir_recursive(std::path::Path::new(&path), 0))
-}
-
-#[tauri::command]
-fn editor_read_file(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn editor_write_file(path: String, content: String) -> Result<(), String> {
-    if let Some(parent) = std::path::Path::new(&path).parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    std::fs::write(&path, content.as_bytes()).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn editor_pack_uix(src_dir: String, out_path: String) -> Result<(), String> {
-    pack_dir_to_zip(&src_dir, &out_path)
-}
-
-#[tauri::command]
-fn editor_show_save_dialog(app: AppHandle, default_name: String) -> Result<Option<String>, String> {
-    use tauri_plugin_dialog::DialogExt;
-    let result = app
-        .dialog()
-        .file()
-        .add_filter("UIX App", &["uix"])
-        .set_file_name(&default_name)
-        .blocking_save_file();
-    Ok(result.map(|p| p.to_string()))
-}
-
-#[tauri::command]
-fn editor_set_preview_dir(path: String, state: State<AppState>) -> Result<(), String> {
-    *state.preview_dir.lock().unwrap() = Some(path);
-    Ok(())
-}
-
-#[tauri::command]
-fn editor_clear_preview_dir(state: State<AppState>) {
-    *state.preview_dir.lock().unwrap() = None;
-}
-
-#[tauri::command]
-fn editor_reveal_in_folder(path: String) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    std::process::Command::new("open")
-        .arg("-R")
-        .arg(&path)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    #[cfg(target_os = "windows")]
-    std::process::Command::new("explorer")
-        .arg(format!("/select,{path}"))
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    #[cfg(target_os = "linux")]
-    {
-        let p = std::path::Path::new(&path);
-        let dir = if p.is_file() {
-            p.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or(path)
-        } else {
-            path
-        };
-        std::process::Command::new("xdg-open")
-            .arg(&dir)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
+// DB viewer commands
+// ---------------------------------------------------------------------------
 
 #[tauri::command]
 fn db_load_all(db_path: String) -> Result<DbLoadResult, String> {
@@ -2901,7 +2730,6 @@ pub fn run() {
     // Clone the Arcs so protocol closures can access state without going
     // through Tauri State (UriSchemeContext has no .state() method).
     let protocol_files = Arc::clone(&app_state.files);
-    let protocol_preview_dir = Arc::clone(&app_state.preview_dir);
     let protocol_schema_version = Arc::clone(&app_state.stored_schema_version);
 
     tauri::Builder::default()
@@ -2968,12 +2796,10 @@ pub fn run() {
             let open_m  = MenuItemBuilder::with_id("open_file", "Open\u{2026}").accelerator("CmdOrCtrl+O").build(app)?;
             let close_m = MenuItemBuilder::with_id("close_app", "Close File").accelerator("CmdOrCtrl+W").build(app)?;
             let fs_m    = MenuItemBuilder::with_id("toggle_fullscreen", "Enter Full Screen").accelerator("Ctrl+Cmd+F").build(app)?;
-            let dev_m   = MenuItemBuilder::with_id("dev_mode", "Developer Mode").accelerator("CmdOrCtrl+Shift+D").build(app)?;
-
             let file_menu = SubmenuBuilder::new(app, "File")
                 .item(&open_m).separator().item(&close_m).separator().quit().build()?;
             let view_menu = SubmenuBuilder::new(app, "View")
-                .item(&fs_m).separator().item(&dev_m).build()?;
+                .item(&fs_m).build()?;
             let menu = MenuBuilder::new(app).item(&file_menu).item(&view_menu).build()?;
             app.set_menu(menu)?;
 
@@ -2985,7 +2811,6 @@ pub fn run() {
                         let is = win_for_menu.is_fullscreen().unwrap_or(false);
                         win_for_menu.set_fullscreen(!is).ok();
                     }
-                    "dev_mode"          => { win_for_menu.emit("menu-dev-mode", ()).ok(); }
                     _ => {}
                 }
             });
@@ -3036,36 +2861,6 @@ pub fn run() {
                     .unwrap(),
             }
         })
-        .register_uri_scheme_protocol("devpreview", move |_ctx, req: Request<Vec<u8>>| {
-            let raw_path = req.uri().path().to_string();
-            let rel = raw_path.trim_start_matches('/');
-            let rel = if rel.is_empty() { "index.html" } else { rel };
-
-            let dir_opt = protocol_preview_dir.lock().unwrap().clone();
-            match dir_opt {
-                None => Response::builder()
-                    .status(503)
-                    .header("Content-Type", "text/plain")
-                    .body(b"No preview directory set".to_vec())
-                    .unwrap(),
-                Some(dir) => {
-                    let full = std::path::Path::new(&dir).join(rel);
-                    match std::fs::read(&full) {
-                        Ok(data) => Response::builder()
-                            .status(200)
-                            .header("Content-Type", mime_for(rel))
-                            .header("Access-Control-Allow-Origin", "*")
-                            .body(data)
-                            .unwrap(),
-                        Err(_) => Response::builder()
-                            .status(404)
-                            .header("Content-Type", "text/plain")
-                            .body(format!("Not found: {rel}").into_bytes())
-                            .unwrap(),
-                    }
-                }
-            }
-        })
         .invoke_handler(tauri::generate_handler![
             pick_and_load_uix,
             load_uix,
@@ -3108,16 +2903,7 @@ pub fn run() {
             uix_open_url,
             uix_set_window_title,
             uix_notify,
-            // Editor / developer mode
-            editor_open_folder,
-            editor_read_dir,
-            editor_read_file,
-            editor_write_file,
-            editor_pack_uix,
-            editor_show_save_dialog,
-            editor_set_preview_dir,
-            editor_clear_preview_dir,
-            editor_reveal_in_folder,
+            get_state_db_dir,
             db_load_all,
             db_update_record,
             db_delete_record,

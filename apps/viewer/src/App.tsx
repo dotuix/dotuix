@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import DeveloperMode from "./components/DeveloperMode";
+import DbViewer from "./components/DbViewer";
 
 function BrandIcon() {
   return (
@@ -108,7 +108,6 @@ type ViewerState =
       expires?: string;
       signed: boolean;
     }
-  | { status: "developer" }
   | { status: "error"; message: string };
 
 function handleLoadResult(result: LoadResult): ViewerState {
@@ -142,6 +141,8 @@ export default function App() {
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
+  const [dbOpen, setDbOpen] = useState(false);
+  const [dbDir, setDbDir] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const stateRef = useRef(state);
   useEffect(() => {
@@ -177,6 +178,16 @@ export default function App() {
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
+  }, [state.status]);
+
+  // ── Fetch state.db dir when a .uix is loaded ─────────────────────────────
+  useEffect(() => {
+    if (state.status === "loaded") {
+      invoke<string | null>("get_state_db_dir").then(setDbDir).catch(() => {});
+    } else {
+      setDbDir(null);
+      setDbOpen(false);
+    }
   }, [state.status]);
 
   // ── File association: check if launched with a .uix path ─────────────────
@@ -217,10 +228,6 @@ export default function App() {
         setState({ status: "idle" });
       }
     }).then((u) => unsubs.push(u));
-
-    listen("menu-dev-mode", () => setState({ status: "developer" })).then((u) =>
-      unsubs.push(u),
-    );
 
     // Native file drag-drop (Tauri emits these automatically)
     listen<{ paths?: string[] }>("tauri://drag-drop", (event) => {
@@ -298,11 +305,6 @@ export default function App() {
     [],
   );
 
-  // ── Developer mode ───────────────────────────────────────────────────────
-  if (state.status === "developer") {
-    return <DeveloperMode onClose={closeApp} />;
-  }
-
   // ── Loaded: viewer with professional toolbar ─────────────────────────────
   if (state.status === "loaded") {
     const days = state.expires ? daysUntil(state.expires) : null;
@@ -355,6 +357,17 @@ export default function App() {
           <div className="toolbar-actions">
             <button
               className="toolbar-icon-btn"
+              onClick={() => setDbOpen((o) => !o)}
+              title="DB Viewer (diagnostics)"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                <ellipse cx="12" cy="5" rx="9" ry="3" stroke="currentColor" strokeWidth="1.5"/>
+                <path d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5" stroke="currentColor" strokeWidth="1.5"/>
+                <path d="M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3" stroke="currentColor" strokeWidth="1.5"/>
+              </svg>
+            </button>
+            <button
+              className="toolbar-icon-btn"
               onClick={toggleFullscreen}
               title="Full screen (Ctrl+⌘+F)"
             >
@@ -376,6 +389,15 @@ export default function App() {
           className="viewer-frame"
           title={state.manifestName}
         />
+        {dbOpen && (
+          <div className="db-overlay">
+            <div className="db-overlay-header">
+              <span>DB Viewer</span>
+              <button className="db-overlay-close" onClick={() => setDbOpen(false)}>✕</button>
+            </div>
+            <DbViewer projectDir={dbDir} />
+          </div>
+        )}
       </div>
     );
   }
@@ -619,12 +641,6 @@ export default function App() {
           </div>
         )}
 
-        <button
-          className="dev-link"
-          onClick={() => setState({ status: "developer" })}
-        >
-          Developer mode
-        </button>
       </div>
     </div>
   );

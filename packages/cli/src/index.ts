@@ -36,6 +36,9 @@ import {
   createDataDb,
 } from "@dotuix/core";
 import type { UIXRecord, DataRecord } from "@dotuix/core";
+import { createHash } from "node:crypto";
+
+const CLI_VERSION = "0.1.4";
 
 // ---------------------------------------------------------------------------
 // ANSI colours (no deps)
@@ -258,9 +261,71 @@ async function cmdInfo(args: string[]) {
 // ---------------------------------------------------------------------------
 async function cmdExport(args: string[]) {
   const file = pos(args)[0];
+  const outFile = opt(args, "--output", "-o");
+  const typesStr = opt(args, "--types");
+  const isBundleMode = typesStr !== undefined || outFile?.endsWith(".uixdata");
+
+  // ── .uixdata bundle mode ──────────────────────────────────────────────────
+  if (isBundleMode) {
+    if (!file) {
+      console.error(
+        c.red("✗") +
+          " Usage: dotuix export <file.uix> [--types t1,t2] --output bundle.uixdata",
+      );
+      process.exit(1);
+    }
+    const types = typesStr
+      ? typesStr
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : [];
+    const output = outFile ?? basename(file, ".uix") + ".uixdata";
+
+    const data = new Uint8Array(readFileSync(resolve(file)));
+    const bFiles = unpackBuffer(data);
+    const manifest = readManifestFromBuffer(data);
+
+    const stateDb = await createState({
+      uixVersion: manifest.uix,
+      seed: bFiles["state.db"],
+      permissions: ["raw-sql"],
+    });
+    const records: UIXRecord[] =
+      types.length > 0
+        ? types.flatMap((t) => stateDb.find({ type: t }))
+        : stateDb.raw(
+            "SELECT id, type, body, created_at, updated_at FROM records ORDER BY created_at",
+            [],
+          );
+    stateDb.close();
+
+    const checksum =
+      "sha256:" +
+      createHash("sha256").update(JSON.stringify(records)).digest("hex");
+    const uniqueTypes = [...new Set(records.map((r) => r.type))];
+    const bundle = {
+      format: "uixdata/1.0",
+      appId: manifest.id,
+      schemaVersion: (manifest as Record<string, unknown>).schemaVersion ?? 1,
+      exportedAt: new Date().toISOString(),
+      exportedBy: `dotuix-cli/${CLI_VERSION}`,
+      checksum,
+      types: uniqueTypes,
+      records,
+    };
+    writeFileSync(resolve(output), JSON.stringify(bundle, null, 2), "utf8");
+    console.log(
+      c.green("✓") + ` ${records.length} record(s) → ${c.bold(output)}`,
+    );
+    if (uniqueTypes.length > 0)
+      console.log(c.muted(`  types: ${uniqueTypes.join(", ")}`));
+    return;
+  }
+
+  // ── Legacy single-type CSV/JSON export ────────────────────────────────────
   const type = opt(args, "--type", "-t");
   const format = (opt(args, "--format", "-f") ?? "json").toLowerCase();
-  const outFile = opt(args, "--output", "-o");
 
   if (!file || !type) {
     console.error(
@@ -334,6 +399,229 @@ async function cmdExport(args: string[]) {
   } else {
     console.log(content);
   }
+}
+
+// ---------------------------------------------------------------------------
+// import
+// ---------------------------------------------------------------------------
+async function cmdImport(args: string[]) {
+  const file = pos(args)[0];
+  const dataFile = opt(args, "--data", "-d");
+  const merge = flag(args, "--merge");
+
+  if (!file || !dataFile) {
+    console.error(
+      c.red("✗") +
+        " Usage: dotuix import <file.uix> --data <bundle.uixdata> [--merge]",
+    );
+    process.exit(1);
+  }
+
+  // 1. Read + parse bundle
+  let bundleRaw: string;
+  try {
+    bundleRaw = readFileSync(resolve(dataFile), "utf8");
+  } catch {
+    console.error(c.red("✗") + ` Cannot read bundle: ${dataFile}`);
+    process.exit(1);
+    return;
+  }
+  let bundle: {
+    format: string;
+    appId?: string;
+    schemaVersion?: number;
+    checksum?: string;
+    records: UIXRecord[];
+  };
+  try {
+    bundle = JSON.parse(bundleRaw);
+  } catch {
+    console.error(c.red("✗") + " Invalid JSON in bundle file");
+    process.exit(1);
+    return;
+  }
+  if (bundle.format !== "uixdata/1.0") {
+    console.error(
+      c.red("✗") + ` Unsupported bundle format: "${bundle.format}"`,
+    );
+    process.exit(1);
+  }
+  if (!Array.isArray(bundle.records)) {
+    console.error(c.red("✗") + " Bundle has no records array");
+    process.exit(1);
+  }
+
+  // 2. Verify checksum
+  if (bundle.checksum) {
+    const expected =
+      "sha256:" +
+      createHash("sha256").update(JSON.stringify(bundle.records)).digest("hex");
+    if (bundle.checksum !== expected) {
+      console.error(
+        c.red("✗") +
+          " Checksum mismatch — bundle may be corrupted or tampered with",
+      );
+      process.exit(1);
+    }
+  } else {
+    console.log(
+      c.yellow("⚠") + " No checksum in bundle — skipping integrity check",
+    );
+  }
+
+  // 3. Open target .uix
+  const uixPath = resolve(file);
+  let uixData: Uint8Array;
+  try {
+    uixData = new Uint8Array(readFileSync(uixPath));
+  } catch {
+    console.error(c.red("✗") + ` Cannot read .uix file: ${file}`);
+    process.exit(1);
+    return;
+  }
+  const iFiles = unpackBuffer(uixData);
+  const iManifest = readManifestFromBuffer(uixData);
+
+  if (bundle.appId && bundle.appId !== iManifest.id) {
+    console.log(
+      c.yellow("⚠") +
+        ` Bundle appId "${bundle.appId}" differs from target "${iManifest.id}"`,
+    );
+  }
+
+  const stateDb = await createState({
+    uixVersion: iManifest.uix,
+    seed: iFiles["state.db"],
+    permissions: ["raw-sql"],
+  });
+
+  // 4. Import records
+  let imported = 0;
+  let skipped = 0;
+
+  if (!merge) {
+    // Replace mode: clear matching types first
+    const types = [...new Set(bundle.records.map((r) => r.type))];
+    for (const t of types) {
+      stateDb.raw("DELETE FROM records WHERE type = ?", [t]);
+    }
+  }
+
+  for (const rec of bundle.records) {
+    const body =
+      typeof rec.body === "string" ? rec.body : JSON.stringify(rec.body);
+    if (merge && stateDb.get(rec.id) !== null) {
+      skipped++;
+      continue;
+    }
+    stateDb.raw(
+      "INSERT OR IGNORE INTO records (id, type, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+      [rec.id, rec.type, body, rec.created_at, rec.updated_at],
+    );
+    imported++;
+  }
+
+  // 5. Repack .uix
+  const newStateDb = stateDb.export();
+  stateDb.close();
+
+  const updatedFiles = { ...iFiles, "state.db": newStateDb };
+  const packed = packBuffer(updatedFiles);
+  writeFileSync(uixPath, packed);
+
+  console.log(
+    c.green("✓") +
+      ` Imported ${c.bold(String(imported))} record(s) into ${c.bold(
+        basename(file),
+      )}`,
+  );
+  if (skipped > 0)
+    console.log(c.muted(`  ${skipped} skipped (already exists)`));
+}
+
+// ---------------------------------------------------------------------------
+// inspect-data
+// ---------------------------------------------------------------------------
+async function cmdInspectData(args: string[]) {
+  const file = pos(args)[0];
+  if (!file) {
+    console.error(c.red("✗") + " Usage: dotuix inspect-data <bundle.uixdata>");
+    process.exit(1);
+  }
+
+  let bundleRaw: string;
+  try {
+    bundleRaw = readFileSync(resolve(file), "utf8");
+  } catch {
+    console.error(c.red("✗") + ` Cannot read file: ${file}`);
+    process.exit(1);
+    return;
+  }
+  let bundle: Record<string, unknown>;
+  try {
+    bundle = JSON.parse(bundleRaw);
+  } catch {
+    console.error(c.red("✗") + " Invalid JSON");
+    process.exit(1);
+    return;
+  }
+
+  if ((bundle["format"] as string) !== "uixdata/1.0") {
+    console.error(
+      c.red("✗") + ` Unsupported bundle format: "${bundle["format"]}"`,
+    );
+    process.exit(1);
+  }
+
+  const records = (bundle["records"] as UIXRecord[]) ?? [];
+
+  // Verify checksum
+  let checksumStatus = c.muted("(none)");
+  let checksumOk = true;
+  if (bundle["checksum"]) {
+    const expected =
+      "sha256:" +
+      createHash("sha256").update(JSON.stringify(records)).digest("hex");
+    checksumOk = bundle["checksum"] === expected;
+    const short = (bundle["checksum"] as string).slice(0, 16) + "\u2026";
+    checksumStatus = checksumOk
+      ? c.green("✓") + " " + c.muted(short)
+      : c.red("✗") + " " + c.red("MISMATCH") + " " + c.muted(short);
+  }
+
+  // Count by type
+  const countByType: Record<string, number> = {};
+  for (const r of records) {
+    countByType[r.type] = (countByType[r.type] ?? 0) + 1;
+  }
+
+  console.log(`\n  ${c.bold(basename(file))}`);
+  console.log(`  ${c.muted("format:")}     ${bundle["format"]}`);
+  console.log(
+    `  ${c.muted("appId:")}      ${bundle["appId"] ?? c.muted("(none)")}`,
+  );
+  console.log(`  ${c.muted("schema:")}     v${bundle["schemaVersion"] ?? 1}`);
+  console.log(
+    `  ${c.muted("exported:")}   ${
+      bundle["exportedAt"] ?? c.muted("(unknown)")
+    }`,
+  );
+  console.log(
+    `  ${c.muted("by:")}         ${
+      bundle["exportedBy"] ?? c.muted("(unknown)")
+    }`,
+  );
+  console.log(`  ${c.muted("checksum:")}   ${checksumStatus}`);
+  console.log(`  ${c.muted("records:")}    ${records.length} total`);
+  if (Object.keys(countByType).length > 0) {
+    console.log();
+    for (const [type, count] of Object.entries(countByType)) {
+      console.log(`    ${c.cyan(type)}  ${c.muted(String(count))}`);
+    }
+  }
+  console.log();
+
+  if (!checksumOk) process.exit(1);
 }
 
 // ---------------------------------------------------------------------------
@@ -724,8 +1012,17 @@ function printHelp() {
     )}     [name] [-t restaurant|catalog|portfolio]  Scaffold a new project
     ${c.cyan(
       "export",
-    )}   <file.uix> --type <t>               Export state records
+    )}   <file.uix> --type <t>               Export state records (JSON/CSV)
                [--format json|csv] [-o file]
+    ${c.cyan(
+      "export",
+    )}   <file.uix> [--types t1,t2] -o bundle.uixdata  Export .uixdata bundle
+    ${c.cyan(
+      "import",
+    )}   <file.uix> --data bundle.uixdata [--merge]    Import .uixdata bundle
+    ${c.cyan(
+      "inspect-data",
+    )} <bundle.uixdata>                         Inspect a .uixdata bundle
     ${c.cyan(
       "keygen",
     )}   [-o <base>]                         Generate Ed25519 key pair
@@ -794,6 +1091,12 @@ async function main() {
       break;
     case "seed":
       await cmdSeed(rest);
+      break;
+    case "import":
+      await cmdImport(rest);
+      break;
+    case "inspect-data":
+      await cmdInspectData(rest);
       break;
     default:
       console.error(

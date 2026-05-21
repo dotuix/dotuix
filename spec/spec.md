@@ -827,6 +827,55 @@ changing existing behaviour) MUST increment the version.
 
 ---
 
+## 11. `.uixdata` Bundle Format
+
+The `.uixdata` format is used to export and import state records outside of a `.uix` file.
+It is a plain JSON file with the following top-level fields:
+
+| Field           | Type     | Required | Description                                             |
+| --------------- | -------- | -------- | ------------------------------------------------------- |
+| `format`        | string   | yes      | Must be `"uixdata/1.0"`                                 |
+| `appId`         | string   | yes      | `manifest.id` of the source app                         |
+| `schemaVersion` | integer  | yes      | Schema version at time of export                        |
+| `exportedAt`    | string   | yes      | ISO-8601 timestamp                                      |
+| `exportedBy`    | string   | yes      | Tool identifier, e.g. `dotuix-cli/0.1.4`                |
+| `checksum`      | string   | yes      | `"sha256:<hex>"` of `JSON.stringify(records)` (compact) |
+| `types`         | string[] | yes      | Unique record types present in this bundle              |
+| `records`       | object[] | yes      | Array of record objects (see below)                     |
+
+### 11.1 Record Object
+
+Each entry in `records` has the same shape as a state record:
+
+| Field        | Type    | Description                              |
+| ------------ | ------- | ---------------------------------------- |
+| `id`         | string  | Full record ID (e.g. `"product:abc123"`) |
+| `type`       | string  | Record type                              |
+| `body`       | string  | Stringified JSON body                    |
+| `created_at` | integer | Unix ms timestamp                        |
+| `updated_at` | integer | Unix ms timestamp                        |
+
+### 11.2 Checksum
+
+The `checksum` value is computed as:
+
+```
+"sha256:" + hex( SHA-256( JSON.stringify(records) ) )
+```
+
+`JSON.stringify(records)` must be the compact form (no extra whitespace) of the `records`
+array as exported. The checksum is verified before import; a mismatch MUST be rejected.
+
+### 11.3 Import Modes
+
+**Replace mode** (default): all existing records whose `type` is present in the bundle are
+deleted before inserting the bundle records. Records of other types are untouched.
+
+**Merge mode** (`--merge`): records whose `id` already exists in the target are skipped;
+only new IDs are inserted. No records are deleted.
+
+---
+
 ## Appendix A — Example manifest.json
 
 ### Minimal (no security)

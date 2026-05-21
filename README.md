@@ -85,24 +85,27 @@ The viewer injects `window.__uix` (aliased as `window.uix`) into the running app
 }
 ```
 
-| Field           | Required | Description                                                                                                                              |
-| --------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `uix`           | Yes      | Format version. Always `"1.0"`.                                                                                                          |
-| `id`            | Yes      | Reverse-domain identifier. e.g. `"com.example.myapp"`. Used for state isolation.                                                         |
-| `name`          | Yes      | Human-readable app name shown in viewer chrome.                                                                                          |
-| `version`       | Yes      | SemVer app version. e.g. `"1.0.0"`.                                                                                                      |
-| `entry`         | Yes      | Path to the entry HTML file inside the archive.                                                                                          |
-| `mode`          | Yes      | `"kiosk"` (locked UI, no address bar) or `"window"` (developer toolbar).                                                                 |
-| `network`       | No       | `"blocked"` (default) or `"allowed"`.                                                                                                    |
-| `permissions`   | No       | `["local-storage"]`, `["print"]`, `["raw-sql"]`, `["file-save"]`, `["file-open"]`, `["open-url"]`, `["notifications"]`, `["local-sync"]` |
-| `sync.endpoint` | No       | HTTPS URL of a dotuix sync server. Required when `"local-sync"` permission is declared.                                                  |
-| `sync.secret`   | No       | Base64-encoded shared secret for the sync server.                                                                                        |
-| `minViewer`     | No       | Minimum viewer version required.                                                                                                         |
-| `expires`       | No       | ISO 8601 date — viewer refuses expired files before unpacking.                                                                           |
-| `state.seed`    | No       | `true` = copy `state.db` from archive as initial user state on first open.                                                               |
-| `security`      | No       | PIN auth + AES-256-GCM encryption block.                                                                                                 |
-| `signature`     | No       | Ed25519 signature block.                                                                                                                 |
-| `ai`            | No       | AI provenance block — informational only, no effect on behaviour.                                                                        |
+| Field           | Required | Description                                                                                                                                                              |
+| --------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `uix`           | Yes      | Format version. Always `"1.0"`.                                                                                                                                          |
+| `id`            | Yes      | Reverse-domain identifier. e.g. `"com.example.myapp"`. Used for state isolation.                                                                                         |
+| `name`          | Yes      | Human-readable app name shown in viewer chrome.                                                                                                                          |
+| `version`       | Yes      | SemVer app version. e.g. `"1.0.0"`.                                                                                                                                      |
+| `entry`         | Yes      | Path to the entry HTML file inside the archive.                                                                                                                          |
+| `mode`          | Yes      | `"kiosk"` (locked UI, no address bar) or `"window"` (developer toolbar).                                                                                                 |
+| `network`       | No       | `"blocked"` (default) or `"allowed"`.                                                                                                                                    |
+| `permissions`   | No       | `["local-storage"]`, `["print"]`, `["raw-sql"]`, `["file-save"]`, `["file-open"]`, `["open-url"]`, `["notifications"]`, `["local-sync"]`                                 |
+| `sync.endpoint` | No       | HTTPS URL of a dotuix sync server. Required when `"local-sync"` permission is declared.                                                                                  |
+| `sync.secret`   | No       | Base64-encoded shared secret for the sync server.                                                                                                                        |
+| `minViewer`     | No       | Minimum viewer version required.                                                                                                                                         |
+| `expires`       | No       | ISO 8601 date — viewer refuses expired files before unpacking.                                                                                                           |
+| `state.seed`    | No       | `true` = copy `state.db` from archive as initial user state on first open.                                                                                               |
+| `state.mode`    | No       | `"device"` (default) — state stored by viewer per app-id; archive never modified. `"file"` — state written back into archive on close; sharing the file shares all data. |
+| `schemaVersion` | No       | Integer, incremented when `state.db` schema changes. Triggers `uix.schema.onUpgrade()` before first render if stored version differs. Default `1`.                       |
+| `license`       | No       | `{ required: true, publisherKey: "ed25519:..." }` — require a signed `.uixlicense` token to open. Verified offline via Ed25519.                                          |
+| `security`      | No       | PIN auth + AES-256-GCM encryption block.                                                                                                                                 |
+| `signature`     | No       | Ed25519 signature block.                                                                                                                                                 |
+| `ai`            | No       | AI provenance block — informational only, no effect on behaviour.                                                                                                        |
 
 ### The `window.uix` bridge
 
@@ -228,17 +231,18 @@ Regular apps omit the `security` field entirely. For classified or access-contro
 
 ## Packages
 
-| Package                                                  | What it does                                                                                        | Status                                                                                          |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [`packages/core`](packages/core)                         | Core library — `pack`, `unpack`, `validate`, `sign`, `createDataDb`. Used by all other packages.    | ✅ [`@dotuix/core`](https://www.npmjs.com/package/@dotuix/core)                                 |
-| [`packages/cli`](packages/cli)                           | `dotuix` CLI — `pack`, `unpack`, `validate`, `sign`, `keygen`, `encrypt`, `init --template`, `seed` | ✅ [`@dotuix/cli`](https://www.npmjs.com/package/@dotuix/cli)                                   |
-| [`packages/mcp`](packages/mcp)                           | Local stdio MCP server — Claude Desktop, Cursor, VS Code Copilot; `create` tool seeds `data.db`     | ✅ [`@dotuix/mcp`](https://www.npmjs.com/package/@dotuix/mcp)                                   |
-| [`packages/ai`](packages/ai)                             | `createUIX({ manifest, files })` — one-function SDK; auto-stamps `ai` provenance block              | ✅ [`@dotuix/ai`](https://www.npmjs.com/package/@dotuix/ai)                                     |
-| [`packages/vite-plugin`](packages/vite-plugin)           | Vite plugin — compile React/Vue/Svelte/TS, inject mock bridge in dev, output `.uix` on build        | ✅ [`@dotuix/vite-plugin`](https://www.npmjs.com/package/@dotuix/vite-plugin)                   |
-| [`packages/vscode-extension`](packages/vscode-extension) | VS Code extension — manifest IntelliSense, pack/validate/init commands, `@dotuix` chat participant  | ✅ [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix) |
-| [`apps/viewer`](apps/viewer)                             | Desktop viewer — Tauri + Rust, full bridge, signature verification, PIN decryption                  | ✅ Stable                                                                                       |
-| [`apps/mcp-server`](apps/mcp-server)                     | Remote HTTP MCP server at `mcp.dotuix.uts.qa` — `get_spec`, `create`, `validate` + REST API         | ✅ Live                                                                                         |
-| [`apps/website`](apps/website)                           | Public website at [dotuix.uts.qa](https://dotuix.uts.qa)                                            | ✅ Live                                                                                         |
+| Package                                                  | What it does                                                                                                                                                                 | Status                                                                                          |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [`packages/core`](packages/core)                         | Core library — `pack`, `unpack`, `validate`, `sign`, `createDataDb`. Used by all other packages.                                                                             | ✅ [`@dotuix/core`](https://www.npmjs.com/package/@dotuix/core)                                 |
+| [`packages/cli`](packages/cli)                           | `dotuix` CLI — `pack`, `unpack`, `validate`, `sign`, `keygen`, `encrypt`, `init`, `seed`, `export`, `import`, `build`, `dev`, `create`, `spec`, `issue-license`, `device-id` | ✅ [`@dotuix/cli`](https://www.npmjs.com/package/@dotuix/cli)                                   |
+| [`packages/types`](packages/types)                       | TypeScript declarations for the `window.uix` bridge — `@dotuix/types` for Vite projects. `defineConfig()` helper and full bridge IntelliSense                                | ✅ [`@dotuix/types`](https://www.npmjs.com/package/@dotuix/types)                               |
+| [`packages/mcp`](packages/mcp)                           | Local stdio MCP server — Claude Desktop, Cursor, VS Code Copilot; `create` tool seeds `data.db`                                                                              | ✅ [`@dotuix/mcp`](https://www.npmjs.com/package/@dotuix/mcp)                                   |
+| [`packages/ai`](packages/ai)                             | `createUIX({ manifest, files })` — one-function SDK; auto-stamps `ai` provenance block                                                                                       | ✅ [`@dotuix/ai`](https://www.npmjs.com/package/@dotuix/ai)                                     |
+| [`packages/vite-plugin`](packages/vite-plugin)           | Vite plugin — compile React/Vue/Svelte/TS, inject mock bridge in dev, output `.uix` on build                                                                                 | ✅ [`@dotuix/vite-plugin`](https://www.npmjs.com/package/@dotuix/vite-plugin)                   |
+| [`packages/vscode-extension`](packages/vscode-extension) | VS Code extension — manifest IntelliSense, pack/validate/init commands, `@dotuix` chat participant                                                                           | ✅ [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix) |
+| [`apps/viewer`](apps/viewer)                             | Desktop viewer — Tauri + Rust, full bridge, signature verification, PIN decryption                                                                                           | ✅ Stable                                                                                       |
+| [`apps/mcp-server`](apps/mcp-server)                     | Remote HTTP MCP server at `mcp.dotuix.uts.qa` — `get_spec`, `create`, `validate` + REST API                                                                                  | ✅ Live                                                                                         |
+| [`apps/website`](apps/website)                           | Public website at [dotuix.uts.qa](https://dotuix.uts.qa)                                                                                                                     | ✅ Live                                                                                         |
 
 ---
 
@@ -319,10 +323,19 @@ pnpm --filter @dotuix/core build
 # Pack a template
 dotuix pack templates/restaurant restaurant.uix
 
-# Init from template
+# Init from template (HTML/JS)
 dotuix init my-menu -t restaurant
 dotuix init my-shop -t catalog
 dotuix init my-folio -t portfolio
+
+# Scaffold Vite-based projects (React 19 / Vue 3 / TypeScript)
+dotuix create my-pos -t react-ts      # React 19 + state.mode:"device" (app mode)
+dotuix create my-invoice -t form      # Vanilla TS + state.mode:"file" (document mode)
+
+# AI spec workflow — describe before you build
+dotuix spec init
+dotuix spec validate app.spec.md
+dotuix spec scaffold app.spec.md
 ```
 
 ### Build a React / Vue / Svelte app as `.uix`

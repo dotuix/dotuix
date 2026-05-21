@@ -1,0 +1,25 @@
+{
+  "name": "pos-advanced",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "dotuix dev",
+    "build": "dotuix build",
+    "pack": "dotuix pack dist"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@dotuix/cli": "workspace:*",
+    "@dotuix/types": "workspace:*",
+    "@dotuix/vite-plugin": "workspace:*",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.4.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.0.0"
+  }
+}

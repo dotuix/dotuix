@@ -1001,7 +1001,7 @@ async function cmdVerify(args: string[]) {
 // seed — create data.db from a JSON records file
 // ---------------------------------------------------------------------------
 async function cmdSeed(args: string[]) {
-  const positional = positionals(args);
+  const positional = pos(args);
   const input = positional[0];
   if (!input) {
     console.error(
@@ -1029,7 +1029,7 @@ async function cmdSeed(args: string[]) {
     process.exit(1);
   }
 
-  const outPath = resolve(flag(args, "-o", "--output") ?? "data.db");
+  const outPath = resolve(opt(args, "-o", "--output") ?? "data.db");
   const bytes = await createDataDb(records);
   writeFileSync(outPath, bytes);
   console.log(

@@ -86,6 +86,10 @@ and are referenced by relative path from the entry HTML.
 | `author` | string | No | Creator email or identifier. |
 | `expires` | string\|null | No | ISO 8601 date string or `null`. Viewer checks expiry **before extraction** — expired files never unpack. |
 | `state.seed` | boolean | No | `true` = copy `state.db` from archive as starting user state on first open. Default `false`. |
+| `state.mode` | string | No | `"device"` (default) — state stored in viewer's app directory, keyed by app id; archive never modified. `"file"` — state written back into archive on close; sharing the `.uix` shares all accumulated data. |
+| `schemaVersion` | integer | No | Monotonically increasing integer. Increment when the structure of records in `state.db` changes. Triggers `uix.schema.onUpgrade()` before first render if stored version differs. Default `1`. |
+| `license.required` | boolean | No | `true` — viewer requires a valid `.uixlicense` token before opening. `false` (default) — no license required. |
+| `license.publisherKey` | string | No | Ed25519 public key (base64url). Used to verify `.uixlicense` tokens offline without a server call. |
 | `sync.endpoint` | string | No | HTTPS URL of a dotuix sync server. Required when `"local-sync"` is declared. |
 | `sync.secret` | string | No | Base64-encoded shared secret used to authenticate with the sync server. |
 | `security` | object | No | Optional PIN auth + encryption. Omit entirely for regular apps. |
@@ -562,13 +566,143 @@ INSERT INTO records (id, type, body) VALUES
 
 ---
 
+## Schema upgrades — `uix.schema.onUpgrade()`
+
+Register a handler that runs once before first render when the viewer detects that stored state was written with an older `schemaVersion`.
+
+```javascript
+uix.schema.onUpgrade(async ({ from, to, state }) => {
+  // from — schemaVersion the user's state.db was written with
+  // to   — schemaVersion declared in manifest.json
+  if (from < 2) {
+    const orders = await state.find({ type: "order" });
+    for (const o of orders) {
+      const b = JSON.parse(o.body);
+      await state.update(o.id, { ...b, taxRate: 0.05 }); // add new field
+    }
+  }
+  // Resolves → viewer writes new schemaVersion → renders app
+});
+```
+
+---
+
+## Portable data bundles — `uix.state.exportBundle()` / `uix.state.importBundle()`
+
+Transfer all user state to a new version of the same app — no CLI required.
+
+```javascript
+// Export — "Back up my data" button
+const json = await uix.state.exportBundle({ types: ["order", "customer"] });
+// Omit `types` to export all. Returns a JSON string in .uixdata format.
+
+// Import — "Restore data" button
+const result = await uix.state.importBundle(jsonString, { merge: false });
+// merge: false = replace existing records (default)
+// merge: true  = skip ids that already exist
+// Returns: { imported: number, skipped: number }
+```
+
+.uixdata bundle format:
+```json
+{
+  "format": "uixdata/1.0",
+  "appId": "com.example.pos",
+  "schemaVersion": 2,
+  "exportedAt": "2026-05-21T09:00:00Z",
+  "types": ["order", "customer"],
+  "records": [{ "id": "order:001", "type": "order", "body": "...", "created_at": 0, "updated_at": 0 }]
+}
+```
+
+CLI equivalent: `dotuix export my-app.uix --type order -o backup.uixdata`
+
+---
+
+## License tokens — `uix.license.*`
+
+```javascript
+const license = await uix.license.get();
+// Returns: { issuedTo, issuedAt, expiresAt, features, valid } | null
+
+const hasReports = await uix.license.hasFeature("reports");
+// true/false — gate features behind license tiers
+
+// manifest.json — require a signed license to open:
+// "license": { "required": true, "publisherKey": "ed25519:BASE64...", "appId": "com.example.pos" }
+```
+
+Issue a license token from the CLI:
+```bash
+dotuix keygen publisher-key
+dotuix issue-license --from my-app.uix --issued-to "Sunrise Café" \
+  --expires 2027-05-21 --features reports,multi-staff --key publisher-key.priv
+dotuix device-id   # print this device's viewer fingerprint
+```
+
+---
+
+## Vite-based projects — `uix.config.ts`
+
+```bash
+dotuix create my-pos     -t react-ts    # React 19 + TypeScript, state.mode:"device"
+dotuix create my-invoice -t form        # Vanilla TS, state.mode:"file" (document mode)
+dotuix create my-report  -t report      # React 19, state.mode:"file" (read-only)
+dotuix create my-app     -t vue-ts      # Vue 3 + TypeScript
+```
+
+`uix.config.ts` replaces `manifest.json` in Vite projects:
+
+```typescript
+import { defineConfig } from "@dotuix/types";
+export default defineConfig({
+  id: "com.example.pos",
+  name: "My POS",
+  version: "1.0.0",
+  schemaVersion: 1,
+  mode: "kiosk",
+  state: { mode: "device" },
+  permissions: ["print", "notifications", "fullscreen"],
+  theme: { color: "#c8a96e", background: "#1a1a2e" },
+});
+```
+
+```bash
+pnpm dev    # hot-reload, window.uix is an IndexedDB mock
+pnpm build  # vite build → generates manifest.json → packs → my-pos.uix
+```
+
+AI spec workflow:
+```bash
+dotuix spec init                    # create starter app.spec.md
+dotuix spec validate app.spec.md    # validate before handing to AI
+dotuix spec scaffold app.spec.md    # preview generated config + file list
+```
+
+---
+
 ## CLI reference
 
 ```bash
 # Install globally
 npm install -g @dotuix/cli
 
-# Create a new project
+# Scaffold Vite-based projects (React / Vue / TypeScript)
+dotuix create my-pos     -t react-ts   # React 19 + TypeScript, state.mode:"device"
+dotuix create my-invoice -t form       # Vanilla TS, state.mode:"file" (document)
+dotuix create my-report  -t report     # React 19, state.mode:"file" (read-only)
+dotuix create my-app     -t vue-ts     # Vue 3 + TypeScript
+
+# AI spec workflow
+dotuix spec init                       # create starter app.spec.md
+dotuix spec validate app.spec.md       # validate spec before handing to AI
+dotuix spec scaffold app.spec.md       # preview template + generated uix.config.ts
+
+# Vite dev / build
+dotuix dev   [project-dir]             # hot-reload dev server with bridge mock
+dotuix build [project-dir]             # vite build → generates manifest.json → .uix
+
+# Legacy: HTML/JS templates
 dotuix init my-app                    # blank starter
 dotuix init my-app -t restaurant      # Gulf restaurant kiosk template
 dotuix init my-app -t catalog         # product catalog template
@@ -585,15 +719,23 @@ dotuix validate my-app.uix
 dotuix info my-app.uix                # prints manifest
 
 # Sign (requires keygen first)
-dotuix keygen my-key                  # generates my-key.private + my-key.public
-dotuix sign my-app.uix --key my-key.private
+dotuix keygen my-key                  # generates my-key.priv + my-key.pub
+dotuix sign my-app.uix --key my-key.priv
+dotuix verify my-app.uix
 
 # Encrypt selected paths
 dotuix encrypt my-app.uix --paths data.db --pin-prompt
 
-# Export state data
+# License tokens
+dotuix issue-license --from my-app.uix --issued-to "Customer" \
+  --expires 2027-05-21 --key my-key.priv
+dotuix device-id                      # print this device's viewer ID
+
+# Export / import state data
 dotuix export my-app.uix --type order --format csv --output orders.csv
 dotuix export my-app.uix --type order --format json --output orders.json
+dotuix import my-app.uix --data backup.uixdata
+dotuix import my-app.uix --data backup.uixdata --merge
 ```
 
 ---

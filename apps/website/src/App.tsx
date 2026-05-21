@@ -726,9 +726,9 @@ const GUIDE_PATHS = [
     tag: "React  ·  Vue  ·  Svelte  ·  TypeScript",
     steps: [
       {
-        title: "Install the plugin",
-        desc: "Add to your existing Vite project — works with React, Vue, Svelte, or plain TypeScript.",
-        code: "npm install -D @dotuix/vite-plugin",
+        title: "Scaffold with dotuix create (or add to an existing project)",
+        desc: "Create a new Vite project with the bridge pre-wired and TypeScript types included. Or add @dotuix/vite-plugin manually to any existing Vite project.",
+        code: "dotuix create my-app -t react-ts  # React 19 + TypeScript\ndotuix create my-app -t vue-ts    # Vue 3 + TypeScript\n# Or: npm install -D @dotuix/vite-plugin",
       },
       {
         title: "Configure vite.config",
@@ -764,8 +764,8 @@ const GUIDE_PATHS = [
       },
       {
         title: "Create from a template",
-        desc: "Choose a starter or start blank. Templates include sample data and working bridge API usage.",
-        code: "dotuix init my-app -t restaurant\n# also: -t catalog  |  -t portfolio\n✓  Created my-app/",
+        desc: "Use dotuix create for Vite/React/TypeScript projects, or dotuix init for HTML/JS templates. Both include sample data and bridge API usage.",
+        code: "dotuix create my-pos -t react-ts   # Vite + React 19\ndotuix init my-app -t restaurant   # HTML/JS — restaurant kiosk\n# also: -t catalog  |  -t portfolio\n✓  Created my-pos/",
       },
       {
         title: "Edit the files",
@@ -950,6 +950,24 @@ const MANIFEST_FIELDS: {
     desc: "true = copy state.db from archive as starting user state on first open.",
   },
   {
+    field: "state.mode",
+    type: "string",
+    req: false,
+    desc: '"device" (default) — state stored by viewer per app-id; archive never modified. "file" — state written back into archive on close; sharing the file shares all data.',
+  },
+  {
+    field: "schemaVersion",
+    type: "integer",
+    req: false,
+    desc: "Increment when state.db schema changes. Triggers uix.schema.onUpgrade() before first render if stored version differs. Default 1.",
+  },
+  {
+    field: "license",
+    type: "object",
+    req: false,
+    desc: "{ required: true } — viewer requires a signed .uixlicense token. publisherKey — Ed25519 public key for offline verification.",
+  },
+  {
     field: "security",
     type: "object",
     req: false,
@@ -976,7 +994,9 @@ const MANIFEST_EXAMPLE = `{
   "version": "1.0.0",
   "entry": "index.html",
   "mode": "kiosk",
-  "permissions": ["local-storage"],
+  "schemaVersion": 1,
+  "state": { "mode": "device", "seed": true },
+  "permissions": ["local-storage", "print"],
   "network": "blocked",
   "theme": { "color": "#1a1a2e", "background": "#ffffff" },
   "author": "chef@almadina.qa",
@@ -1044,30 +1064,44 @@ Compression:
 const CLI_CODE = `# Install once
 npm install -g @dotuix/cli
 
-# Create from template
-dotuix init my-app                    # blank starter
-dotuix init my-app -t restaurant      # Gulf restaurant kiosk
-dotuix init my-app -t catalog         # product catalogue
-dotuix init my-app -t portfolio       # portfolio / showcase
+# Scaffold Vite projects (React 19 / Vue 3 / TypeScript)
+dotuix create my-pos     -t react-ts   # React 19 + state.mode:"device"
+dotuix create my-invoice -t form       # Vanilla TS + state.mode:"file" (document)
+dotuix create my-report  -t report     # React 19 + state.mode:"file" (read-only doc)
 
-# Build
-dotuix pack ./my-app                  # → my-app.uix
-dotuix pack ./my-app -o dist/         # → dist/my-app.uix
+# AI spec workflow
+dotuix spec init                       # create starter app.spec.md
+dotuix spec validate app.spec.md       # validate before handing to AI
+dotuix spec scaffold app.spec.md       # preview generated config + file list
+
+# Vite dev / build
+dotuix dev   ./my-pos                  # hot-reload, bridge mock in browser
+dotuix build ./my-pos                  # vite build → my-pos.uix
+
+# Legacy: HTML/JS templates
+dotuix init my-app -t restaurant       # Gulf restaurant kiosk
+dotuix init my-app -t catalog          # product catalogue
+dotuix pack ./my-app                   # → my-app.uix
 
 # Validate & inspect
 dotuix validate my-app.uix
 dotuix info my-app.uix
 
 # Sign (Ed25519)
-dotuix keygen my-key                  # → my-key.private + my-key.public
-dotuix sign my-app.uix --key my-key.private
+dotuix keygen my-key                   # → my-key.priv + my-key.pub
+dotuix sign my-app.uix --key my-key.priv
+dotuix verify my-app.uix
 
-# Encrypt selected paths (AES-256-GCM)
+# Encrypt (AES-256-GCM)
 dotuix encrypt my-app.uix --paths data.db --pin-prompt
 
-# Export state data from a .uix
+# License tokens
+dotuix issue-license --from my-app.uix --issued-to "Name" --key my-key.priv
+dotuix device-id                       # print viewer device fingerprint
+
+# Export / import state data
 dotuix export my-app.uix --type order --format csv -o orders.csv
-dotuix export my-app.uix --type order --format json -o orders.json`;
+dotuix import my-app.uix --data backup.uixdata`;
 
 const FORMAT_TABS_DATA = [
   { id: "manifest", label: "manifest.json" },
@@ -1287,8 +1321,14 @@ const TOOLS = [
   },
   {
     name: "@dotuix/cli",
-    desc: "CLI — pack, validate, init, sign, encrypt, export, seed (create data.db from JSON). Install globally.",
+    desc: "CLI — create, build, dev, spec, pack, validate, init, sign, encrypt, issue-license, export, import, seed. Install globally.",
     href: "https://www.npmjs.com/package/@dotuix/cli",
+    tag: "npm",
+  },
+  {
+    name: "@dotuix/types",
+    desc: "TypeScript declarations for the window.uix bridge. defineConfig() helper for uix.config.ts. Full bridge IntelliSense in Vite projects.",
+    href: "https://www.npmjs.com/package/@dotuix/types",
     tag: "npm",
   },
   {

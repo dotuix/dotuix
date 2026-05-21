@@ -15,6 +15,7 @@
  *   device-id                               Print this device's viewer device ID
  *   build         [project-dir]             Run vite build → pack → .uix
  *   dev           [project-dir]             Start vite dev server with bridge mock
+ *   create        <name> [-t <template>]    Scaffold a new Vite-based .uix project
  */
 
 import {
@@ -23,6 +24,7 @@ import {
   mkdirSync,
   existsSync,
   cpSync,
+  statSync,
 } from "node:fs";
 import { spawnSync, spawn } from "node:child_process";
 import { readdirSync } from "node:fs";
@@ -1194,6 +1196,85 @@ async function cmdIssueLicense(args: string[]) {
 }
 
 // ---------------------------------------------------------------------------
+// create — Vite project scaffolding
+// ---------------------------------------------------------------------------
+
+const VITE_TEMPLATES = ["vanilla-ts", "react-ts", "vue-ts", "form", "report"] as const;
+type ViteTemplateName = (typeof VITE_TEMPLATES)[number];
+
+async function cmdCreate(args: string[]) {
+  const templateArg = (opt(args, "-t", "--template") ?? "vanilla-ts") as ViteTemplateName;
+  const name = pos(args)[0] ?? "my-uix-app";
+  const dir = resolve(name);
+  const slug = basename(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const displayName = basename(name);
+
+  if (!VITE_TEMPLATES.includes(templateArg)) {
+    console.error(
+      c.red("✗") +
+        ` Unknown template "${templateArg}". Available: ${VITE_TEMPLATES.join(", ")}`,
+    );
+    process.exit(1);
+  }
+
+  if (existsSync(dir)) {
+    console.error(c.red("✗") + ` Already exists: ${dir}`);
+    process.exit(1);
+  }
+
+  const tmplDir = join(__dirname, "templates", templateArg);
+  if (!existsSync(tmplDir)) {
+    console.error(
+      c.red("✗") +
+        ` Template files not found at ${tmplDir}.\n` +
+        `  Run ${c.cyan("pnpm --filter @dotuix/cli build")} to rebuild the CLI.`,
+    );
+    process.exit(1);
+  }
+
+  cpSync(tmplDir, dir, { recursive: true });
+
+  // Patch __SLUG__ / __NAME__ placeholders in all text files
+  const TEXT_EXTS = new Set([".ts", ".tsx", ".vue", ".json", ".html", ".css", ".md"]);
+  const allFiles = readdirSync(dir, { recursive: true }) as string[];
+  for (const rel of allFiles) {
+    const abs = join(dir, rel);
+    if (statSync(abs).isDirectory()) continue;
+    if (!TEXT_EXTS.has(extname(abs))) continue;
+    const src = readFileSync(abs, "utf8");
+    if (!src.includes("__SLUG__") && !src.includes("__NAME__")) continue;
+    writeFileSync(
+      abs,
+      src.replace(/__SLUG__/g, slug).replace(/__NAME__/g, displayName),
+      "utf8",
+    );
+  }
+
+  const created = (readdirSync(dir, { recursive: true }) as string[]).filter(
+    (f) => !statSync(join(dir, f)).isDirectory(),
+  );
+  console.log(
+    `\n  ${c.green("✓")} Created ${c.bold(name)}/ from template ${c.cyan(templateArg)}\n`,
+  );
+  for (const f of created) console.log(`    ${c.muted("+")} ${f}`);
+
+  console.log(`
+  Next:
+
+    ${c.cyan("cd")} ${name}
+    ${c.cyan("pnpm install")}
+    ${c.cyan("pnpm dev")}       ${c.muted("# hot-reload dev server with uix bridge mock")}
+
+  When ready to build:
+
+    ${c.cyan("pnpm build")}     ${c.muted(`# → dist/ → ${slug}.uix`)}
+`);
+}
+
+// ---------------------------------------------------------------------------
 // build / dev — thin Vite wrappers
 // ---------------------------------------------------------------------------
 
@@ -1314,6 +1395,9 @@ function printHelp() {
     ${c.cyan(
       "dev",
     )}      [project-dir]                        Start dev server with bridge mock
+    ${c.cyan(
+      "create",
+    )}   <name> [-t vanilla-ts|react-ts|vue-ts|form|report]  Scaffold a Vite project
 
   ${c.bold("Examples:")}
     dotuix pack ./my-app
@@ -1329,6 +1413,8 @@ function printHelp() {
     dotuix issue-license --from myapp.uix --issued-to "Sunrise Café" --key dotuix-key.priv
     dotuix issue-license --app-id com.example.pos --issued-to "Acme Ltd" --key k.priv --expires 2027-05-21
     dotuix device-id
+    dotuix create my-pos -t react-ts
+    dotuix create my-invoice -t form
 `);
 }
 
@@ -1392,6 +1478,9 @@ async function main() {
       break;
     case "dev":
       cmdDev(rest);
+      break;
+    case "create":
+      await cmdCreate(rest);
       break;
     default:
       console.error(

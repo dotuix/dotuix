@@ -1,0 +1,90 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f8f9fb;
+  color: #1a1a2e;
+  min-height: 100dvh;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid #e0e3ea;
+}
+
+h1 { font-size: 1.4rem; color: #4f8ef7; }
+
+#form-el {
+  padding: 2rem;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+label span {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+input, textarea {
+  border: 1.5px solid #d0d4df;
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  font-size: 1rem;
+  font-family: inherit;
+  color: #1a1a2e;
+  background: #fff;
+  transition: border-color 0.15s;
+  resize: vertical;
+}
+input:focus, textarea:focus {
+  outline: none;
+  border-color: #4f8ef7;
+}
+
+.actions { display: flex; align-items: center; gap: 1rem; }
+
+button {
+  background: #4f8ef7;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.55rem 1.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:hover { opacity: 0.85; }
+
+#print-btn {
+  background: transparent;
+  color: #555;
+  border: 1.5px solid #d0d4df;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.9rem;
+}
+
+.saved-msg { font-size: 0.88rem; color: #2a9d5c; font-weight: 600; }
+
+@media print {
+  header button { display: none; }
+  .actions      { display: none; }
+  input, textarea {
+    border: none;
+    padding: 0;
+    background: transparent;
+  }
+}

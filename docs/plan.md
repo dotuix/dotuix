@@ -476,6 +476,6 @@ dotuix spec scaffold app.spec.md   # dry-run: show files that would be created
 | 6 — License token spec                     | ✅ Done        | `d872108` |
 | 7 — License CLI commands                   | ✅ Done        | `9b1d0fb` |
 | 8 — `@dotuix/types` bridge TS definitions  | ✅ Done        | `ca104da` |
-| 9 — Vite build integration                 | ✅ Done        | —         |
-| 10 — `dotuix create` scaffolding           | ⬜ Not started | —         |
+| 9 — Vite build integration                 | ✅ Done        | `ce4db57` |
+| 10 — `dotuix create` scaffolding           | ✅ Done        | —         |
 | 11 — AI spec format + generation workflow  | ⬜ Not started | —         |

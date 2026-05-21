@@ -6,7 +6,8 @@ import {
   writeFileSync,
   mkdirSync,
   existsSync,
-  cpSync
+  cpSync,
+  statSync
 } from "fs";
 import { spawnSync, spawn } from "child_process";
 import { readdirSync } from "fs";
@@ -52,7 +53,13 @@ function viewerDeviceIdPath() {
   const home = homedir();
   switch (process.platform) {
     case "darwin":
-      return join(home, "Library", "Application Support", "com.dotuix.viewer", "device_id");
+      return join(
+        home,
+        "Library",
+        "Application Support",
+        "com.dotuix.viewer",
+        "device_id"
+      );
     case "win32": {
       const appData = process.env["APPDATA"] ?? join(home, "AppData", "Roaming");
       return join(appData, "com.dotuix.viewer", "device_id");
@@ -810,7 +817,9 @@ function cmdDeviceId(_args) {
 `);
   console.log(`  ${c.cyan(id)}
 `);
-  console.log(c.muted("  Share this with the app publisher to receive a license.\n"));
+  console.log(
+    c.muted("  Share this with the app publisher to receive a license.\n")
+  );
 }
 async function cmdIssueLicense(args) {
   const appIdArg = opt(args, "--app-id");
@@ -838,7 +847,9 @@ async function cmdIssueLicense(args) {
     process.exit(1);
   }
   if (expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
-    console.error(c.red("\u2717") + " --expires must be YYYY-MM-DD (e.g. 2027-05-21)");
+    console.error(
+      c.red("\u2717") + " --expires must be YYYY-MM-DD (e.g. 2027-05-21)"
+    );
     process.exit(1);
   }
   let privKey;
@@ -858,9 +869,15 @@ async function cmdIssueLicense(args) {
   const features = featuresArg ? featuresArg.split(",").map((f) => f.trim()).filter(Boolean) : [];
   const maxDevices = maxDevicesArg !== void 0 ? parseInt(maxDevicesArg, 10) : void 0;
   const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-  const payload = { appId, issuedTo, issuedAt: today, features };
+  const payload = {
+    appId,
+    issuedTo,
+    issuedAt: today,
+    features
+  };
   if (expiresAt) payload.expiresAt = expiresAt;
-  if (maxDevices !== void 0 && !isNaN(maxDevices)) payload.maxDevices = maxDevices;
+  if (maxDevices !== void 0 && !isNaN(maxDevices))
+    payload.maxDevices = maxDevices;
   if (deviceId !== void 0) payload.deviceId = deviceId;
   const payloadCanon = JSON.stringify(sortKeysRec(payload));
   const msg = new TextEncoder().encode(`DOTUIX-LICENSE-V1
@@ -880,8 +897,10 @@ ${payloadCanon}`);
   console.log(`  ${c.muted("issuedTo:")}   ${issuedTo}`);
   console.log(`  ${c.muted("issuedAt:")}   ${today}`);
   if (expiresAt) console.log(`  ${c.muted("expiresAt:")}  ${expiresAt}`);
-  if (features.length > 0) console.log(`  ${c.muted("features:")}   ${features.join(", ")}`);
-  if (maxDevices !== void 0) console.log(`  ${c.muted("maxDevices:")} ${maxDevices}`);
+  if (features.length > 0)
+    console.log(`  ${c.muted("features:")}   ${features.join(", ")}`);
+  if (maxDevices !== void 0)
+    console.log(`  ${c.muted("maxDevices:")} ${maxDevices}`);
   if (deviceId) console.log(`  ${c.muted("deviceId:")}   ${deviceId}`);
   console.log(`  ${c.muted("publicKey:")}  ${pubKey}`);
   console.log(`
@@ -889,9 +908,75 @@ ${payloadCanon}`);
   ${c.muted(`  "license": { "required": true, "publisherKey": "${pubKey}" }`)}
 `);
 }
+var VITE_TEMPLATES = ["vanilla-ts", "react-ts", "vue-ts", "form", "report"];
+async function cmdCreate(args) {
+  const templateArg = opt(args, "-t", "--template") ?? "vanilla-ts";
+  const name = pos(args)[0] ?? "my-uix-app";
+  const dir = resolve(name);
+  const slug = basename(name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const displayName = basename(name);
+  if (!VITE_TEMPLATES.includes(templateArg)) {
+    console.error(
+      c.red("\u2717") + ` Unknown template "${templateArg}". Available: ${VITE_TEMPLATES.join(", ")}`
+    );
+    process.exit(1);
+  }
+  if (existsSync(dir)) {
+    console.error(c.red("\u2717") + ` Already exists: ${dir}`);
+    process.exit(1);
+  }
+  const tmplDir = join(__dirname, "templates", templateArg);
+  if (!existsSync(tmplDir)) {
+    console.error(
+      c.red("\u2717") + ` Template files not found at ${tmplDir}.
+  Run ${c.cyan("pnpm --filter @dotuix/cli build")} to rebuild the CLI.`
+    );
+    process.exit(1);
+  }
+  cpSync(tmplDir, dir, { recursive: true });
+  const TEXT_EXTS2 = /* @__PURE__ */ new Set([".ts", ".tsx", ".vue", ".json", ".html", ".css", ".md"]);
+  const allFiles = readdirSync(dir, { recursive: true });
+  for (const rel of allFiles) {
+    const abs = join(dir, rel);
+    if (statSync(abs).isDirectory()) continue;
+    if (!TEXT_EXTS2.has(extname(abs))) continue;
+    const src = readFileSync(abs, "utf8");
+    if (!src.includes("__SLUG__") && !src.includes("__NAME__")) continue;
+    writeFileSync(
+      abs,
+      src.replace(/__SLUG__/g, slug).replace(/__NAME__/g, displayName),
+      "utf8"
+    );
+  }
+  const created = readdirSync(dir, { recursive: true }).filter(
+    (f) => !statSync(join(dir, f)).isDirectory()
+  );
+  console.log(
+    `
+  ${c.green("\u2713")} Created ${c.bold(name)}/ from template ${c.cyan(templateArg)}
+`
+  );
+  for (const f of created) console.log(`    ${c.muted("+")} ${f}`);
+  console.log(`
+  Next:
+
+    ${c.cyan("cd")} ${name}
+    ${c.cyan("pnpm install")}
+    ${c.cyan("pnpm dev")}       ${c.muted("# hot-reload dev server with uix bridge mock")}
+
+  When ready to build:
+
+    ${c.cyan("pnpm build")}     ${c.muted(`# \u2192 dist/ \u2192 ${slug}.uix`)}
+`);
+}
 function resolveViteBin(projectDir) {
   const isWin = process.platform === "win32";
-  const bin = join(projectDir, "node_modules", ".bin", isWin ? "vite.cmd" : "vite");
+  const bin = join(
+    projectDir,
+    "node_modules",
+    ".bin",
+    isWin ? "vite.cmd" : "vite"
+  );
   return existsSync(bin) ? bin : null;
 }
 function cmdBuild(args) {
@@ -909,7 +994,10 @@ function cmdBuild(args) {
   }
   console.log(c.muted(`Building ${projectDir}\u2026
 `));
-  const result = spawnSync(viteBin, ["build"], { cwd: projectDir, stdio: "inherit" });
+  const result = spawnSync(viteBin, ["build"], {
+    cwd: projectDir,
+    stdio: "inherit"
+  });
   process.exit(result.status ?? 0);
 }
 function cmdDev(args) {
@@ -974,13 +1062,24 @@ function printHelp() {
     ${c.cyan(
     "seed"
   )}    <records.json> [-o data.db]         Create data.db from JSON records
-    ${c.cyan("issue-license")} --app-id <id>|--from <f.uix>     Issue a signed .uixlicense token
+    ${c.cyan(
+    "issue-license"
+  )} --app-id <id>|--from <f.uix>     Issue a signed .uixlicense token
                --issued-to <name> --key <k.priv>
                [--expires YYYY-MM-DD] [--device-id <uuid>]
                [--features f1,f2] [--max-devices N] [-o out.uixlicense]
-    ${c.cyan("device-id")}                                   Print this device's viewer ID
-    ${c.cyan("build")}    [project-dir]                        Run vite build \u2192 .uix
-    ${c.cyan("dev")}      [project-dir]                        Start dev server with bridge mock
+    ${c.cyan(
+    "device-id"
+  )}                                   Print this device's viewer ID
+    ${c.cyan(
+    "build"
+  )}    [project-dir]                        Run vite build \u2192 .uix
+    ${c.cyan(
+    "dev"
+  )}      [project-dir]                        Start dev server with bridge mock
+    ${c.cyan(
+    "create"
+  )}   <name> [-t vanilla-ts|react-ts|vue-ts|form|report]  Scaffold a Vite project
 
   ${c.bold("Examples:")}
     dotuix pack ./my-app
@@ -996,6 +1095,8 @@ function printHelp() {
     dotuix issue-license --from myapp.uix --issued-to "Sunrise Caf\xE9" --key dotuix-key.priv
     dotuix issue-license --app-id com.example.pos --issued-to "Acme Ltd" --key k.priv --expires 2027-05-21
     dotuix device-id
+    dotuix create my-pos -t react-ts
+    dotuix create my-invoice -t form
 `);
 }
 async function main() {
@@ -1055,6 +1156,9 @@ async function main() {
       break;
     case "dev":
       cmdDev(rest);
+      break;
+    case "create":
+      await cmdCreate(rest);
       break;
     default:
       console.error(

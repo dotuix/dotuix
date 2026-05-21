@@ -38,3 +38,17 @@ apps/editor/dist-electron/
 dotuix-key.*
 gov-key.*
 *.pub
+
+# Private — not open-sourced (live in dotuix-internal)
+apps/viewer/
+apps/mobile/
+apps/mcp-server/
+apps/website/
+packages/vscode-extension/
+packages/sync-server/
+demos/
+docs/
+scripts/
+captain-definition
+vercel.json
+.github/

@@ -1,6 +1,6 @@
 {
   "name": "@dotuix/types",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript declarations for the window.uix bridge and dotuix tooling",
   "keywords": [
     "uix",

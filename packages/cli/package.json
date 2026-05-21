@@ -1,6 +1,6 @@
 {
   "name": "@dotuix/cli",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "CLI for packing, unpacking, and validating .uix files",
   "keywords": [
     "uix",
@@ -38,7 +38,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@dotuix/core": "workspace:*"
+    "@dotuix/core": "^0.2.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

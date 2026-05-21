@@ -32,6 +32,8 @@ struct AppState {
     app_name: Mutex<String>,
     /// manifest.permissions — gates raw-sql and other optional bridge capabilities.
     permissions: Mutex<Vec<String>>,
+    /// manifest.state.mode — "file" (default, repack on close) or "device" (never repack).
+    state_mode: Mutex<String>,
     /// manifest.sync.endpoint — HTTPS URL of the sync server (None if not configured).
     sync_endpoint: Mutex<Option<String>>,
     /// manifest.sync.secret — base64 shared secret for the sync server.
@@ -58,6 +60,7 @@ impl Default for AppState {
             initial_path: Mutex::new(None),
             app_name: Mutex::new(String::new()),
             permissions: Mutex::new(Vec::new()),
+            state_mode: Mutex::new("file".to_string()),
             sync_endpoint: Mutex::new(None),
             sync_secret: Mutex::new(None),
             pending_files: Mutex::new(None),
@@ -504,10 +507,13 @@ fn complete_load(
         let prev_path = state.uix_path.lock().unwrap().clone();
         if !prev_path.is_empty() && prev_path != path {
             let prev_state_db_path = state.state_db_path.lock().unwrap().clone();
+            let prev_mode = state.state_mode.lock().unwrap().clone();
             { let _ = state.state_db.lock().unwrap().take(); }
             { let _ = state.data_db.lock().unwrap().take(); }
-            if let Some(db_path) = prev_state_db_path {
-                if db_path.exists() { let _ = repack_uix(&prev_path, &db_path); }
+            if prev_mode != "device" {
+                if let Some(db_path) = prev_state_db_path {
+                    if db_path.exists() { let _ = repack_uix(&prev_path, &db_path); }
+                }
             }
             let _ = std::fs::remove_file(format!("{prev_path}.lock"));
         }
@@ -575,6 +581,9 @@ fn complete_load(
     *state.uix_path.lock().unwrap() = path.to_string();
     *state.state_db_path.lock().unwrap() = Some(state_db_path);
     *state.permissions.lock().unwrap() = permissions;
+    *state.state_mode.lock().unwrap() = manifest
+        .get("state").and_then(|s| s.get("mode")).and_then(|v| v.as_str())
+        .unwrap_or("file").to_string();
     *state.sync_endpoint.lock().unwrap() = manifest
         .get("sync").and_then(|s| s.get("endpoint")).and_then(|v| v.as_str())
         .map(str::to_string);
@@ -1208,10 +1217,13 @@ fn close_uix(state: State<'_, AppState>) {
     let uix_path = state.uix_path.lock().unwrap().clone();
     if uix_path.is_empty() { return; }
     let state_db_path = state.state_db_path.lock().unwrap().clone();
+    let state_mode = state.state_mode.lock().unwrap().clone();
     { let _ = state.state_db.lock().unwrap().take(); }
     { let _ = state.data_db.lock().unwrap().take(); }
-    if let Some(db_path) = state_db_path {
-        if db_path.exists() { let _ = repack_uix(&uix_path, &db_path); }
+    if state_mode != "device" {
+        if let Some(db_path) = state_db_path {
+            if db_path.exists() { let _ = repack_uix(&uix_path, &db_path); }
+        }
     }
     let _ = std::fs::remove_file(format!("{uix_path}.lock"));
     *state.uix_path.lock().unwrap() = String::new();
@@ -2392,25 +2404,29 @@ pub fn run() {
                     if uix_path.is_empty() { return; }
 
                     let state_db_path = state.state_db_path.lock().unwrap().clone();
+                    let state_mode = state.state_mode.lock().unwrap().clone();
 
                     // Drop DB connections before touching the files (important for WAL mode).
                     { let _ = state.state_db.lock().unwrap().take(); }
                     { let _ = state.data_db.lock().unwrap().take(); }
 
                     // Repack state.db back into the .uix file so state travels with it.
-                    if let Some(db_path) = state_db_path {
-                        if db_path.exists() {
-                            if let Err(e) = repack_uix(&uix_path, &db_path) {
-                                eprintln!("dotuix-viewer: repack failed: {e}");
-                                // The .tmp file (if created) is the recovery path.
-                            }
-                            // SM-6: warn if state.db exceeds 50 MB after repacking.
-                            if let Ok(meta) = std::fs::metadata(&db_path) {
-                                if meta.len() > 50 * 1024 * 1024 {
-                                    let _ = handle.emit("state-db-large", serde_json::json!({
-                                        "bytes": meta.len(),
-                                        "mb": meta.len() / (1024 * 1024)
-                                    }));
+                    // Skipped when state.mode is "device" — archive must stay clean.
+                    if state_mode != "device" {
+                        if let Some(db_path) = state_db_path {
+                            if db_path.exists() {
+                                if let Err(e) = repack_uix(&uix_path, &db_path) {
+                                    eprintln!("dotuix-viewer: repack failed: {e}");
+                                    // The .tmp file (if created) is the recovery path.
+                                }
+                                // SM-6: warn if state.db exceeds 50 MB after repacking.
+                                if let Ok(meta) = std::fs::metadata(&db_path) {
+                                    if meta.len() > 50 * 1024 * 1024 {
+                                        let _ = handle.emit("state-db-large", serde_json::json!({
+                                            "bytes": meta.len(),
+                                            "mb": meta.len() / (1024 * 1024)
+                                        }));
+                                    }
                                 }
                             }
                         }

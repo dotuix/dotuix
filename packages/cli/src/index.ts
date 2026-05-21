@@ -2,15 +2,17 @@
  * @dotuix/cli — dotuix <command> [args]
  *
  * Commands:
- *   pack     <dir> [-o <out>]          Pack a project folder into a .uix file
- *   unpack   <file.uix> [-o <outDir>]  Unpack a .uix file to a directory
- *   validate <file.uix>                Validate structure + offline-first checks
- *   info     <file.uix>                Print manifest details
- *   init     [name] [-t <template>]     Scaffold a new .uix project
- *   export   <file.uix> --type <t>     Export state records as JSON or CSV
- *   keygen   [-o <base>]               Generate an Ed25519 key pair
- *   sign     <file.uix> --key <k.priv> Sign a .uix file (Ed25519)
- *   verify   <file.uix>                Verify the Ed25519 signature
+ *   pack          <dir> [-o <out>]          Pack a project folder into a .uix file
+ *   unpack        <file.uix> [-o <outDir>]  Unpack a .uix file to a directory
+ *   validate      <file.uix>                Validate structure + offline-first checks
+ *   info          <file.uix>                Print manifest details
+ *   init          [name] [-t <template>]    Scaffold a new .uix project
+ *   export        <file.uix> --type <t>     Export state records as JSON or CSV
+ *   keygen        [-o <base>]               Generate an Ed25519 key pair
+ *   sign          <file.uix> --key <k.priv> Sign a .uix file (Ed25519)
+ *   verify        <file.uix>                Verify the Ed25519 signature
+ *   issue-license --app-id <id>|--from <f.uix> --issued-to <n> --key <k.priv> [opts]
+ *   device-id                               Print this device's viewer device ID
  */
 
 import {
@@ -31,12 +33,15 @@ import {
   readManifestFromBuffer,
   createState,
   generateKeyPair,
+  publicKeyFromSeed,
+  signBytes,
   sign,
   verify,
   createDataDb,
 } from "@dotuix/core";
 import type { UIXRecord, DataRecord } from "@dotuix/core";
 import { createHash } from "node:crypto";
+import { homedir } from "node:os";
 
 const CLI_VERSION = "0.1.4";
 
@@ -52,6 +57,39 @@ const c = {
   cyan: (s: string) => (isTTY ? `\x1b[36m${s}\x1b[0m` : s),
   muted: (s: string) => (isTTY ? `\x1b[2m${s}\x1b[0m` : s),
 };
+
+// ---------------------------------------------------------------------------
+// License helpers
+// ---------------------------------------------------------------------------
+
+/** Recursively sort object keys for deterministic JSON serialisation (mirrors Rust's sort_json_keys). */
+function sortKeysRec(val: unknown): unknown {
+  if (Array.isArray(val)) return val.map(sortKeysRec);
+  if (val !== null && typeof val === "object") {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(val as object).sort())
+      out[k] = sortKeysRec((val as Record<string, unknown>)[k]);
+    return out;
+  }
+  return val;
+}
+
+/** Return the platform-appropriate path to the viewer's stored device_id file. */
+function viewerDeviceIdPath(): string {
+  const home = homedir();
+  switch (process.platform) {
+    case "darwin":
+      return join(home, "Library", "Application Support", "com.dotuix.viewer", "device_id");
+    case "win32": {
+      const appData = process.env["APPDATA"] ?? join(home, "AppData", "Roaming");
+      return join(appData, "com.dotuix.viewer", "device_id");
+    }
+    default: {
+      const xdg = process.env["XDG_DATA_HOME"] ?? join(home, ".local", "share");
+      return join(xdg, "com.dotuix.viewer", "device_id");
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Offline-first validator — scans text files for external dependencies
@@ -988,6 +1026,145 @@ async function cmdSeed(args: string[]) {
 }
 
 // ---------------------------------------------------------------------------
+// device-id — print the dotuix viewer's device ID for this machine
+// ---------------------------------------------------------------------------
+function cmdDeviceId(_args: string[]) {
+  const idPath = viewerDeviceIdPath();
+  if (!existsSync(idPath)) {
+    console.error(
+      c.red("✗") +
+        " No device ID found — launch the dotuix viewer on this machine first.\n" +
+        c.muted(`  Expected: ${idPath}`),
+    );
+    process.exit(1);
+  }
+  const id = readFileSync(idPath, "utf8").trim();
+  if (!id) {
+    console.error(c.red("✗") + " Device ID file is empty.");
+    process.exit(1);
+  }
+  console.log(`\n  ${c.bold("Device ID")}\n`);
+  console.log(`  ${c.cyan(id)}\n`);
+  console.log(c.muted("  Share this with the app publisher to receive a license.\n"));
+}
+
+// ---------------------------------------------------------------------------
+// issue-license — create and sign a .uixlicense token
+// ---------------------------------------------------------------------------
+async function cmdIssueLicense(args: string[]) {
+  const appIdArg = opt(args, "--app-id");
+  const fromArg = opt(args, "--from");
+  const issuedTo = opt(args, "--issued-to");
+  const expiresAt = opt(args, "--expires");
+  const deviceId = opt(args, "--device-id");
+  const featuresArg = opt(args, "--features");
+  const maxDevicesArg = opt(args, "--max-devices");
+  const keyFile = opt(args, "--key", "-k");
+  const outArg = opt(args, "-o", "--out");
+
+  if (!issuedTo || !keyFile || (!appIdArg && !fromArg)) {
+    console.error(
+      c.red("✗") +
+        " Usage: dotuix issue-license (--app-id <id> | --from <file.uix>)\n" +
+        "                          --issued-to <name> --key <k.priv>\n" +
+        "                          [--expires YYYY-MM-DD] [--device-id <uuid>]\n" +
+        "                          [--features f1,f2] [--max-devices N]\n" +
+        "                          [-o out.uixlicense]\n",
+    );
+    process.exit(1);
+  }
+
+  // Resolve appId — either direct or from a .uix manifest
+  let appId = appIdArg;
+  if (!appId && fromArg) {
+    const uixData = new Uint8Array(readFileSync(resolve(fromArg)));
+    appId = readManifestFromBuffer(uixData).id;
+  }
+  if (!appId) {
+    console.error(c.red("✗") + " Provide --app-id or --from <file.uix>");
+    process.exit(1);
+  }
+
+  // Validate --expires format
+  if (expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
+    console.error(c.red("✗") + " --expires must be YYYY-MM-DD (e.g. 2027-05-21)");
+    process.exit(1);
+  }
+
+  // Read + validate private key (32-byte Ed25519 seed, base64url-encoded)
+  let privKey: Uint8Array;
+  try {
+    const raw = readFileSync(resolve(keyFile), "utf8").trim();
+    privKey = new Uint8Array(Buffer.from(raw, "base64url"));
+  } catch {
+    console.error(c.red("✗") + ` Cannot read key file: ${keyFile}`);
+    process.exit(1);
+  }
+  if (privKey.length !== 32) {
+    console.error(
+      c.red("✗") + " Key file does not contain a valid 32-byte Ed25519 private-key seed",
+    );
+    process.exit(1);
+  }
+
+  const features = featuresArg
+    ? featuresArg.split(",").map((f) => f.trim()).filter(Boolean)
+    : [];
+  const maxDevices =
+    maxDevicesArg !== undefined ? parseInt(maxDevicesArg, 10) : undefined;
+
+  const today = new Date().toISOString().split("T")[0];
+
+  // Build payload — omit optional fields when absent so the canonical JSON
+  // exactly matches what Rust produces from the deserialized struct
+  // (skip_serializing_if = "Option::is_none" on expiresAt / maxDevices / deviceId).
+  interface LicensePayload {
+    appId: string;
+    issuedTo: string;
+    issuedAt: string;
+    features: string[];
+    expiresAt?: string;
+    maxDevices?: number;
+    deviceId?: string;
+  }
+  const payload: LicensePayload = { appId, issuedTo, issuedAt: today, features };
+  if (expiresAt) payload.expiresAt = expiresAt;
+  if (maxDevices !== undefined && !isNaN(maxDevices)) payload.maxDevices = maxDevices;
+  if (deviceId !== undefined) payload.deviceId = deviceId;
+
+  // Canonical JSON — sorted keys mirror Rust's sort_json_keys
+  const payloadCanon = JSON.stringify(sortKeysRec(payload));
+  const msg = new TextEncoder().encode(`DOTUIX-LICENSE-V1\n${payloadCanon}`);
+
+  const sigBytes = signBytes(msg, privKey);
+  const signature = Buffer.from(sigBytes).toString("base64url");
+
+  // Write .uixlicense file
+  const license = { payload, signature };
+  const slug = issuedTo.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const outPath = resolve(outArg ?? `${slug}.uixlicense`);
+  writeFileSync(outPath, JSON.stringify(license, null, 2), "utf8");
+
+  // Derive public key for convenience display
+  const pubKey = `ed25519:${publicKeyFromSeed(privKey)}`;
+
+  console.log(`\n  ${c.green("✓")} License issued\n`);
+  console.log(`  ${c.muted("file:")}       ${outPath}`);
+  console.log(`  ${c.muted("appId:")}      ${appId}`);
+  console.log(`  ${c.muted("issuedTo:")}   ${issuedTo}`);
+  console.log(`  ${c.muted("issuedAt:")}   ${today}`);
+  if (expiresAt) console.log(`  ${c.muted("expiresAt:")}  ${expiresAt}`);
+  if (features.length > 0) console.log(`  ${c.muted("features:")}   ${features.join(", ")}`);
+  if (maxDevices !== undefined) console.log(`  ${c.muted("maxDevices:")} ${maxDevices}`);
+  if (deviceId) console.log(`  ${c.muted("deviceId:")}   ${deviceId}`);
+  console.log(`  ${c.muted("publicKey:")}  ${pubKey}`);
+  console.log(`
+  ${c.muted("Tip: add this to your manifest to enable license enforcement:")}
+  ${c.muted(`  "license": { "required": true, "publisherKey": "${pubKey}" }`)}
+`);
+}
+
+// ---------------------------------------------------------------------------
 // help
 // ---------------------------------------------------------------------------
 function printHelp() {
@@ -1034,6 +1211,11 @@ function printHelp() {
     ${c.cyan(
       "seed",
     )}    <records.json> [-o data.db]         Create data.db from JSON records
+    ${c.cyan("issue-license")} --app-id <id>|--from <f.uix>     Issue a signed .uixlicense token
+               --issued-to <name> --key <k.priv>
+               [--expires YYYY-MM-DD] [--device-id <uuid>]
+               [--features f1,f2] [--max-devices N] [-o out.uixlicense]
+    ${c.cyan("device-id")}                                   Print this device's viewer ID
 
   ${c.bold("Examples:")}
     dotuix pack ./my-app
@@ -1046,6 +1228,9 @@ function printHelp() {
     dotuix sign briefing.uix --key ministry-key.priv
     dotuix verify briefing.uix
     dotuix encrypt briefing.uix --pin 1234 -o briefing-locked.uix
+    dotuix issue-license --from myapp.uix --issued-to "Sunrise Café" --key dotuix-key.priv
+    dotuix issue-license --app-id com.example.pos --issued-to "Acme Ltd" --key k.priv --expires 2027-05-21
+    dotuix device-id
 `);
 }
 
@@ -1097,6 +1282,12 @@ async function main() {
       break;
     case "inspect-data":
       await cmdInspectData(rest);
+      break;
+    case "issue-license":
+      await cmdIssueLicense(rest);
+      break;
+    case "device-id":
+      cmdDeviceId(rest);
       break;
     default:
       console.error(

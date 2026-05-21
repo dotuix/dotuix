@@ -86,6 +86,26 @@ export function generateKeyPair(): KeyPair {
 }
 
 /**
+ * Derive the base64url-encoded Ed25519 public key from a 32-byte private-key seed.
+ * Useful when you need to display or embed the public key given only the seed file.
+ */
+export function publicKeyFromSeed(privateKeySeed: Uint8Array): string {
+  return toBase64url(ed25519.getPublicKey(privateKeySeed));
+}
+
+/**
+ * Sign arbitrary bytes with an Ed25519 private-key seed.
+ * Returns the raw 64-byte signature (not base64-encoded).
+ * Use for custom signing schemes such as license tokens.
+ */
+export function signBytes(
+  data: Uint8Array,
+  privateKeySeed: Uint8Array,
+): Uint8Array {
+  return ed25519.sign(data, privateKeySeed);
+}
+
+/**
  * Sign a `.uix` buffer and return a new buffer whose `manifest.json` contains
  * a populated `signature` block.
  */

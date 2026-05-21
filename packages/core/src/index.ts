@@ -31,6 +31,8 @@ export type {
 } from "./types.js";
 export {
   generateKeyPair,
+  publicKeyFromSeed,
+  signBytes,
   signBuffer,
   sign,
   verifyBuffer,

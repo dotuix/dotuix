@@ -51,7 +51,7 @@ The foundational distinction that everything below builds on.
 
 ---
 
-### Phase 2 — `schemaVersion` + `uix.schema.onUpgrade()` ← **CURRENT**
+### Phase 2 — `schemaVersion` + `uix.schema.onUpgrade()` ✅ Done — `a4015c2`
 
 **Goal:** Give app authors a standard way to evolve their data schema across releases without breaking existing user state.
 

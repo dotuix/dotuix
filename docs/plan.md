@@ -279,6 +279,191 @@ Implement the CLI commands from Phase 6 in `@dotuix/cli`.
 
 ---
 
+### Phase 8 — `@dotuix/types` — Bridge TypeScript Definitions
+
+**Goal:** Publish a typed declaration package so every Vite-based `.uix` project has full IntelliSense and compile-time safety for the `window.uix` bridge. This is the foundation all later generator phases depend on.
+
+**New package:** `packages/types` (`@dotuix/types`)
+
+```typescript
+// Usage in any Vite project
+/// <reference types="@dotuix/types" />
+
+// window.uix is now fully typed
+const rec = await uix.state.get("settings:app"); // → Record | null
+await uix.state.upsert({ id, type, body }); // typed params
+const ok = await uix.license.hasFeature("reports"); // → boolean
+```
+
+**Declares:**
+
+| Namespace     | Key types                                                                       |
+| ------------- | ------------------------------------------------------------------------------- |
+| `uix.state`   | `get`, `find`, `upsert`, `insertMany`, `delete`, `exportBundle`, `importBundle` |
+| `uix.schema`  | `onUpgrade` with `{ from, to, state }` handler types                            |
+| `uix.license` | `get` → `LicenseInfo`, `hasFeature`                                             |
+| `uix.fs`      | `save`, `open`, `list` (where permitted)                                        |
+| `uix.notify`  | `send`                                                                          |
+| `Record`      | `{ id, type, body, created_at, updated_at }`                                    |
+| `Manifest`    | Full manifest shape matching the spec                                           |
+
+**Deliverable:** `npm add -D @dotuix/types` in any project gives complete bridge types. No runtime code — declarations only.
+
+---
+
+### Phase 9 — Vite Build Integration (`dotuix build` + `dotuix dev`)
+
+**Goal:** First-class Vite support so `.uix` apps can be built with real frameworks (React, Vue, Svelte, vanilla TypeScript) instead of raw HTML files.
+
+**`uix.config.ts`** — replaces hand-written `manifest.json` in Vite projects:
+
+```typescript
+// uix.config.ts
+import { defineConfig } from "@dotuix/types";
+
+export default defineConfig({
+  id: "com.example.pos",
+  name: "My POS",
+  version: "1.0.0",
+  schemaVersion: 1,
+  mode: "kiosk",
+  state: { mode: "device" },
+  permissions: ["notifications", "print", "fullscreen"],
+  theme: { color: "#c8a96e", background: "#1a1a1a" },
+});
+```
+
+The CLI reads `uix.config.ts` at build time, generates `manifest.json` in `dist/`, then packs.
+
+**New CLI commands:**
+
+```bash
+dotuix build [project-dir]   # vite build → generates manifest.json → pack → .uix
+dotuix dev   [project-dir]   # vite dev server + bridge mock (no viewer needed)
+```
+
+**`dotuix dev` bridge mock:**
+Injects a `window.uix` shim backed by **IndexedDB** so you can develop and test state logic entirely in the browser. State is scoped to the app `id` so multiple projects don't collide.
+
+**Project structure for Vite apps:**
+
+```
+my-app/
+  src/
+    main.ts          ← entry point
+    App.tsx          ← root component
+  uix.config.ts      ← replaces manifest.json
+  vite.config.ts
+  package.json
+  index.html
+```
+
+**Deliverable:** `dotuix build` on any Vite project produces a working `.uix` file. `dotuix dev` gives a full hot-reload dev loop without opening the Tauri viewer.
+
+---
+
+### Phase 10 — `dotuix create` — Project Scaffolding
+
+**Goal:** A single command scaffolds a complete, ready-to-build `.uix` project for any target use-case.
+
+**Command:**
+
+```bash
+dotuix create <name> [--template <template>]
+```
+
+**Templates:**
+
+| Template     | Framework             | State mode | Use case                                      |
+| ------------ | --------------------- | ---------- | --------------------------------------------- |
+| `vanilla-ts` | Vanilla TypeScript    | `device`   | Minimal apps, no framework overhead           |
+| `react-ts`   | React 19 + TypeScript | `device`   | Full interactive apps (POS, CRM, inventory)   |
+| `vue-ts`     | Vue 3 + TypeScript    | `device`   | Component-heavy apps                          |
+| `form`       | Vanilla TypeScript    | `file`     | Documents: the `.uix` file IS the filled form |
+| `report`     | React 19 + TypeScript | `file`     | Read-only reports / generated documents       |
+
+**`form` template detail:**
+Uses `state.mode: "file"` — the `.uix` archive stores the filled data. Open the file → edit the form → close → data is written back into the archive. Sharing the file shares the filled document. Same concept as a Word `.docx` but with a rich Vite app inside.
+
+**Each template includes:**
+
+- `uix.config.ts` with sensible defaults
+- `/// <reference types="@dotuix/types" />` wired up
+- A working example component demonstrating state read/write
+- `README.md` with `dotuix dev` / `dotuix build` instructions
+
+**Deliverable:** `dotuix create my-invoice --template form` gives a working invoice document that packs to `.uix` with one command.
+
+---
+
+### Phase 11 — AI Spec Format + Generation Workflow
+
+**Goal:** A structured spec format and a generation workflow where you describe what you want and the AI produces a ready-to-pack Vite project. Formalises the "you plan, I build" loop.
+
+**Spec file: `app.spec.md`**
+
+A markdown file placed at the root of (or alongside) the project. Standard sections:
+
+```markdown
+# App Spec: Hotel Check-In Kiosk
+
+## Identity
+
+- id: com.hotel.checkin
+- name: Hotel Check-In
+- mode: kiosk
+- state: device
+- schemaVersion: 1
+
+## Data Model
+
+| Type    | Key fields                                             |
+| ------- | ------------------------------------------------------ |
+| room    | number, type (single/double/suite), status, priceNight |
+| booking | guestName, phone, roomId, checkIn, checkOut, status    |
+| guest   | name, phone, email, loyaltyPoints                      |
+
+## Screens
+
+1. **Lobby** — list available rooms with type filter
+2. **Room detail** — price, availability calendar, book button
+3. **Check-in form** — guest name, phone, dates, confirm
+4. **Confirmation** — booking reference, print receipt
+5. **Admin** — PIN-protected; manage rooms and view bookings
+
+## Seed Data
+
+- 10 rooms across 3 types, pre-filled availability
+
+## Permissions
+
+- notifications, print, fullscreen
+
+## Theme
+
+- color: #1a3a5c
+- background: #f0f4f8
+```
+
+**Workflow:**
+
+1. You write (or sketch) `app.spec.md`
+2. I scaffold the Vite project from the chosen template, implement all screens and data model
+3. `dotuix build` → `.uix` file ready to open in viewer
+4. You test, note issues
+5. I fix and rebuild
+
+**CLI integration (optional helper):**
+
+```bash
+dotuix spec validate app.spec.md   # check spec structure before handing to AI
+dotuix spec scaffold app.spec.md   # dry-run: show files that would be created
+```
+
+**Deliverable:** A documented spec format and a repeatable, predictable workflow for AI-assisted `.uix` generation. Any future app starts with a spec, ends with a packed `.uix`.
+
+---
+
 ## Progress Tracker
 
 | Phase                                      | Status         | Commit    |
@@ -287,6 +472,10 @@ Implement the CLI commands from Phase 6 in `@dotuix/cli`.
 | 2 — `schemaVersion` + upgrade handler      | ✅ Done        | `a4015c2` |
 | 3 — `.uixdata` bundle + CLI export/import  | ✅ Done        | `7d39ec5` |
 | 4 — In-app `exportBundle` / `importBundle` | ✅ Done        | `712f4c0` |
-| 5 — POS demo app                           | ✅ Done        | —         |
-| 6 — License token spec                     | ⬜ Not started | —         |
-| 7 — License CLI commands                   | ⬜ Not started | —         |
+| 5 — POS demo app                           | ✅ Done        | `8c32e01` |
+| 6 — License token spec                     | ✅ Done        | `d872108` |
+| 7 — License CLI commands                   | ✅ Done        | `9b1d0fb` |
+| 8 — `@dotuix/types` bridge TS definitions  | ✅ Done        | —         |
+| 9 — Vite build integration                 | ⬜ Not started | —         |
+| 10 — `dotuix create` scaffolding           | ⬜ Not started | —         |
+| 11 — AI spec format + generation workflow  | ⬜ Not started | —         |

@@ -38,7 +38,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@dotuix/core": "^0.2.3"
+    "@dotuix/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

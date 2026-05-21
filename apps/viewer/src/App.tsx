@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import DeveloperMode from "./components/DeveloperMode";
@@ -149,7 +149,9 @@ export default function App() {
   }, [state]);
 
   // ── Bridge: relay postMessages from the uix:// iframe to Tauri ──────────
-  useEffect(() => {
+  // useLayoutEffect fires before browser paint, so the listener is always
+  // registered before the iframe's JS can execute and send postMessages.
+  useLayoutEffect(() => {
     if (state.status !== "loaded") return;
 
     const handler = async (e: MessageEvent) => {

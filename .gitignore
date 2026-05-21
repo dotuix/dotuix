@@ -23,8 +23,6 @@ apps/mobile/ios/
 ~/.dotuix/
 
 # Project-local files
-docs/
-docs/plan.md
 packages/vscode-extension/.vscode/
 *.code-workspace
 

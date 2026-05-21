@@ -34,6 +34,8 @@ struct AppState {
     permissions: Mutex<Vec<String>>,
     /// manifest.state.mode — "file" (default, repack on close) or "device" (never repack).
     state_mode: Mutex<String>,
+    /// Data schema version stored in state.db meta table; read on open, updated via schema_version_set.
+    stored_schema_version: Arc<Mutex<u32>>,
     /// manifest.sync.endpoint — HTTPS URL of the sync server (None if not configured).
     sync_endpoint: Mutex<Option<String>>,
     /// manifest.sync.secret — base64 shared secret for the sync server.
@@ -61,6 +63,7 @@ impl Default for AppState {
             app_name: Mutex::new(String::new()),
             permissions: Mutex::new(Vec::new()),
             state_mode: Mutex::new("file".to_string()),
+            stored_schema_version: Arc::new(Mutex::new(1)),
             sync_endpoint: Mutex::new(None),
             sync_secret: Mutex::new(None),
             pending_files: Mutex::new(None),
@@ -558,6 +561,10 @@ fn complete_load(
     let state_conn = rusqlite::Connection::open(&state_db_path)
         .map_err(|e| format!("Cannot open state.db: {e}"))?;
     ensure_state_schema(&state_conn, &app_id)?;
+    let stored_schema_version: u32 = state_conn
+        .query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get::<_, String>(0))
+        .map(|s| s.parse::<u32>().unwrap_or(1))
+        .unwrap_or(1);
 
     // --- data.db (read-only copy) ---
     let data_conn = if let Some(bytes) = files.get("data.db") {
@@ -584,6 +591,7 @@ fn complete_load(
     *state.state_mode.lock().unwrap() = manifest
         .get("state").and_then(|s| s.get("mode")).and_then(|v| v.as_str())
         .unwrap_or("file").to_string();
+    *state.stored_schema_version.lock().unwrap() = stored_schema_version;
     *state.sync_endpoint.lock().unwrap() = manifest
         .get("sync").and_then(|s| s.get("endpoint")).and_then(|v| v.as_str())
         .map(str::to_string);
@@ -661,13 +669,15 @@ fn repack_uix(uix_path: &str, state_db_path: &std::path::Path) -> Result<(), Str
 // postMessage relay: iframe -> parent shell -> invoke() -> Rust -> reply back.
 // ---------------------------------------------------------------------------
 
-fn bridge_script(manifest_json: &str) -> String {
+fn bridge_script(manifest_json: &str, stored_schema_version: u32) -> String {
     let viewer_version = VIEWER_VERSION;
     format!(
         r#"<script>
 (function () {{
   var m = {manifest_json};
   var _viewer_version = "{viewer_version}";
+  var _storedSchemaVersion = {stored_schema_version};
+  var _currentSchemaVersion = (m.schemaVersion || 1);
   var _perms = (m.permissions || []);
   var _seq = 0;
   var _pending = {{}};
@@ -835,6 +845,19 @@ fn bridge_script(manifest_json: &str) -> String {
     }},
     print: function () {{ window.print(); }},
     exit:  function () {{ return relay('uix_exit', {{}}); }},
+    schema: {{
+      onUpgrade: function(fn) {{
+        var from = _storedSchemaVersion;
+        var to   = _currentSchemaVersion;
+        if (from >= to) return Promise.resolve();
+        return Promise.resolve()
+          .then(function() {{ return fn({{ from: from, to: to, state: window.__uix.state }}); }})
+          .then(function() {{ return relay('schema_version_set', {{ version: to }}); }});
+      }},
+      version:       function() {{ return _currentSchemaVersion; }},
+      storedVersion: function() {{ return _storedSchemaVersion; }},
+      needsUpgrade:  function() {{ return _storedSchemaVersion < _currentSchemaVersion; }},
+    }},
   }};
   // Convenience alias — uix.data.find() works without window.__uix prefix
   window.uix = window.__uix;
@@ -1773,6 +1796,21 @@ fn state_vacuum(state: State<'_, AppState>) -> Result<serde_json::Value, String>
     Ok(serde_json::json!({ "before": before, "after": after }))
 }
 
+/// Updates the schema_version stored in meta.  Called by the bridge after a successful
+/// `uix.schema.onUpgrade()` run.  Persists the new version so upgrades don't re-run.
+#[tauri::command]
+fn schema_version_set(version: u32, state: State<'_, AppState>) -> Result<(), String> {
+    let db = state.state_db.lock().unwrap();
+    let conn = db.as_ref().ok_or("No app loaded")?;
+    conn.execute(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?1)",
+        rusqlite::params![version.to_string()],
+    )
+    .map_err(|e| e.to_string())?;
+    *state.stored_schema_version.lock().unwrap() = version;
+    Ok(())
+}
+
 /// Sync state.db records with a remote sync server (push local changes, pull remote changes).
 /// Requires the "local-sync" permission and `sync.endpoint` + `sync.secret` in the manifest.
 /// Conflict resolution: last-write-wins on `updated_at`.
@@ -2377,6 +2415,7 @@ pub fn run() {
     // through Tauri State (UriSchemeContext has no .state() method).
     let protocol_files = Arc::clone(&app_state.files);
     let protocol_preview_dir = Arc::clone(&app_state.preview_dir);
+    let protocol_schema_version = Arc::clone(&app_state.stored_schema_version);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -2481,7 +2520,8 @@ pub fn run() {
                             .get("manifest.json")
                             .map(|b| String::from_utf8_lossy(b).into_owned())
                             .unwrap_or_else(|| "{}".to_string());
-                        let script = bridge_script(&manifest_json);
+                        let stored_v = *protocol_schema_version.lock().unwrap();
+                        let script = bridge_script(&manifest_json, stored_v);
                         let html = String::from_utf8_lossy(data);
                         if html.contains("<head>") {
                             html.replacen("<head>", &format!("<head>{script}"), 1)
@@ -2566,6 +2606,7 @@ pub fn run() {
             state_insert_many,
             state_size,
             state_vacuum,
+            schema_version_set,
             state_sync,
             uix_enter_fullscreen,
             uix_exit_fullscreen,

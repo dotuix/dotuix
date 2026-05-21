@@ -48,6 +48,8 @@ struct AppState {
     pending_path: Mutex<Option<String>>,
     /// Project folder currently open in developer mode; shared with devpreview:// protocol.
     preview_dir: Arc<Mutex<Option<String>>>,
+    /// Cached license payload for the currently open app; None when no license block or unlicensed.
+    license_info: Mutex<Option<LicensePayload>>,
 }
 
 impl Default for AppState {
@@ -70,6 +72,7 @@ impl Default for AppState {
             pending_manifest: Mutex::new(None),
             pending_path: Mutex::new(None),
             preview_dir: Arc::new(Mutex::new(None)),
+            license_info: Mutex::new(None),
         }
     }
 }
@@ -85,6 +88,8 @@ enum LoadResult {
     Loaded { manifest: String },
     /// App requires a PIN; caller must show a PIN dialog and call unlock_with_pin.
     PinRequired { app_name: String, app_id: String },
+    /// App requires a .uixlicense; caller must prompt the user to install one then retry.
+    LicenseRequired { app_name: String, app_id: String, device_id: String, uix_path: String },
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +104,45 @@ struct Record {
     body: String,
     created_at: i64,
     updated_at: i64,
+}
+
+/// Parsed payload section of a `.uixlicense` file.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+struct LicensePayload {
+    #[serde(rename = "appId")]
+    app_id: String,
+    #[serde(rename = "issuedTo")]
+    issued_to: String,
+    #[serde(rename = "issuedAt")]
+    issued_at: String,
+    #[serde(rename = "expiresAt", default, skip_serializing_if = "Option::is_none")]
+    expires_at: Option<String>,
+    #[serde(default)]
+    features: Vec<String>,
+    #[serde(rename = "maxDevices", default, skip_serializing_if = "Option::is_none")]
+    max_devices: Option<u32>,
+    #[serde(rename = "deviceId", default, skip_serializing_if = "Option::is_none")]
+    device_id: Option<String>,
+}
+
+/// On-disk format of a `.uixlicense` file: payload object + detached Ed25519 signature.
+#[derive(serde::Deserialize)]
+struct LicenseFile {
+    payload: LicensePayload,
+    signature: String,
+}
+
+/// Public license info returned to bridge callers via `uix.license.get()`.
+#[derive(serde::Serialize, Clone)]
+struct LicenseInfo {
+    #[serde(rename = "issuedTo")]
+    issued_to: String,
+    #[serde(rename = "issuedAt")]
+    issued_at: String,
+    #[serde(rename = "expiresAt")]
+    expires_at: Option<String>,
+    features: Vec<String>,
+    valid: bool,
 }
 
 fn now_ms() -> i64 {
@@ -436,6 +480,73 @@ fn increment_open_count(data_dir: &std::path::Path) -> u64 {
 }
 
 // ---------------------------------------------------------------------------
+// License helpers
+// ---------------------------------------------------------------------------
+
+/// Get or create a stable per-device UUID stored at `$APP_DATA/device_id`.
+fn ensure_global_device_id(app: &AppHandle) -> String {
+    let Ok(base) = app.path().app_data_dir() else {
+        return uuid::Uuid::new_v4().to_string();
+    };
+    let id_file = base.join("device_id");
+    if let Ok(id) = std::fs::read_to_string(&id_file) {
+        let trimmed = id.trim().to_string();
+        if !trimmed.is_empty() {
+            return trimmed;
+        }
+    }
+    let new_id = uuid::Uuid::new_v4().to_string();
+    let _ = std::fs::create_dir_all(&base);
+    let _ = std::fs::write(&id_file, &new_id);
+    new_id
+}
+
+/// Attempt to load and verify the `.uixlicense` file stored in `app_data_dir`.
+/// Returns `Some(payload)` only when the file exists, the signature is valid,
+/// the appId matches, the license has not expired, and (if device-bound) the
+/// device ID matches.  All failures return `None` without leaking details.
+fn verify_and_load_license(
+    app_data_dir: &std::path::Path,
+    app_id: &str,
+    publisher_key_str: &str,
+    device_id: &str,
+) -> Option<LicensePayload> {
+    let data = std::fs::read_to_string(app_data_dir.join("license.uixlicense")).ok()?;
+    let lf: LicenseFile = serde_json::from_str(&data).ok()?;
+
+    // AppId must match the manifest
+    if lf.payload.app_id != app_id { return None; }
+
+    // Expiry — treat missing expiresAt as perpetual
+    if let Some(ref exp) = lf.payload.expires_at {
+        if exp.as_str() < today_iso().as_str() { return None; }
+    }
+
+    // Device binding — if deviceId is set (non-empty) it must match this device
+    if let Some(ref lic_device) = lf.payload.device_id {
+        if !lic_device.is_empty() && lic_device != device_id { return None; }
+    }
+
+    // Signature verification over sorted canonical JSON of the payload
+    let key_b64 = publisher_key_str.strip_prefix("ed25519:").unwrap_or(publisher_key_str);
+    let key_bytes = base64_url_decode(key_b64).ok()?;
+    let sig_bytes = base64_url_decode(&lf.signature).ok()?;
+
+    let payload_val = serde_json::to_value(&lf.payload).ok()?;
+    let sorted = sort_json_keys(payload_val);
+    let payload_canon = serde_json::to_string(&sorted).ok()?;
+    let msg = format!("DOTUIX-LICENSE-V1\n{payload_canon}");
+
+    use ed25519_dalek::{Signature, VerifyingKey, Verifier};
+    let key_arr: [u8; 32] = key_bytes.try_into().ok()?;
+    let sig_arr: [u8; 64] = sig_bytes.try_into().ok()?;
+    let vk = VerifyingKey::from_bytes(&key_arr).ok()?;
+    vk.verify(msg.as_bytes(), &Signature::from_bytes(&sig_arr)).ok()?;
+
+    Some(lf.payload)
+}
+
+// ---------------------------------------------------------------------------
 // .uix loading — two-phase: probe (validate + optional PIN gate) + complete
 // ---------------------------------------------------------------------------
 
@@ -541,6 +652,34 @@ fn complete_load(
         }
     }
 
+    // --- Per-app data directory (created early — needed for license file lookup) ---
+    let data_dir = app
+        .path().app_data_dir()
+        .map_err(|e| format!("Cannot get app data dir: {e}"))?.join(&app_id);
+    std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+
+    // --- License check (before lock + DB setup) ---
+    let license_required = manifest
+        .get("license").and_then(|l| l.get("required")).and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let publisher_key = manifest
+        .get("license").and_then(|l| l.get("publisherKey")).and_then(|v| v.as_str())
+        .map(str::to_string);
+    let device_id = ensure_global_device_id(app);
+    let license_payload: Option<LicensePayload> = publisher_key
+        .as_deref()
+        .and_then(|key| verify_and_load_license(&data_dir, &app_id, key, &device_id));
+    if license_required && license_payload.is_none() {
+        // Clear the stale uix_path so a subsequent open works cleanly.
+        *state.uix_path.lock().unwrap() = String::new();
+        return Ok(LoadResult::LicenseRequired {
+            app_name,
+            app_id,
+            device_id,
+            uix_path: path.to_string(),
+        });
+    }
+
     // --- Lock file ---
     let lock_path = format!("{path}.lock");
     if std::path::Path::new(&lock_path).exists() {
@@ -555,12 +694,6 @@ fn complete_load(
     }
     std::fs::write(&lock_path, format!("{{\"pid\":{},\"opened_at\":{}}}", std::process::id(), now_ms()).as_bytes())
         .map_err(|e| format!("Cannot create lock file: {e}"))?;
-
-    // --- Per-app data directory ---
-    let data_dir = app
-        .path().app_data_dir()
-        .map_err(|e| format!("Cannot get app data dir: {e}"))?.join(&app_id);
-    std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
 
     // --- state.db ---
     let state_db_path = data_dir.join("state.db");
@@ -617,6 +750,7 @@ fn complete_load(
     *state.sync_secret.lock().unwrap() = manifest
         .get("sync").and_then(|s| s.get("secret")).and_then(|v| v.as_str())
         .map(str::to_string);
+    *state.license_info.lock().unwrap() = license_payload;
 
     Ok(LoadResult::Loaded { manifest: manifest_json })
 }
@@ -890,6 +1024,10 @@ fn bridge_script(manifest_json: &str, stored_schema_version: u32) -> String {
       version:       function() {{ return _currentSchemaVersion; }},
       storedVersion: function() {{ return _storedSchemaVersion; }},
       needsUpgrade:  function() {{ return _storedSchemaVersion < _currentSchemaVersion; }},
+    }},
+    license: {{
+      get:        function()        {{ return relay('license_get',         {{}}); }},
+      hasFeature: function(feature) {{ return relay('license_has_feature', {{ feature: feature }}); }},
     }},
   }};
   // Convenience alias — uix.data.find() works without window.__uix prefix
@@ -1284,6 +1422,7 @@ fn close_uix(state: State<'_, AppState>) {
     let _ = std::fs::remove_file(format!("{uix_path}.lock"));
     *state.uix_path.lock().unwrap() = String::new();
     *state.state_db_path.lock().unwrap() = None;
+    *state.license_info.lock().unwrap() = None;
     state.files.lock().unwrap().clear();
 }
 
@@ -1880,7 +2019,92 @@ fn schema_upgrade_rollback(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 4 additions: exportBundle, importBundle
+// Phase 6 additions: license
+// ---------------------------------------------------------------------------
+
+/// Returns the license info for the currently open app, or null if no license is loaded.
+#[tauri::command]
+fn license_get(state: State<'_, AppState>) -> Result<Option<LicenseInfo>, String> {
+    let lic = state.license_info.lock().unwrap().clone();
+    Ok(lic.map(|p| LicenseInfo {
+        issued_to: p.issued_to,
+        issued_at: p.issued_at,
+        expires_at: p.expires_at,
+        features: p.features,
+        valid: true,
+    }))
+}
+
+/// Returns true if the current license includes the named feature.
+#[tauri::command]
+fn license_has_feature(feature: String, state: State<'_, AppState>) -> Result<bool, String> {
+    let lic = state.license_info.lock().unwrap().clone();
+    Ok(lic.map_or(false, |p| p.features.contains(&feature)))
+}
+
+/// Open a file dialog for a `.uixlicense` file and save it to the per-app data directory.
+/// Validates that the JSON is parseable and `payload.appId` is non-empty.
+/// If `app_id` is provided, rejects licenses for a different app.
+/// Full signature + expiry verification happens in the subsequent `load_uix` call.
+#[tauri::command]
+async fn pick_and_install_license(
+    app_id: Option<String>,
+    app: AppHandle,
+) -> Result<(), String> {
+    use tauri_plugin_dialog::DialogExt;
+    use tokio::sync::oneshot;
+
+    let (tx, rx) = oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("UIX License", &["uixlicense"])
+        .pick_file(move |p| { let _ = tx.send(p); });
+
+    let path = rx
+        .await
+        .map_err(|_| "Dialog closed unexpectedly".to_string())?
+        .ok_or_else(|| "No file selected".to_string())?;
+
+    let data = std::fs::read_to_string(path.to_string())
+        .map_err(|e| format!("Cannot read license file: {e}"))?;
+
+    let parsed: serde_json::Value = serde_json::from_str(&data)
+        .map_err(|e| format!("Invalid license file (not valid JSON): {e}"))?;
+
+    let file_app_id = parsed
+        .get("payload").and_then(|p| p.get("appId")).and_then(|v| v.as_str())
+        .ok_or("License file is missing payload.appId")?
+        .to_string();
+
+    if file_app_id.is_empty() {
+        return Err("License file has an empty appId".into());
+    }
+
+    if let Some(ref expected) = app_id {
+        if &file_app_id != expected {
+            return Err(format!(
+                "This license is for app '{}', not '{}'.",
+                file_app_id, expected
+            ));
+        }
+    }
+
+    let data_dir = app
+        .path().app_data_dir()
+        .map_err(|e| format!("Cannot get app data dir: {e}"))?.join(&file_app_id);
+    std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+    std::fs::write(data_dir.join("license.uixlicense"), data.as_bytes())
+        .map_err(|e| format!("Cannot save license file: {e}"))?;
+
+    Ok(())
+}
+
+/// Return the stable per-device UUID (creates it on first call).
+/// App creators use this to issue device-bound licenses.
+#[tauri::command]
+fn get_device_id(app: AppHandle) -> String {
+    ensure_global_device_id(&app)
+}
 // ---------------------------------------------------------------------------
 
 /// Return value from state_import_bundle.
@@ -2899,6 +3123,10 @@ pub fn run() {
             db_delete_record,
             db_insert_record,
             toggle_fullscreen,
+            license_get,
+            license_has_feature,
+            pick_and_install_license,
+            get_device_id,
         ])
 .build(tauri::generate_context!())
         .expect("error while building tauri application")

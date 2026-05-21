@@ -76,7 +76,14 @@ function Spinner({ size = 16 }: { size?: number }) {
 
 type LoadResult =
   | { status: "loaded"; manifest: string }
-  | { status: "pin_required"; app_name: string; app_id: string };
+  | { status: "pin_required"; app_name: string; app_id: string }
+  | {
+      status: "license_required";
+      app_name: string;
+      app_id: string;
+      device_id: string;
+      uix_path: string;
+    };
 
 type Manifest = {
   name?: string;
@@ -88,6 +95,13 @@ type ViewerState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "pin_required"; appName: string }
+  | {
+      status: "license_required";
+      appName: string;
+      appId: string;
+      deviceId: string;
+      uixPath: string;
+    }
   | {
       status: "loaded";
       manifestName: string;
@@ -105,6 +119,15 @@ function handleLoadResult(result: LoadResult): ViewerState {
       manifestName: m.name ?? "UIX App",
       expires: m.expires ?? undefined,
       signed: !!m.signature,
+    };
+  }
+  if (result.status === "license_required") {
+    return {
+      status: "license_required",
+      appName: result.app_name,
+      appId: result.app_id,
+      deviceId: result.device_id,
+      uixPath: result.uix_path,
     };
   }
   return { status: "pin_required", appName: result.app_name };
@@ -351,6 +374,82 @@ export default function App() {
           className="viewer-frame"
           title={state.manifestName}
         />
+      </div>
+    );
+  }
+
+  // ── License required ─────────────────────────────────────────────────────
+  if (state.status === "license_required") {
+    const { appName, appId, deviceId, uixPath } = state;
+    return (
+      <div className="shell">
+        <div className="pin-card">
+          <div className="pin-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+              <rect
+                x="3"
+                y="11"
+                width="18"
+                height="11"
+                rx="2"
+                stroke="currentColor"
+                strokeWidth="1.75"
+              />
+              <path
+                d="M7 11V7a5 5 0 0 1 10 0v4"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+              />
+              <circle cx="12" cy="16.5" r="1.5" fill="currentColor" />
+            </svg>
+          </div>
+          <h2 className="pin-title">{appName}</h2>
+          <p className="pin-desc">This app requires a valid license to run.</p>
+          <div className="license-device">
+            <span className="license-device-label">Your device ID</span>
+            <code className="license-device-id">{deviceId}</code>
+            <button
+              className="license-copy-btn"
+              onClick={() => navigator.clipboard.writeText(deviceId)}
+            >
+              Copy
+            </button>
+          </div>
+          <button
+            className="pin-submit"
+            onClick={async () => {
+              try {
+                await invoke("pick_and_install_license", { app_id: appId });
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                if (msg === "No file selected") return;
+                setState({ status: "error", message: `License error: ${msg}` });
+                return;
+              }
+              setState({ status: "loading" });
+              try {
+                const result = await invoke<LoadResult>("load_uix", {
+                  path: uixPath,
+                });
+                setState(handleLoadResult(result));
+              } catch (err) {
+                setState({
+                  status: "error",
+                  message: err instanceof Error ? err.message : String(err),
+                });
+              }
+            }}
+          >
+            Browse for .uixlicense…
+          </button>
+          <button
+            className="pin-cancel"
+            onClick={() => setState({ status: "idle" })}
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     );
   }

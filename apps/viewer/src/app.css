@@ -490,6 +490,51 @@ body,
   color: #706f6b;
 }
 
+/* ── License required dialog ─────────────────────────────────── */
+.license-device {
+  width: 100%;
+  background: #f6f5f1;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.license-device-label {
+  font-size: 0.7rem;
+  color: #9d9c98;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.license-device-id {
+  font-family: "SF Mono", "Fira Mono", monospace;
+  font-size: 0.78rem;
+  color: #1a1917;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.license-copy-btn {
+  align-self: flex-end;
+  background: none;
+  border: 1px solid #d9d8d2;
+  border-radius: 5px;
+  padding: 3px 9px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  font-family: inherit;
+  color: #706f6b;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.license-copy-btn:hover {
+  background: #e8e7e3;
+  border-color: #c0bfb9;
+}
+
 /* ── Developer mode layout ────────────────────────────────────── */
 .dev-root {
   display: flex;

@@ -11,6 +11,7 @@ import * as SQLite from "expo-sqlite";
 import type { SQLiteBindParams } from "expo-sqlite";
 import * as Clipboard from "expo-clipboard";
 import * as Linking from "expo-linking";
+import * as Notifications from "expo-notifications";
 import { bytesToBase64 } from "@/utils/uixPacker";
 
 interface DbRecord {
@@ -218,6 +219,8 @@ export function useUixBridge(
   manifest: Record<string, unknown>,
   onTitleChange?: (title: string) => void,
   enabled = false,
+  onExit?: () => void,
+  onPrint?: () => void,
 ): UixBridgeResult {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -645,8 +648,19 @@ export function useUixBridge(
           if (onTitleChange) onTitleChange(payload.title as string);
           return null;
         }
-        case "uix_notify":
+        case "uix_notify": {
+          const { status } = await Notifications.requestPermissionsAsync();
+          if (status === "granted") {
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: (payload.title as string) || "",
+                body: (payload.body as string) || "",
+              },
+              trigger: null, // fire immediately
+            });
+          }
           return null;
+        }
         case "uix_save_file": {
           const fname = (payload.filename as string) || "download";
           const tmpPath = `${FileSystem.cacheDirectory}${fname}`;
@@ -674,13 +688,19 @@ export function useUixBridge(
           });
           return { name: asset.name, content_b64: b64 };
         }
-        case "uix_exit":
+        case "uix_print": {
+          if (onPrint) onPrint();
           return null;
+        }
+        case "uix_exit": {
+          if (onExit) onExit();
+          return null;
+        }
         default:
           throw new Error(`Unknown bridge command: ${cmd}`);
       }
     },
-    [onTitleChange],
+    [onTitleChange, onExit, onPrint],
   );
 
   const handleMessage = useCallback(

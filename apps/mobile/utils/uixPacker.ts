@@ -5,18 +5,18 @@
  * Uses fflate for pure-JS decompression; Buffer global for base64 <-> bytes.
  */
 
-import * as FileSystem from 'expo-file-system';
-import { unzipSync, zipSync, strFromU8 } from 'fflate';
+import * as FileSystem from "expo-file-system";
+import { unzipSync, zipSync, strFromU8 } from "fflate";
 
 // base64 <-> Uint8Array
 
 export function base64ToBytes(b64: string): Uint8Array {
-  const buf = Buffer.from(b64, 'base64');
+  const buf = Buffer.from(b64, "base64");
   return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {
-  return Buffer.from(bytes).toString('base64');
+  return Buffer.from(bytes).toString("base64");
 }
 
 // .uix parsing
@@ -31,14 +31,18 @@ export interface UixContents {
 
 export function unpackUix(bytes: Uint8Array): UixContents {
   const files = unzipSync(bytes);
-  const manifestBytes = files['manifest.json'];
-  if (!manifestBytes) throw new Error('Invalid .uix file: missing manifest.json');
-  const manifest = JSON.parse(strFromU8(manifestBytes)) as Record<string, unknown>;
+  const manifestBytes = files["manifest.json"];
+  if (!manifestBytes)
+    throw new Error("Invalid .uix file: missing manifest.json");
+  const manifest = JSON.parse(strFromU8(manifestBytes)) as Record<
+    string,
+    unknown
+  >;
   return {
     manifest,
     files,
-    dataDb: files['data.db'] ?? null,
-    stateDb: files['state.db'] ?? null,
+    dataDb: files["data.db"] ?? null,
+    stateDb: files["state.db"] ?? null,
   };
 }
 
@@ -54,24 +58,24 @@ export async function extractSession(
   await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
 
   for (const [name, bytes] of Object.entries(files)) {
-    if (name === 'data.db' || name === 'state.db') continue;
-    if (name.endsWith('/')) continue;
+    if (name === "data.db" || name === "state.db") continue;
+    if (name.endsWith("/")) continue;
 
     const filePath = `${dir}/${name}`;
 
-    const slash = name.lastIndexOf('/');
+    const slash = name.lastIndexOf("/");
     if (slash !== -1) {
       await FileSystem.makeDirectoryAsync(`${dir}/${name.slice(0, slash)}`, {
         intermediates: true,
       }).catch(() => {});
     }
 
-    if (name === 'index.html') {
+    if (name === "index.html") {
       let html = strFromU8(bytes);
       if (/<head[^>]*>/i.test(html)) {
         html = html.replace(/<head[^>]*>/i, (m) => `${m}\n${bridgeHtml}`);
       } else {
-        html = bridgeHtml + '\n' + html;
+        html = bridgeHtml + "\n" + html;
       }
       await FileSystem.writeAsStringAsync(filePath, html, {
         encoding: FileSystem.EncodingType.UTF8,
@@ -84,18 +88,46 @@ export async function extractSession(
   }
 }
 
+/**
+ * Decrypt all encryptedPaths in a files map in memory using the provided AES-256-GCM key.
+ * Encrypted format: first 12 bytes = GCM nonce, rest = ciphertext + 16-byte auth tag.
+ * Returns a new files map with decrypted bytes at the encrypted paths.
+ */
+export async function decryptFiles(
+  files: Record<string, Uint8Array>,
+  encryptedPaths: string[],
+  key: CryptoKey,
+): Promise<Record<string, Uint8Array>> {
+  const result = { ...files };
+  for (const path of encryptedPaths) {
+    const cipher = files[path];
+    if (!cipher) continue;
+    const iv = cipher.slice(0, 12);
+    const data = cipher.slice(12);
+    const plainBuffer = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      key,
+      data,
+    );
+    result[path] = new Uint8Array(plainBuffer);
+  }
+  return result;
+}
+
 export function repackUix(
   originalFiles: Record<string, Uint8Array>,
   newStateDb: Uint8Array,
 ): Uint8Array {
-  return zipSync({ ...originalFiles, 'state.db': newStateDb });
+  return zipSync({ ...originalFiles, "state.db": newStateDb });
 }
 
 /**
  * Build the <script> block injected into index.html.
  * Mirrors the Tauri bridge surface but uses ReactNativeWebView.postMessage.
  */
-export function makeMobileBridgeScript(manifest: Record<string, unknown>): string {
+export function makeMobileBridgeScript(
+  manifest: Record<string, unknown>,
+): string {
   const manifestJson = JSON.stringify(manifest);
   return `<script>
 (function () {
@@ -214,6 +246,18 @@ export function makeMobileBridgeScript(manifest: Record<string, unknown>): strin
       exit:   function () { return Promise.resolve(); },
       toggle: function () { return Promise.resolve(); },
     },
+    schema: {
+      onUpgrade: function (fn) {
+        // Schema upgrade handler registration.
+        // On mobile, we call the handler immediately if schemaVersion > 1,
+        // using a best-effort approach. The handler receives { from, to, state }.
+        var stored = 1;
+        var declared = (m.schemaVersion || 1);
+        if (declared > stored && typeof fn === 'function') {
+          fn({ from: stored, to: declared, state: window.__uix.state });
+        }
+      },
+    },
     viewer:  { version: function () { return _viewer_version; } },
     browser: { open: function (url) { return relay('uix_open_url', { url: url }); } },
     window:  { setTitle: function (title) { return relay('uix_set_title', { title: title }); } },
@@ -232,7 +276,7 @@ export function makeMobileBridgeScript(manifest: Record<string, unknown>): strin
       },
       open: function (opts) { return relay('uix_open_file', { filter: (opts || {}).filter || null }); },
     },
-    print:   function () { window.print(); },
+    print:   function () { return relay('uix_print', {}); },
     exit:    function () { return relay('uix_exit', {}); },
   };
   window.uix = window.__uix;

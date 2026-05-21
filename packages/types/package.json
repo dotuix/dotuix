@@ -2,7 +2,12 @@
   "name": "@dotuix/types",
   "version": "0.1.0",
   "description": "TypeScript declarations for the window.uix bridge and dotuix tooling",
-  "keywords": ["uix", "dotuix", "types", "typescript"],
+  "keywords": [
+    "uix",
+    "dotuix",
+    "types",
+    "typescript"
+  ],
   "homepage": "https://github.com/dotuix/dotuix#readme",
   "repository": {
     "type": "git",
@@ -10,13 +15,20 @@
     "directory": "packages/types"
   },
   "license": "MIT",
+  "type": "module",
+  "main": "./index.js",
   "types": "./index.d.ts",
   "exports": {
     ".": {
+      "import": "./index.js",
       "types": "./index.d.ts"
     }
   },
-  "files": ["index.d.ts", "README.md"],
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
   "publishConfig": {
     "access": "public"
   }

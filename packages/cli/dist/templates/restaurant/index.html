@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>مطعم المدينة</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div class="header-inner">
+        <h1 class="restaurant-name">مطعم المدينة</h1>
+        <p class="tagline">أصالة الطعم الخليجي — الدوحة</p>
+      </div>
+    </header>
+
+    <nav class="categories" id="categories">
+      <!-- Populated by app.js -->
+    </nav>
+
+    <main class="menu" id="menu">
+      <!-- Populated by app.js -->
+    </main>
+
+    <aside class="cart" id="cart" aria-label="سلة الطلبات">
+      <h2 class="cart-title">طلبك</h2>
+      <ul class="cart-items" id="cart-items"></ul>
+      <div class="cart-footer">
+        <div class="cart-total">
+          <span>المجموع</span>
+          <span id="cart-total-price">0 ر.ق</span>
+        </div>
+        <button class="btn-order" id="btn-order">إرسال الطلب ←</button>
+      </div>
+    </aside>
+
+    <div class="toast" id="toast" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

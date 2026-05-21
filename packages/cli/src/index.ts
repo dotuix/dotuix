@@ -13,6 +13,8 @@
  *   verify        <file.uix>                Verify the Ed25519 signature
  *   issue-license --app-id <id>|--from <f.uix> --issued-to <n> --key <k.priv> [opts]
  *   device-id                               Print this device's viewer device ID
+ *   build         [project-dir]             Run vite build → pack → .uix
+ *   dev           [project-dir]             Start vite dev server with bridge mock
  */
 
 import {
@@ -22,6 +24,7 @@ import {
   existsSync,
   cpSync,
 } from "node:fs";
+import { spawnSync, spawn } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { resolve, basename, extname, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -79,9 +82,16 @@ function viewerDeviceIdPath(): string {
   const home = homedir();
   switch (process.platform) {
     case "darwin":
-      return join(home, "Library", "Application Support", "com.dotuix.viewer", "device_id");
+      return join(
+        home,
+        "Library",
+        "Application Support",
+        "com.dotuix.viewer",
+        "device_id",
+      );
     case "win32": {
-      const appData = process.env["APPDATA"] ?? join(home, "AppData", "Roaming");
+      const appData =
+        process.env["APPDATA"] ?? join(home, "AppData", "Roaming");
       return join(appData, "com.dotuix.viewer", "device_id");
     }
     default: {
@@ -1045,7 +1055,9 @@ function cmdDeviceId(_args: string[]) {
   }
   console.log(`\n  ${c.bold("Device ID")}\n`);
   console.log(`  ${c.cyan(id)}\n`);
-  console.log(c.muted("  Share this with the app publisher to receive a license.\n"));
+  console.log(
+    c.muted("  Share this with the app publisher to receive a license.\n"),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1087,7 +1099,9 @@ async function cmdIssueLicense(args: string[]) {
 
   // Validate --expires format
   if (expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
-    console.error(c.red("✗") + " --expires must be YYYY-MM-DD (e.g. 2027-05-21)");
+    console.error(
+      c.red("✗") + " --expires must be YYYY-MM-DD (e.g. 2027-05-21)",
+    );
     process.exit(1);
   }
 
@@ -1102,13 +1116,17 @@ async function cmdIssueLicense(args: string[]) {
   }
   if (privKey.length !== 32) {
     console.error(
-      c.red("✗") + " Key file does not contain a valid 32-byte Ed25519 private-key seed",
+      c.red("✗") +
+        " Key file does not contain a valid 32-byte Ed25519 private-key seed",
     );
     process.exit(1);
   }
 
   const features = featuresArg
-    ? featuresArg.split(",").map((f) => f.trim()).filter(Boolean)
+    ? featuresArg
+        .split(",")
+        .map((f) => f.trim())
+        .filter(Boolean)
     : [];
   const maxDevices =
     maxDevicesArg !== undefined ? parseInt(maxDevicesArg, 10) : undefined;
@@ -1127,9 +1145,15 @@ async function cmdIssueLicense(args: string[]) {
     maxDevices?: number;
     deviceId?: string;
   }
-  const payload: LicensePayload = { appId, issuedTo, issuedAt: today, features };
+  const payload: LicensePayload = {
+    appId,
+    issuedTo,
+    issuedAt: today,
+    features,
+  };
   if (expiresAt) payload.expiresAt = expiresAt;
-  if (maxDevices !== undefined && !isNaN(maxDevices)) payload.maxDevices = maxDevices;
+  if (maxDevices !== undefined && !isNaN(maxDevices))
+    payload.maxDevices = maxDevices;
   if (deviceId !== undefined) payload.deviceId = deviceId;
 
   // Canonical JSON — sorted keys mirror Rust's sort_json_keys
@@ -1141,7 +1165,10 @@ async function cmdIssueLicense(args: string[]) {
 
   // Write .uixlicense file
   const license = { payload, signature };
-  const slug = issuedTo.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const slug = issuedTo
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
   const outPath = resolve(outArg ?? `${slug}.uixlicense`);
   writeFileSync(outPath, JSON.stringify(license, null, 2), "utf8");
 
@@ -1154,14 +1181,75 @@ async function cmdIssueLicense(args: string[]) {
   console.log(`  ${c.muted("issuedTo:")}   ${issuedTo}`);
   console.log(`  ${c.muted("issuedAt:")}   ${today}`);
   if (expiresAt) console.log(`  ${c.muted("expiresAt:")}  ${expiresAt}`);
-  if (features.length > 0) console.log(`  ${c.muted("features:")}   ${features.join(", ")}`);
-  if (maxDevices !== undefined) console.log(`  ${c.muted("maxDevices:")} ${maxDevices}`);
+  if (features.length > 0)
+    console.log(`  ${c.muted("features:")}   ${features.join(", ")}`);
+  if (maxDevices !== undefined)
+    console.log(`  ${c.muted("maxDevices:")} ${maxDevices}`);
   if (deviceId) console.log(`  ${c.muted("deviceId:")}   ${deviceId}`);
   console.log(`  ${c.muted("publicKey:")}  ${pubKey}`);
   console.log(`
   ${c.muted("Tip: add this to your manifest to enable license enforcement:")}
   ${c.muted(`  "license": { "required": true, "publisherKey": "${pubKey}" }`)}
 `);
+}
+
+// ---------------------------------------------------------------------------
+// build / dev — thin Vite wrappers
+// ---------------------------------------------------------------------------
+
+function resolveViteBin(projectDir: string): string | null {
+  const isWin = process.platform === "win32";
+  const bin = join(
+    projectDir,
+    "node_modules",
+    ".bin",
+    isWin ? "vite.cmd" : "vite",
+  );
+  return existsSync(bin) ? bin : null;
+}
+
+function cmdBuild(args: string[]): void {
+  const projectDir = pos(args)[0] ? resolve(pos(args)[0]) : process.cwd();
+  if (!existsSync(projectDir)) {
+    console.error(c.red("✗") + ` Directory not found: ${projectDir}`);
+    process.exit(1);
+  }
+  const viteBin = resolveViteBin(projectDir);
+  if (!viteBin) {
+    console.error(
+      c.red("✗") +
+        " vite not found in node_modules/.bin/\n" +
+        c.muted("  Run: pnpm add -D vite @dotuix/vite-plugin"),
+    );
+    process.exit(1);
+  }
+  console.log(c.muted(`Building ${projectDir}…\n`));
+  const result = spawnSync(viteBin, ["build"], {
+    cwd: projectDir,
+    stdio: "inherit",
+  });
+  process.exit(result.status ?? 0);
+}
+
+function cmdDev(args: string[]): void {
+  const projectDir = pos(args)[0] ? resolve(pos(args)[0]) : process.cwd();
+  if (!existsSync(projectDir)) {
+    console.error(c.red("✗") + ` Directory not found: ${projectDir}`);
+    process.exit(1);
+  }
+  const viteBin = resolveViteBin(projectDir);
+  if (!viteBin) {
+    console.error(
+      c.red("✗") +
+        " vite not found in node_modules/.bin/\n" +
+        c.muted("  Run: pnpm add -D vite @dotuix/vite-plugin"),
+    );
+    process.exit(1);
+  }
+  const proc = spawn(viteBin, ["dev"], { cwd: projectDir, stdio: "inherit" });
+  proc.on("exit", (code) => {
+    process.exit(code ?? 0);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1211,11 +1299,21 @@ function printHelp() {
     ${c.cyan(
       "seed",
     )}    <records.json> [-o data.db]         Create data.db from JSON records
-    ${c.cyan("issue-license")} --app-id <id>|--from <f.uix>     Issue a signed .uixlicense token
+    ${c.cyan(
+      "issue-license",
+    )} --app-id <id>|--from <f.uix>     Issue a signed .uixlicense token
                --issued-to <name> --key <k.priv>
                [--expires YYYY-MM-DD] [--device-id <uuid>]
                [--features f1,f2] [--max-devices N] [-o out.uixlicense]
-    ${c.cyan("device-id")}                                   Print this device's viewer ID
+    ${c.cyan(
+      "device-id",
+    )}                                   Print this device's viewer ID
+    ${c.cyan(
+      "build",
+    )}    [project-dir]                        Run vite build → .uix
+    ${c.cyan(
+      "dev",
+    )}      [project-dir]                        Start dev server with bridge mock
 
   ${c.bold("Examples:")}
     dotuix pack ./my-app
@@ -1288,6 +1386,12 @@ async function main() {
       break;
     case "device-id":
       cmdDeviceId(rest);
+      break;
+    case "build":
+      cmdBuild(rest);
+      break;
+    case "dev":
+      cmdDev(rest);
       break;
     default:
       console.error(

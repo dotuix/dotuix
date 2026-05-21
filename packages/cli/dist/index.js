@@ -8,6 +8,7 @@ import {
   existsSync,
   cpSync
 } from "fs";
+import { spawnSync, spawn } from "child_process";
 import { readdirSync } from "fs";
 import { resolve, basename, extname, join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -888,6 +889,47 @@ ${payloadCanon}`);
   ${c.muted(`  "license": { "required": true, "publisherKey": "${pubKey}" }`)}
 `);
 }
+function resolveViteBin(projectDir) {
+  const isWin = process.platform === "win32";
+  const bin = join(projectDir, "node_modules", ".bin", isWin ? "vite.cmd" : "vite");
+  return existsSync(bin) ? bin : null;
+}
+function cmdBuild(args) {
+  const projectDir = pos(args)[0] ? resolve(pos(args)[0]) : process.cwd();
+  if (!existsSync(projectDir)) {
+    console.error(c.red("\u2717") + ` Directory not found: ${projectDir}`);
+    process.exit(1);
+  }
+  const viteBin = resolveViteBin(projectDir);
+  if (!viteBin) {
+    console.error(
+      c.red("\u2717") + " vite not found in node_modules/.bin/\n" + c.muted("  Run: pnpm add -D vite @dotuix/vite-plugin")
+    );
+    process.exit(1);
+  }
+  console.log(c.muted(`Building ${projectDir}\u2026
+`));
+  const result = spawnSync(viteBin, ["build"], { cwd: projectDir, stdio: "inherit" });
+  process.exit(result.status ?? 0);
+}
+function cmdDev(args) {
+  const projectDir = pos(args)[0] ? resolve(pos(args)[0]) : process.cwd();
+  if (!existsSync(projectDir)) {
+    console.error(c.red("\u2717") + ` Directory not found: ${projectDir}`);
+    process.exit(1);
+  }
+  const viteBin = resolveViteBin(projectDir);
+  if (!viteBin) {
+    console.error(
+      c.red("\u2717") + " vite not found in node_modules/.bin/\n" + c.muted("  Run: pnpm add -D vite @dotuix/vite-plugin")
+    );
+    process.exit(1);
+  }
+  const proc = spawn(viteBin, ["dev"], { cwd: projectDir, stdio: "inherit" });
+  proc.on("exit", (code) => {
+    process.exit(code ?? 0);
+  });
+}
 function printHelp() {
   console.log(`
   ${c.bold("dotuix")} \u2014 pack, validate and manage .uix files
@@ -937,6 +979,8 @@ function printHelp() {
                [--expires YYYY-MM-DD] [--device-id <uuid>]
                [--features f1,f2] [--max-devices N] [-o out.uixlicense]
     ${c.cyan("device-id")}                                   Print this device's viewer ID
+    ${c.cyan("build")}    [project-dir]                        Run vite build \u2192 .uix
+    ${c.cyan("dev")}      [project-dir]                        Start dev server with bridge mock
 
   ${c.bold("Examples:")}
     dotuix pack ./my-app
@@ -1005,6 +1049,12 @@ async function main() {
       break;
     case "device-id":
       cmdDeviceId(rest);
+      break;
+    case "build":
+      cmdBuild(rest);
+      break;
+    case "dev":
+      cmdDev(rest);
       break;
     default:
       console.error(

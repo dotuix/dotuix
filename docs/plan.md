@@ -307,7 +307,7 @@ const ok = await uix.license.hasFeature("reports"); // → boolean
 | `Record`      | `{ id, type, body, created_at, updated_at }`                                    |
 | `Manifest`    | Full manifest shape matching the spec                                           |
 
-**Deliverable:** `npm add -D @dotuix/types` in any project gives complete bridge types. No runtime code — declarations only.
+**Deliverable:** `npm add -D @dotuix/types` in any project gives complete bridge types. `import { defineConfig } from "@dotuix/types"` works at runtime (tiny identity-function stub). ✅ Done — `ca104da`
 
 ---
 
@@ -475,7 +475,7 @@ dotuix spec scaffold app.spec.md   # dry-run: show files that would be created
 | 5 — POS demo app                           | ✅ Done        | `8c32e01` |
 | 6 — License token spec                     | ✅ Done        | `d872108` |
 | 7 — License CLI commands                   | ✅ Done        | `9b1d0fb` |
-| 8 — `@dotuix/types` bridge TS definitions  | ✅ Done        | —         |
-| 9 — Vite build integration                 | ⬜ Not started | —         |
+| 8 — `@dotuix/types` bridge TS definitions  | ✅ Done        | `ca104da` |
+| 9 — Vite build integration                 | ✅ Done        | —         |
 | 10 — `dotuix create` scaffolding           | ⬜ Not started | —         |
 | 11 — AI spec format + generation workflow  | ⬜ Not started | —         |

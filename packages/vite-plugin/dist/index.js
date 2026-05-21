@@ -1,89 +1,32 @@
-import type { Plugin, ResolvedConfig } from "vite";
+// src/index.ts
 import { UIX } from "@dotuix/core";
-import { join } from "node:path";
-import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/** Minimal UIX app config — mirrors UIXConfig in @dotuix/types. */
-interface UIXConfig {
-  id: string;
-  name: string;
-  version: string;
-  entry?: string;
-  mode?: "kiosk" | "window";
-  schemaVersion?: number;
-  state?: { mode?: "file" | "device"; seed?: boolean };
-  permissions?: string[];
-  network?: "blocked" | "allowed";
-  theme?: { color?: string; background?: string };
-  author?: string;
-  expires?: string;
-  license?: { required?: boolean; publisherKey?: string; appId?: string };
-}
-
-export interface DotuixPluginOptions {
-  /**
-   * Manifest field overrides. Merged on top of uix.config.ts or manifest.json.
-   * If neither exists, this object must supply all required fields.
-   */
-  manifest?: Record<string, unknown>;
-
-  /**
-   * Output path for the .uix file.
-   * Default: <projectRoot>/<appId-tail>.uix
-   */
-  output?: string;
-
-  /**
-   * Inject the mock window.uix bridge in dev / preview mode.
-   * Set to false to disable (e.g. when testing against a real viewer).
-   * @default true
-   */
-  mockBridge?: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Config → manifest converter
-// ---------------------------------------------------------------------------
-
-function uixConfigToManifest(cfg: UIXConfig): Record<string, unknown> {
-  const m: Record<string, unknown> = {
+import { join } from "path";
+import { readFile, mkdir, writeFile } from "fs/promises";
+import { existsSync } from "fs";
+function uixConfigToManifest(cfg) {
+  const m = {
     uix: "1.0",
     id: cfg.id,
     name: cfg.name,
     version: cfg.version,
     entry: cfg.entry ?? "index.html",
-    mode: cfg.mode ?? "window",
+    mode: cfg.mode ?? "window"
   };
-  if (cfg.schemaVersion !== undefined) m.schemaVersion = cfg.schemaVersion;
-  if (cfg.state !== undefined) m.state = cfg.state;
-  if (cfg.permissions !== undefined) m.permissions = cfg.permissions;
-  if (cfg.network !== undefined) m.network = cfg.network;
-  if (cfg.theme !== undefined) m.theme = cfg.theme;
-  if (cfg.author !== undefined) m.author = cfg.author;
-  if (cfg.expires !== undefined) m.expires = cfg.expires;
-  if (cfg.license !== undefined) m.license = cfg.license;
+  if (cfg.schemaVersion !== void 0) m.schemaVersion = cfg.schemaVersion;
+  if (cfg.state !== void 0) m.state = cfg.state;
+  if (cfg.permissions !== void 0) m.permissions = cfg.permissions;
+  if (cfg.network !== void 0) m.network = cfg.network;
+  if (cfg.theme !== void 0) m.theme = cfg.theme;
+  if (cfg.author !== void 0) m.author = cfg.author;
+  if (cfg.expires !== void 0) m.expires = cfg.expires;
+  if (cfg.license !== void 0) m.license = cfg.license;
   return m;
 }
-
-// ---------------------------------------------------------------------------
-// IndexedDB-backed dev-mode mock bridge
-// ---------------------------------------------------------------------------
-
-function buildDevBridgeScript(
-  appId: string,
-  appName: string,
-  appVersion: string,
-  schemaVersion: number,
-): string {
-  const APP_ID  = JSON.stringify(appId);
+function buildDevBridgeScript(appId, appName, appVersion, schemaVersion) {
+  const APP_ID = JSON.stringify(appId);
   const APP_NAME = JSON.stringify(appName);
-  const APP_VER  = JSON.stringify(appVersion);
-  const SCHEMA   = String(schemaVersion);
+  const APP_VER = JSON.stringify(appVersion);
+  const SCHEMA = String(schemaVersion);
   return `(function () {
   if (window.__uix) return;
   var _APP_ID = ${APP_ID};
@@ -279,127 +222,98 @@ function buildDevBridgeScript(
   window.uix = window.__uix;
 })();`;
 }
-
-// ---------------------------------------------------------------------------
-// Plugin
-// ---------------------------------------------------------------------------
-
-/**
- * Vite plugin that builds .uix apps.
- *
- * Supports:
- *  - uix.config.ts  (recommended for Vite projects)
- *  - manifest.json  (legacy / direct authoring)
- *
- * In dev / preview mode the plugin injects a window.uix bridge backed by
- * IndexedDB so the app runs without a real dotuix viewer.
- */
-export function dotuix(options: DotuixPluginOptions = {}): Plugin {
+function dotuix(options = {}) {
   const { mockBridge = true } = options;
-  let resolvedConfig: ResolvedConfig;
-  let appConfig: UIXConfig | null = null;
-  let baseManifest: Record<string, unknown> | null = null;
-
+  let resolvedConfig;
+  let appConfig = null;
+  let baseManifest = null;
   return {
     name: "vite-plugin-dotuix",
     enforce: "pre",
-
     config() {
       return { base: "./" };
     },
-
     async configResolved(resolved) {
       resolvedConfig = resolved;
       const root = resolved.root;
-
       const uixConfigPath = join(root, "uix.config.ts");
-      const manifestPath  = join(root, "manifest.json");
-
+      const manifestPath = join(root, "manifest.json");
       if (existsSync(uixConfigPath)) {
         try {
           const { loadConfigFromFile } = await import("vite");
           const result = await loadConfigFromFile(
             { command: resolved.command, mode: resolved.mode },
             uixConfigPath,
-            root,
+            root
           );
           if (result) {
-            appConfig = result.config as unknown as UIXConfig;
+            appConfig = result.config;
           }
         } catch (e) {
           resolved.logger.warn(
-            `[dotuix] Failed to load uix.config.ts: ${(e as Error).message}`,
+            `[dotuix] Failed to load uix.config.ts: ${e.message}`
           );
         }
       } else if (existsSync(manifestPath)) {
         try {
           baseManifest = JSON.parse(
-            await readFile(manifestPath, "utf-8"),
-          ) as Record<string, unknown>;
+            await readFile(manifestPath, "utf-8")
+          );
         } catch {
           resolved.logger.warn("[dotuix] Failed to parse manifest.json");
         }
       }
     },
-
     transformIndexHtml: {
       order: "pre",
       handler(html) {
         if (!mockBridge || resolvedConfig.command === "build") return html;
-
-        const manifest =
-          appConfig ? uixConfigToManifest(appConfig) : (baseManifest ?? {});
-
-        const id      = String(manifest.id            ?? "dev");
-        const name    = String(manifest.name          ?? "Dev Preview");
-        const version = String(manifest.version       ?? "0.0.0");
-        const schema  = Number(manifest.schemaVersion ?? 1);
-
+        const manifest = appConfig ? uixConfigToManifest(appConfig) : baseManifest ?? {};
+        const id = String(manifest.id ?? "dev");
+        const name = String(manifest.name ?? "Dev Preview");
+        const version = String(manifest.version ?? "0.0.0");
+        const schema = Number(manifest.schemaVersion ?? 1);
         const script = buildDevBridgeScript(id, name, version, schema);
-        return html.replace(/<head>/i, `<head>\n<script>${script}</script>`);
-      },
+        return html.replace(/<head>/i, `<head>
+<script>${script}</script>`);
+      }
     },
-
     async closeBundle() {
       if (resolvedConfig.command !== "build") return;
-
       const outDir = resolvedConfig.build.outDir;
-      const root   = resolvedConfig.root;
-
-      let manifest: Record<string, unknown> =
-        appConfig ? uixConfigToManifest(appConfig) : (baseManifest ?? {});
-
+      const root = resolvedConfig.root;
+      let manifest = appConfig ? uixConfigToManifest(appConfig) : baseManifest ?? {};
       if (options.manifest) {
         manifest = { ...manifest, ...options.manifest };
       }
-
       const required = ["uix", "id", "name", "version", "entry"];
-      const missing  = required.filter((f) => !manifest[f]);
+      const missing = required.filter((f) => !manifest[f]);
       if (missing.length) {
         resolvedConfig.logger.warn(
-          `[dotuix] manifest is missing required fields: ${missing.join(", ")} — skipping .uix pack\n` +
-            `         Add a uix.config.ts or manifest.json to your project root.`,
+          `[dotuix] manifest is missing required fields: ${missing.join(", ")} \u2014 skipping .uix pack
+         Add a uix.config.ts or manifest.json to your project root.`
         );
         return;
       }
-
       await mkdir(outDir, { recursive: true });
       await writeFile(
         join(outDir, "manifest.json"),
         JSON.stringify(manifest, null, 2),
-        "utf-8",
+        "utf-8"
       );
-
-      const rawName = (manifest.id as string).split(".").pop() ?? "app";
+      const rawName = manifest.id.split(".").pop() ?? "app";
       const appName = rawName.replace(/[^a-z0-9_-]/gi, "-").toLowerCase();
-      const uixOut  = options.output ?? join(root, `${appName}.uix`);
-
+      const uixOut = options.output ?? join(root, `${appName}.uix`);
       await UIX.pack(outDir, uixOut);
-
       const rel = uixOut.startsWith(root) ? uixOut.slice(root.length + 1) : uixOut;
-      resolvedConfig.logger.info(`\n✓ [dotuix] packed → ${rel}\n`, { clear: false });
-    },
+      resolvedConfig.logger.info(`
+\u2713 [dotuix] packed \u2192 ${rel}
+`, { clear: false });
+    }
   };
 }
-
-export default dotuix;
+var index_default = dotuix;
+export {
+  index_default as default,
+  dotuix
+};

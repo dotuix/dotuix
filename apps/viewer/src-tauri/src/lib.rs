@@ -26,6 +26,8 @@ struct AppState {
     uix_path: Mutex<String>,
     /// Pre-computed path to state.db on disk; avoids needing AppHandle in close handler.
     state_db_path: Mutex<Option<std::path::PathBuf>>,
+    /// Path to the temp copy of data.db extracted from the .uix archive.
+    data_db_path: Mutex<Option<std::path::PathBuf>>,
     /// Path to the .uix file set from argv on launch; consumed once by get_initial_file.
     initial_path: Mutex<Option<String>>,
     /// manifest.name of the currently loaded app; used to prefix dynamic window titles.
@@ -60,6 +62,7 @@ impl Default for AppState {
             app_id: Mutex::new(String::new()),
             uix_path: Mutex::new(String::new()),
             state_db_path: Mutex::new(None),
+            data_db_path: Mutex::new(None),
             initial_path: Mutex::new(None),
             app_name: Mutex::new(String::new()),
             permissions: Mutex::new(Vec::new()),
@@ -720,9 +723,11 @@ fn complete_load(
     let data_conn = if let Some(bytes) = files.get("data.db") {
         let tmp = std::env::temp_dir().join(format!("dotuix_{app_id}_data.db"));
         std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
+        *state.data_db_path.lock().unwrap() = Some(tmp.clone());
         Some(rusqlite::Connection::open_with_flags(&tmp, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|e| format!("Cannot open data.db: {e}"))?)
     } else {
+        *state.data_db_path.lock().unwrap() = None;
         None
     };
 
@@ -2632,11 +2637,20 @@ struct DbLoadResult {
 
 // ---------------------------------------------------------------------------
 
+#[derive(serde::Serialize)]
+struct DbPaths {
+    state_path: Option<String>,
+    data_path: Option<String>,
+}
+
 #[tauri::command]
-fn get_state_db_dir(state: State<AppState>) -> Option<String> {
-    state.state_db_path.lock().unwrap()
-        .as_ref()
-        .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned()))
+fn get_db_paths(state: State<AppState>) -> DbPaths {
+    DbPaths {
+        state_path: state.state_db_path.lock().unwrap()
+            .as_ref().map(|p| p.to_string_lossy().into_owned()),
+        data_path: state.data_db_path.lock().unwrap()
+            .as_ref().map(|p| p.to_string_lossy().into_owned()),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2796,11 +2810,21 @@ pub fn run() {
             let open_m  = MenuItemBuilder::with_id("open_file", "Open\u{2026}").accelerator("CmdOrCtrl+O").build(app)?;
             let close_m = MenuItemBuilder::with_id("close_app", "Close File").accelerator("CmdOrCtrl+W").build(app)?;
             let fs_m    = MenuItemBuilder::with_id("toggle_fullscreen", "Enter Full Screen").accelerator("Ctrl+Cmd+F").build(app)?;
+            let undo_m  = MenuItemBuilder::with_id("undo", "Undo").accelerator("CmdOrCtrl+Z").build(app)?;
+            let redo_m  = MenuItemBuilder::with_id("redo", "Redo").accelerator("CmdOrCtrl+Shift+Z").build(app)?;
+            let cut_m   = MenuItemBuilder::with_id("cut", "Cut").accelerator("CmdOrCtrl+X").build(app)?;
+            let copy_m  = MenuItemBuilder::with_id("copy", "Copy").accelerator("CmdOrCtrl+C").build(app)?;
+            let paste_m = MenuItemBuilder::with_id("paste", "Paste").accelerator("CmdOrCtrl+V").build(app)?;
+            let selall_m = MenuItemBuilder::with_id("select_all", "Select All").accelerator("CmdOrCtrl+A").build(app)?;
             let file_menu = SubmenuBuilder::new(app, "File")
                 .item(&open_m).separator().item(&close_m).separator().quit().build()?;
+            let edit_menu = SubmenuBuilder::new(app, "Edit")
+                .item(&undo_m).item(&redo_m).separator()
+                .item(&cut_m).item(&copy_m).item(&paste_m).separator()
+                .item(&selall_m).build()?;
             let view_menu = SubmenuBuilder::new(app, "View")
                 .item(&fs_m).build()?;
-            let menu = MenuBuilder::new(app).item(&file_menu).item(&view_menu).build()?;
+            let menu = MenuBuilder::new(app).item(&file_menu).item(&edit_menu).item(&view_menu).build()?;
             app.set_menu(menu)?;
 
             app.on_menu_event(move |_app, event| {
@@ -2903,7 +2927,7 @@ pub fn run() {
             uix_open_url,
             uix_set_window_title,
             uix_notify,
-            get_state_db_dir,
+            get_db_paths,
             db_load_all,
             db_update_record,
             db_delete_record,

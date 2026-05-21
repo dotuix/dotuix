@@ -15,7 +15,8 @@ interface DbLoadResult {
 }
 
 interface Props {
-  projectDir: string | null;
+  statePath: string | null;
+  dataPath: string | null;
 }
 
 type DbTarget = "data" | "state";
@@ -49,7 +50,7 @@ function formatTs(ts: number): string {
   });
 }
 
-export default function DbViewer({ projectDir }: Props) {
+export default function DbViewer({ statePath, dataPath }: Props) {
   const [activeDb, setActiveDb] = useState<DbTarget>("data");
   const [records, setRecords] = useState<DbRecord[]>([]);
   const [dbExists, setDbExists] = useState(true);
@@ -65,8 +66,8 @@ export default function DbViewer({ projectDir }: Props) {
   const [addBody, setAddBody] = useState("{}");
   const [addError, setAddError] = useState("");
 
-  const dbPath = (target: DbTarget) =>
-    projectDir ? `${projectDir}/${target}.db` : null;
+  const dbPath = (target: DbTarget): string | null =>
+    target === "state" ? statePath : dataPath;
 
   const load = useCallback(
     async (target: DbTarget = activeDb) => {
@@ -90,12 +91,12 @@ export default function DbViewer({ projectDir }: Props) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeDb, projectDir],
+    [activeDb, statePath, dataPath],
   );
 
   useEffect(() => {
-    if (projectDir) load(activeDb);
-  }, [projectDir, activeDb]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (statePath || dataPath) load(activeDb);
+  }, [statePath, dataPath, activeDb]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const switchDb = (target: DbTarget) => {
     setActiveDb(target);
@@ -190,11 +191,11 @@ export default function DbViewer({ projectDir }: Props) {
     }
   };
 
-  if (!projectDir) {
+  if (!statePath && !dataPath) {
     return (
       <div className="dev-empty">
         <span style={{ fontSize: "1.8rem", opacity: 0.3 }}>🗄</span>
-        <p>Open a project folder first</p>
+        <p>No app loaded</p>
       </div>
     );
   }

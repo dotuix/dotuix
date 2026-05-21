@@ -142,7 +142,8 @@ export default function App() {
   const [pinError, setPinError] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
   const [dbOpen, setDbOpen] = useState(false);
-  const [dbDir, setDbDir] = useState<string | null>(null);
+  const [dbStatePath, setDbStatePath] = useState<string | null>(null);
+  const [dbDataPath, setDbDataPath] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const stateRef = useRef(state);
   useEffect(() => {
@@ -180,12 +181,15 @@ export default function App() {
     return () => window.removeEventListener("message", handler);
   }, [state.status]);
 
-  // ── Fetch state.db dir when a .uix is loaded ─────────────────────────────
+  // ── Fetch db paths when a .uix is loaded ────────────────────────────────
   useEffect(() => {
     if (state.status === "loaded") {
-      invoke<string | null>("get_state_db_dir").then(setDbDir).catch(() => {});
+      invoke<{ state_path: string | null; data_path: string | null }>("get_db_paths")
+        .then((p) => { setDbStatePath(p.state_path); setDbDataPath(p.data_path); })
+        .catch(() => {});
     } else {
-      setDbDir(null);
+      setDbStatePath(null);
+      setDbDataPath(null);
       setDbOpen(false);
     }
   }, [state.status]);
@@ -395,7 +399,7 @@ export default function App() {
               <span>DB Viewer</span>
               <button className="db-overlay-close" onClick={() => setDbOpen(false)}>✕</button>
             </div>
-            <DbViewer projectDir={dbDir} />
+            <DbViewer statePath={dbStatePath} dataPath={dbDataPath} />
           </div>
         )}
       </div>

@@ -3,7 +3,7 @@
   "private": true,
   "displayName": "dotuix",
   "description": "Language support, IntelliSense, and commands for .uix files",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "publisher": "intenttext",
   "license": "MIT",
   "icon": "icons/icon.png",
@@ -28,7 +28,9 @@
     "portable"
   ],
   "activationEvents": [
+    "onCustomEditor:dotuix.uixInspector",
     "workspaceContains:**/manifest.json",
+    "workspaceContains:**/uix.config.ts",
     "onLanguage:json",
     "onCommand:dotuix.pack",
     "onCommand:dotuix.validate",

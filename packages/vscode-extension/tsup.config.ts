@@ -8,4 +8,5 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   external: ["vscode"], // VS Code API is provided by the host — never bundle it
+  noExternal: ["adm-zip"], // VSIX has no node_modules — must be inlined
 });

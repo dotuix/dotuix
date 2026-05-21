@@ -133,7 +133,7 @@ In-app UX: "Transfer my data → Export bundle" → save `.uixdata` → open new
 
 ---
 
-### Phase 4 — In-App `exportBundle` / `importBundle` Bridge Methods ← **CURRENT**
+### Phase 4 — In-App `exportBundle` / `importBundle` Bridge Methods ✅ Done (`712f4c0`)
 
 Expose Phase 3 bundle I/O through the runtime bridge so apps can build their own transfer UI without requiring the CLI.
 
@@ -141,7 +141,7 @@ Expose Phase 3 bundle I/O through the runtime bridge so apps can build their own
 
 ---
 
-### Phase 5 — POS Demo App
+### Phase 5 — POS Demo App ← **CURRENT**
 
 **Goal:** A fully functional point-of-sale application as the canonical complex use-case, exercising all platform features.
 

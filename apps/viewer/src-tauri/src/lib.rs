@@ -317,6 +317,25 @@ fn sha256_hex(data: &[u8]) -> String {
     hash.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// Format a UNIX timestamp (seconds since epoch) as an ISO-8601 UTC string.
+/// Uses the civil_from_days algorithm — Howard Hinnant (date_algorithms.html).
+fn format_iso8601(secs: u64) -> String {
+    let sec = (secs % 60) as i64;
+    let min = ((secs / 60) % 60) as i64;
+    let hour = ((secs / 3600) % 24) as i64;
+    let z = (secs / 86400) as i64 + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = y + if m <= 2 { 1 } else { 0 };
+    format!("{y:04}-{m:02}-{d:02}T{hour:02}:{min:02}:{sec:02}Z")
+}
+
 /// Decode a base64url (no-padding) string to bytes.
 fn base64_url_decode(s: &str) -> Result<Vec<u8>, String> {
     use base64::Engine;
@@ -788,6 +807,15 @@ fn bridge_script(manifest_json: &str, stored_schema_version: u32) -> String {
         }});
       }},
       raw:    function (sql, params) {{ return relay('state_raw',  {{ sql: sql, params: params || [] }}); }},
+      exportBundle: function(opts) {{
+        opts = opts || {{}};
+        var types = (opts.types && opts.types.length > 0) ? opts.types : null;
+        return relay('state_export_bundle', {{ types: types }});
+      }},
+      importBundle: function(json, opts) {{
+        opts = opts || {{}};
+        return relay('state_import_bundle', {{ bundle: json, merge: opts.merge ? true : false }});
+      }},
       sync: function () {{
         if (_perms.indexOf('local-sync') === -1)
           return Promise.reject(new Error("Permission denied: 'local-sync' not declared in manifest.json permissions."));
@@ -1851,6 +1879,201 @@ fn schema_upgrade_rollback(state: State<'_, AppState>) -> Result<(), String> {
     conn.execute_batch("ROLLBACK").map_err(|e| e.to_string())
 }
 
+// ---------------------------------------------------------------------------
+// Phase 4 additions: exportBundle, importBundle
+// ---------------------------------------------------------------------------
+
+/// Return value from state_import_bundle.
+#[derive(serde::Serialize)]
+struct ImportBundleResult {
+    imported: u64,
+    skipped: u64,
+}
+
+/// Export state records as a .uixdata JSON bundle string.
+/// When `types` is non-empty only records of those types are included.
+/// The bundle includes a SHA-256 checksum of the compact JSON records array,
+/// matching the checksum produced by `dotuix export --output *.uixdata`.
+#[tauri::command]
+fn state_export_bundle(
+    types: Option<Vec<String>>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let db = state.state_db.lock().unwrap();
+    let conn = db.as_ref().ok_or("No app loaded")?;
+
+    // 1. Collect records
+    let records: Vec<Record> = match types.as_deref() {
+        Some(ts) if !ts.is_empty() => {
+            let mut all: Vec<Record> = Vec::new();
+            for t in ts {
+                let q = FindQuery { record_type: t.clone(), ..Default::default() };
+                all.extend(query_records(conn, &q)?);
+            }
+            all
+        }
+        _ => {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, type, body, created_at, updated_at \
+                     FROM records ORDER BY created_at",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok(Record {
+                        id: row.get(0)?,
+                        r#type: row.get(1)?,
+                        body: row.get(2)?,
+                        created_at: row.get(3)?,
+                        updated_at: row.get(4)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+        }
+    };
+
+    // 2. Checksum — must match CLI's sha256(JSON.stringify(records))
+    let records_json = serde_json::to_string(&records).map_err(|e| e.to_string())?;
+    let checksum = format!("sha256:{}", sha256_hex(records_json.as_bytes()));
+
+    // 3. Unique types (in encounter order)
+    let mut seen = std::collections::HashSet::new();
+    let unique_types: Vec<&str> = records
+        .iter()
+        .filter(|r| seen.insert(r.r#type.as_str()))
+        .map(|r| r.r#type.as_str())
+        .collect();
+
+    // 4. Metadata
+    let app_id = state.app_id.lock().unwrap().clone();
+    let schema_version = *state.stored_schema_version.lock().unwrap();
+    let exported_at = {
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        format_iso8601(secs)
+    };
+
+    // 5. Build bundle
+    let bundle = serde_json::json!({
+        "format": "uixdata/1.0",
+        "appId": app_id,
+        "schemaVersion": schema_version,
+        "exportedAt": exported_at,
+        "exportedBy": format!("dotuix-viewer/{VIEWER_VERSION}"),
+        "checksum": checksum,
+        "types": unique_types,
+        "records": records,
+    });
+    serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())
+}
+
+/// Import a .uixdata bundle (JSON string) into state.db.
+/// `merge = false` (default): existing records of matching types are deleted first.
+/// `merge = true`: records whose ID already exists are skipped.
+#[tauri::command]
+fn state_import_bundle(
+    bundle: String,
+    merge: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<ImportBundleResult, String> {
+    let merge = merge.unwrap_or(false);
+
+    // 1. Parse + validate
+    let parsed: serde_json::Value = serde_json::from_str(&bundle)
+        .map_err(|e| format!("Invalid bundle JSON: {e}"))?;
+
+    if parsed["format"].as_str() != Some("uixdata/1.0") {
+        return Err(format!(
+            "Unsupported bundle format: \"{}\"",
+            parsed["format"].as_str().unwrap_or("(none)")
+        ));
+    }
+
+    let records_arr = parsed["records"]
+        .as_array()
+        .ok_or("Bundle has no records array")?;
+
+    // 2. Verify checksum via canonical re-serialisation through Record struct.
+    //    This ensures the same field order as the CLI's JSON.stringify.
+    if let Some(stored_checksum) = parsed["checksum"].as_str() {
+        let recs: Vec<Record> =
+            serde_json::from_value(serde_json::Value::Array(records_arr.clone()))
+                .map_err(|e| format!("Invalid record shape in bundle: {e}"))?;
+        let recs_json = serde_json::to_string(&recs).map_err(|e| e.to_string())?;
+        let expected = format!("sha256:{}", sha256_hex(recs_json.as_bytes()));
+        if stored_checksum != expected {
+            return Err(
+                "Checksum mismatch — bundle may be corrupted or tampered with".into(),
+            );
+        }
+    }
+
+    // 3. Deserialise records
+    let records: Vec<Record> =
+        serde_json::from_value(serde_json::Value::Array(records_arr.clone()))
+            .map_err(|e| format!("Cannot deserialise bundle records: {e}"))?;
+
+    // 4. Transactional import
+    let db = state.state_db.lock().unwrap();
+    let conn = db.as_ref().ok_or("No app loaded")?;
+
+    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+
+    let result: Result<ImportBundleResult, String> = (|| {
+        if !merge {
+            let types: std::collections::HashSet<&str> =
+                records.iter().map(|r| r.r#type.as_str()).collect();
+            for t in &types {
+                conn.execute("DELETE FROM records WHERE type = ?1", [*t])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        let mut imported: u64 = 0;
+        let mut skipped: u64 = 0;
+
+        for rec in &records {
+            if merge {
+                let exists: bool = conn
+                    .query_row(
+                        "SELECT 1 FROM records WHERE id = ?1",
+                        [&rec.id],
+                        |_| Ok(true),
+                    )
+                    .unwrap_or(false);
+                if exists {
+                    skipped += 1;
+                    continue;
+                }
+            }
+            conn.execute(
+                "INSERT OR IGNORE INTO records \
+                 (id, type, body, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![rec.id, rec.r#type, rec.body, rec.created_at, rec.updated_at],
+            )
+            .map_err(|e| e.to_string())?;
+            imported += 1;
+        }
+
+        Ok(ImportBundleResult { imported, skipped })
+    })();
+
+    match result {
+        Ok(res) => {
+            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            Ok(res)
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
+    }
+}
+
 /// Sync state.db records with a remote sync server (push local changes, pull remote changes).
 /// Requires the "local-sync" permission and `sync.endpoint` + `sync.secret` in the manifest.
 /// Conflict resolution: last-write-wins on `updated_at`.
@@ -2650,6 +2873,8 @@ pub fn run() {
             schema_upgrade_begin,
             schema_upgrade_commit,
             schema_upgrade_rollback,
+            state_export_bundle,
+            state_import_bundle,
             state_sync,
             uix_enter_fullscreen,
             uix_exit_fullscreen,

@@ -479,6 +479,32 @@ Executes arbitrary SQL against `state.db`. REQUIRES `"raw-sql"` permission.
 uix.state.raw(sql: string, params?: unknown[]) → Promise<unknown[]>
 ```
 
+#### `uix.state.exportBundle(options?)`
+
+Exports state records as a `.uixdata` JSON bundle string (see §11). If `types` is
+provided, only records of those types are included; otherwise all records are exported.
+The returned string may be saved with `uix.file.save()` or uploaded to a server.
+
+```
+uix.state.exportBundle({
+  types?: string[],  // optional type filter; omit for all records
+}) → Promise<string>  // pretty-printed .uixdata JSON
+```
+
+#### `uix.state.importBundle(json, options?)`
+
+Imports a `.uixdata` bundle string (obtained from `exportBundle` or the CLI) into
+`state.db`. Verifies the checksum before writing; rejects on mismatch.
+
+| Option  | Default | Description                                                                                                               |
+| ------- | ------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `merge` | `false` | If `true`, records whose ID already exists are skipped. If `false`, existing records of matching types are deleted first. |
+
+```
+uix.state.importBundle(json: string, { merge?: boolean })
+  → Promise<{ imported: number, skipped: number }>
+```
+
 ### 4.6 Record Shape
 
 All methods that return records return objects of this shape:

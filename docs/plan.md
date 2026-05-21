@@ -466,16 +466,16 @@ dotuix spec scaffold app.spec.md   # dry-run: show files that would be created
 
 ## Progress Tracker
 
-| Phase                                      | Status         | Commit    |
-| ------------------------------------------ | -------------- | --------- |
-| 1 — `state.mode`                           | ✅ Done        | `1c8db43` |
-| 2 — `schemaVersion` + upgrade handler      | ✅ Done        | `a4015c2` |
-| 3 — `.uixdata` bundle + CLI export/import  | ✅ Done        | `7d39ec5` |
-| 4 — In-app `exportBundle` / `importBundle` | ✅ Done        | `712f4c0` |
-| 5 — POS demo app                           | ✅ Done        | `8c32e01` |
-| 6 — License token spec                     | ✅ Done        | `d872108` |
-| 7 — License CLI commands                   | ✅ Done        | `9b1d0fb` |
-| 8 — `@dotuix/types` bridge TS definitions  | ✅ Done        | `ca104da` |
-| 9 — Vite build integration                 | ✅ Done        | `ce4db57` |
-| 10 — `dotuix create` scaffolding           | ✅ Done        | —         |
-| 11 — AI spec format + generation workflow  | ⬜ Not started | —         |
+| Phase                                      | Status  | Commit    |
+| ------------------------------------------ | ------- | --------- |
+| 1 — `state.mode`                           | ✅ Done | `1c8db43` |
+| 2 — `schemaVersion` + upgrade handler      | ✅ Done | `a4015c2` |
+| 3 — `.uixdata` bundle + CLI export/import  | ✅ Done | `7d39ec5` |
+| 4 — In-app `exportBundle` / `importBundle` | ✅ Done | `712f4c0` |
+| 5 — POS demo app                           | ✅ Done | `8c32e01` |
+| 6 — License token spec                     | ✅ Done | `d872108` |
+| 7 — License CLI commands                   | ✅ Done | `9b1d0fb` |
+| 8 — `@dotuix/types` bridge TS definitions  | ✅ Done | `ca104da` |
+| 9 — Vite build integration                 | ✅ Done | `ce4db57` |
+| 10 — `dotuix create` scaffolding           | ✅ Done | `aebd58b` |
+| 11 — AI spec format + generation workflow  | ✅ Done | `cabb5b3` |

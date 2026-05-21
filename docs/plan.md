@@ -98,6 +98,7 @@ Viewer flow:
   "schemaVersion": 2,
   "exportedAt": "2026-05-21T09:00:00Z",
   "exportedBy": "dotuix-cli/0.1.3",
+  "checksum": "sha256:abc123...",
   "types": ["product", "category", "stock"],
   "records": [
     {
@@ -180,17 +181,18 @@ Expose Phase 3 bundle I/O through the runtime bridge so apps can build their own
 
 **State.db record types:**
 
-| Type        | Key body fields                                                              |
-| ----------- | ---------------------------------------------------------------------------- |
-| `product`   | `name`, `sku`, `barcode`, `price`, `cost`, `taxRate`, `categoryId`           |
-| `category`  | `name`, `color`                                                              |
-| `stock`     | `productId`, `qty`, `reorderAt`, `location`                                  |
-| `sale`      | `staffId`, `total`, `tax`, `discount`, `paymentMethod`, `status`, `closedAt` |
-| `sale_item` | `saleId`, `productId`, `qty`, `unitPrice`, `lineTotal`                       |
-| `customer`  | `name`, `phone`, `email`, `loyaltyPoints`                                    |
-| `staff`     | `name`, `pin` (hashed), `role`, `active`                                     |
-| `settings`  | Single record `id: "settings:app"`                                           |
-| `supplier`  | `name`, `contact`, `email`                                                   |
+| Type        | Key body fields                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| `product`   | `name`, `sku`, `barcode`, `price`, `cost`, `taxRate`, `categoryId`                                                 |
+| `category`  | `name`, `color`                                                                                                    |
+| `stock`     | `productId`, `qty`, `reorderAt`, `location`                                                                        |
+| `sale`      | `staffId`, `total`, `tax`, `discount`, `paymentMethod`, `status`, `closedAt`                                       |
+| `sale_item` | `saleId`, `productId`, `qty`, `unitPrice`, `lineTotal`                                                             |
+| `customer`  | `name`, `phone`, `email`, `loyaltyPoints`                                                                          |
+| `staff`     | `name`, `pin` (hashed), `role`, `active`                                                                           |
+| `settings`  | Single record `id: "settings:app"`                                                                                 |
+| `supplier`  | `name`, `contact`, `email`                                                                                         |
+| `shift`     | `staffId`, `openedAt`, `closedAt`, `openingFloat`, `closingTotal`, `salesCount`, `status` (`"open"` \| `"closed"`) |
 
 **Seed data:** 20 products across 5 categories, 3 staff members, store settings pre-filled.
 
@@ -199,6 +201,18 @@ Expose Phase 3 bundle I/O through the runtime bridge so apps can build their own
 ### Phase 6 — License Token (Distribution Control)
 
 **Goal:** Allow creators to control who can run their `.uix` app — without requiring any server at runtime.
+
+**New bridge methods (`uix.license`):**
+
+```js
+await uix.license.get();
+// Returns: { issuedTo, issuedAt, expiresAt, features, valid }
+
+await uix.license.hasFeature("reports");
+// Returns: boolean — true if the loaded license includes the named feature
+```
+
+This gives developers a clean API to gate features without parsing the license token themselves.
 
 **New manifest block:**
 

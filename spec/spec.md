@@ -639,16 +639,26 @@ await uix.schema.onUpgrade(async ({ from, to, state }) => {
 // State is now current — safe to render
 ```
 
-The viewer persists the new schema version automatically after the upgrade function resolves.
-If no upgrade is needed (`manifest.schemaVersion` equals the stored version), `onUpgrade()`
-resolves immediately without calling `fn`.
+The entire upgrade runs inside an exclusive SQLite transaction. If `fn` throws, the viewer
+rolls back every state change made during the upgrade and leaves `schemaVersion` in `state.db`
+unchanged. The next open will attempt the upgrade again. If no upgrade is needed
+(`manifest.schemaVersion` equals the stored version), `onUpgrade()` resolves immediately
+without calling `fn`.
 
-| Method                       | Signature                                                                                    | Description                                                                                                            |
-| ---------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `uix.schema.onUpgrade(fn)`   | `(fn: (ctx: { from: number, to: number, state: object }) => Promise<void>) => Promise<void>` | Calls `fn` when an upgrade is needed; updates stored version on success. Resolves immediately if no upgrade is needed. |
-| `uix.schema.version()`       | `() => number`                                                                               | Returns `manifest.schemaVersion` (or `1` if absent).                                                                   |
-| `uix.schema.storedVersion()` | `() => number`                                                                               | Returns the schema version currently stored in `state.db`.                                                             |
-| `uix.schema.needsUpgrade()`  | `() => boolean`                                                                              | `true` when the stored version is below the manifest version.                                                          |
+**Safety guarantee:** a partial migration can never leave `state.db` in a corrupt state.
+Every `uix.state.*` call made inside `fn` is part of the same transaction. All changes are
+committed atomically on success, or discarded entirely on failure.
+
+> **Note:** `uix.state.transaction()` MUST NOT be called inside `fn` — SQLite does not
+> support nested transactions. Use individual `uix.state.*` calls instead; they are all
+> part of the outer upgrade transaction automatically.
+
+| Method                       | Signature                                                                                    | Description                                                                                                                                                                                           |
+| ---------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uix.schema.onUpgrade(fn)`   | `(fn: (ctx: { from: number, to: number, state: object }) => Promise<void>) => Promise<void>` | Calls `fn` inside an exclusive transaction when an upgrade is needed. Commits and updates stored version on success; rolls back all changes on failure. Resolves immediately if no upgrade is needed. |
+| `uix.schema.version()`       | `() => number`                                                                               | Returns `manifest.schemaVersion` (or `1` if absent).                                                                                                                                                  |
+| `uix.schema.storedVersion()` | `() => number`                                                                               | Returns the schema version currently stored in `state.db`.                                                                                                                                            |
+| `uix.schema.needsUpgrade()`  | `() => boolean`                                                                              | `true` when the stored version is below the manifest version.                                                                                                                                         |
 
 ---
 

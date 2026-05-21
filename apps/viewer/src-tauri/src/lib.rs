@@ -850,9 +850,14 @@ fn bridge_script(manifest_json: &str, stored_schema_version: u32) -> String {
         var from = _storedSchemaVersion;
         var to   = _currentSchemaVersion;
         if (from >= to) return Promise.resolve();
-        return Promise.resolve()
-          .then(function() {{ return fn({{ from: from, to: to, state: window.__uix.state }}); }})
-          .then(function() {{ return relay('schema_version_set', {{ version: to }}); }});
+        return relay('schema_upgrade_begin', {{}}).then(function() {{
+          return Promise.resolve()
+            .then(function() {{ return fn({{ from: from, to: to, state: window.__uix.state }}); }})
+            .then(function() {{ return relay('schema_upgrade_commit', {{ version: to }}); }})
+            .catch(function(err) {{
+              return relay('schema_upgrade_rollback', {{}}).then(function() {{ throw err; }});
+            }});
+        }});
       }},
       version:       function() {{ return _currentSchemaVersion; }},
       storedVersion: function() {{ return _storedSchemaVersion; }},
@@ -1811,6 +1816,41 @@ fn schema_version_set(version: u32, state: State<'_, AppState>) -> Result<(), St
     Ok(())
 }
 
+/// Opens an EXCLUSIVE SQLite transaction on state.db for a schema upgrade.
+/// All subsequent uix.state.* bridge calls run inside this transaction until
+/// `schema_upgrade_commit` or `schema_upgrade_rollback` is called.
+#[tauri::command]
+fn schema_upgrade_begin(state: State<'_, AppState>) -> Result<(), String> {
+    let db = state.state_db.lock().unwrap();
+    let conn = db.as_ref().ok_or("No app loaded")?;
+    conn.execute_batch("BEGIN EXCLUSIVE").map_err(|e| e.to_string())
+}
+
+/// Commits the open schema-upgrade transaction and persists the new schema version.
+#[tauri::command]
+fn schema_upgrade_commit(version: u32, state: State<'_, AppState>) -> Result<(), String> {
+    {
+        let db = state.state_db.lock().unwrap();
+        let conn = db.as_ref().ok_or("No app loaded")?;
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?1)",
+            rusqlite::params![version.to_string()],
+        )
+        .map_err(|e| e.to_string())?;
+        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+    }
+    *state.stored_schema_version.lock().unwrap() = version;
+    Ok(())
+}
+
+/// Rolls back the open schema-upgrade transaction, leaving state.db and schemaVersion untouched.
+#[tauri::command]
+fn schema_upgrade_rollback(state: State<'_, AppState>) -> Result<(), String> {
+    let db = state.state_db.lock().unwrap();
+    let conn = db.as_ref().ok_or("No app loaded")?;
+    conn.execute_batch("ROLLBACK").map_err(|e| e.to_string())
+}
+
 /// Sync state.db records with a remote sync server (push local changes, pull remote changes).
 /// Requires the "local-sync" permission and `sync.endpoint` + `sync.secret` in the manifest.
 /// Conflict resolution: last-write-wins on `updated_at`.
@@ -2607,6 +2647,9 @@ pub fn run() {
             state_size,
             state_vacuum,
             schema_version_set,
+            schema_upgrade_begin,
+            schema_upgrade_commit,
+            schema_upgrade_rollback,
             state_sync,
             uix_enter_fullscreen,
             uix_exit_fullscreen,

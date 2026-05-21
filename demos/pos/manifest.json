@@ -1,0 +1,25 @@
+{
+  "uix": "1.0",
+  "id": "com.dotuix.demos.pos",
+  "name": "dotuix POS",
+  "version": "1.0.0",
+  "schemaVersion": 2,
+  "entry": "index.html",
+  "mode": "kiosk",
+  "state": {
+    "mode": "device"
+  },
+  "permissions": [
+    "print",
+    "file-save",
+    "file-open",
+    "notifications",
+    "fullscreen",
+    "raw-sql"
+  ],
+  "network": "blocked",
+  "theme": {
+    "color": "#c8a96e",
+    "background": "#1a1a1a"
+  }
+}

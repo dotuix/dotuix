@@ -141,7 +141,7 @@ Expose Phase 3 bundle I/O through the runtime bridge so apps can build their own
 
 ---
 
-### Phase 5 — POS Demo App ← **CURRENT**
+### Phase 5 — POS Demo App ✅ Done
 
 **Goal:** A fully functional point-of-sale application as the canonical complex use-case, exercising all platform features.
 
@@ -284,9 +284,9 @@ Implement the CLI commands from Phase 6 in `@dotuix/cli`.
 | Phase                                      | Status         | Commit    |
 | ------------------------------------------ | -------------- | --------- |
 | 1 — `state.mode`                           | ✅ Done        | `1c8db43` |
-| 2 — `schemaVersion` + upgrade handler      | ⬜ Not started | —         |
-| 3 — `.uixdata` bundle + CLI export/import  | ⬜ Not started | —         |
-| 4 — In-app `exportBundle` / `importBundle` | ⬜ Not started | —         |
-| 5 — POS demo app                           | ⬜ Not started | —         |
+| 2 — `schemaVersion` + upgrade handler      | ✅ Done        | `a4015c2` |
+| 3 — `.uixdata` bundle + CLI export/import  | ✅ Done        | `7d39ec5` |
+| 4 — In-app `exportBundle` / `importBundle` | ✅ Done        | `712f4c0` |
+| 5 — POS demo app                           | ✅ Done        | —         |
 | 6 — License token spec                     | ⬜ Not started | —         |
 | 7 — License CLI commands                   | ⬜ Not started | —         |

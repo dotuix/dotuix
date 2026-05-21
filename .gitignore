@@ -40,7 +40,6 @@ gov-key.*
 *.pub
 
 # Private — not open-sourced (live in dotuix-internal)
-apps/viewer/
 apps/mobile/
 apps/mcp-server/
 apps/website/
@@ -51,4 +50,3 @@ docs/
 scripts/
 captain-definition
 vercel.json
-.github/

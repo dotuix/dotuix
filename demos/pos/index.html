@@ -1685,26 +1685,38 @@
 
       // ─── Init ────────────────────────────────────────────────────────────────────
       async function init() {
-        // Seed on first open (schema goes 1 → 2 via onUpgrade)
-        await uix.schema.onUpgrade(async ({ from, to, state }) => {
-          if (from === 1 && to === 2) {
-            // Use upsert (safe inside onUpgrade – no nested BEGIN)
-            for (const r of SEED) {
-              await state.upsert({
+        // First-run detection: if settings:app is absent the DB is empty → seed it.
+        // We use insertMany (one atomic transaction, no onUpgrade context) so there
+        // is no nested-BEGIN conflict with schema_upgrade_begin.
+        try {
+          const existing = await uix.state.get("settings:app");
+          if (!existing) {
+            await uix.state.insertMany(
+              SEED.map((r) => ({
                 id: r.id,
                 type: r.type,
                 body: JSON.stringify(r.body),
-              });
-            }
+              })),
+            );
           }
-        });
+        } catch (seedErr) {
+          // insertMany fails if any ID already exists (partial prior seed).
+          // Fall back to individual upserts which use INSERT OR REPLACE.
+          console.warn(
+            "[POS] insertMany seed failed, falling back to upserts:",
+            seedErr,
+          );
+          for (const r of SEED) {
+            await uix.state.upsert({
+              id: r.id,
+              type: r.type,
+              body: JSON.stringify(r.body),
+            });
+          }
+        }
 
         await reloadData();
-
-        // Render staff login buttons
         renderStaffLogin();
-
-        // Clock
         tick();
         setInterval(tick, 1000);
       }

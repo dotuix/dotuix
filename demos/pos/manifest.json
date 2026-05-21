@@ -3,7 +3,7 @@
   "id": "com.dotuix.demos.pos",
   "name": "dotuix POS",
   "version": "1.0.0",
-  "schemaVersion": 2,
+  "schemaVersion": 1,
   "entry": "index.html",
   "mode": "kiosk",
   "state": {

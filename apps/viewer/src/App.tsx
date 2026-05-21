@@ -3,6 +3,77 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import DeveloperMode from "./components/DeveloperMode";
 
+function BrandIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect
+        x="3"
+        y="3"
+        width="8"
+        height="8"
+        rx="2"
+        fill="#fff"
+        opacity="0.95"
+      />
+      <rect
+        x="13"
+        y="3"
+        width="8"
+        height="8"
+        rx="2"
+        fill="#fff"
+        opacity="0.95"
+      />
+      <rect
+        x="3"
+        y="13"
+        width="8"
+        height="8"
+        rx="2"
+        fill="#fff"
+        opacity="0.95"
+      />
+      <rect
+        x="13"
+        y="13"
+        width="8"
+        height="8"
+        rx="2"
+        fill="#fff"
+        opacity="0.45"
+      />
+    </svg>
+  );
+}
+
+function Spinner({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      className="spinner"
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden
+    >
+      <circle
+        cx="8"
+        cy="8"
+        r="6"
+        stroke="currentColor"
+        strokeWidth="2"
+        opacity="0.25"
+      />
+      <path
+        d="M8 2a6 6 0 0 1 6 6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 type LoadResult =
   | { status: "loaded"; manifest: string }
   | { status: "pin_required"; app_name: string; app_id: string };
@@ -184,6 +255,19 @@ export default function App() {
 
   const closeApp = useCallback(() => setState({ status: "idle" }), []);
 
+  // ── ⌘O / Ctrl+O keyboard shortcut to open a file ────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        const s = stateRef.current;
+        if (s.status === "idle" || s.status === "error") openFile();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [openFile]);
+
   const toggleFullscreen = useCallback(
     () => invoke("toggle_fullscreen").catch(console.warn),
     [],
@@ -331,17 +415,57 @@ export default function App() {
     );
   }
 
+  // ── Loading overlay ───────────────────────────────────────────────────────
+  if (state.status === "loading") {
+    return (
+      <div className="shell">
+        <div className="loading-overlay">
+          <Spinner size={28} />
+          <span className="loading-label">Opening…</span>
+        </div>
+      </div>
+    );
+  }
+
   // ── Home / idle / error ──────────────────────────────────────────────────
   return (
     <div className={`shell${isDragOver ? " shell--dragover" : ""}`}>
+      {isDragOver && (
+        <div className="drag-overlay">
+          <div className="drag-overlay-inner">
+            <svg
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden
+            >
+              <path
+                d="M12 3v12M7 11l5 5 5-5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M5 19h14"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+            <span>Drop to open</span>
+          </div>
+        </div>
+      )}
       <div className="home-wrap">
         <div className="brand">
-          <div className="brand-icon">▦</div>
+          <div className="brand-icon">
+            <BrandIcon />
+          </div>
           <span className="brand-name">dotuix</span>
         </div>
-        <p className="home-sub">
-          Open and run signed .uix apps — offline, secure.
-        </p>
+        <p className="home-sub">The executable document format.</p>
 
         <div className="drop-zone">
           <svg
@@ -366,33 +490,32 @@ export default function App() {
               strokeLinejoin="round"
             />
           </svg>
-          <button
-            className="open-btn"
-            onClick={openFile}
-            disabled={state.status === "loading"}
-          >
-            {state.status === "loading" ? (
-              "Loading…"
-            ) : (
-              <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                    stroke="currentColor"
-                    strokeWidth="1.75"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                Open .uix file
-              </>
-            )}
+          <button className="open-btn" onClick={openFile}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Open .uix file
           </button>
           <span className="drop-hint">or drag a .uix file here · ⌘O</span>
         </div>
 
         {state.status === "error" && (
-          <p className="error-msg">{state.message}</p>
+          <div className="error-msg">
+            <span>{state.message}</span>
+            <button
+              className="error-dismiss"
+              onClick={() => setState({ status: "idle" })}
+              aria-label="Dismiss error"
+            >
+              ✕
+            </button>
+          </div>
         )}
 
         <button

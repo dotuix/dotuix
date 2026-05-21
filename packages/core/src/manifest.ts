@@ -8,6 +8,10 @@ const PermissionSchema = z.enum([
   "fullscreen",
   "raw-sql",
   "local-sync",
+  "file-save",
+  "file-open",
+  "open-url",
+  "notifications",
 ]);
 
 // ---------------------------------------------------------------------------

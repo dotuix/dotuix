@@ -61,6 +61,10 @@ export class UixInspectorProvider
   ): Promise<void> {
     panel.webview.options = { enableScripts: true };
 
+    // Set a loading skeleton immediately (synchronous) so the panel is never blank.
+    const fileName = path.basename(document.uri.fsPath);
+    panel.webview.html = buildLoadingHtml(fileName);
+
     const data = await this.readUix(document.uri);
     panel.webview.html = buildHtml(panel.webview, data);
 
@@ -107,6 +111,83 @@ export class UixInspectorProvider
 
     return result;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Loading skeleton — shown synchronously before readUix() resolves
+// ---------------------------------------------------------------------------
+
+function buildLoadingHtml(fileName: string): string {
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return /* html */ `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>${esc(fileName)}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--vscode-font-family, -apple-system, sans-serif);
+      background: var(--vscode-editor-background, #1e1e1e);
+      color: var(--vscode-editor-foreground, #d4d4d4);
+      padding: 24px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .filename {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      word-break: break-all;
+    }
+    .shimmer-block {
+      background: var(--vscode-sideBar-background, #252526);
+      border: 1px solid var(--vscode-panel-border, #3c3c3c);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    .shimmer-line {
+      height: 10px;
+      border-radius: 4px;
+      background: var(--vscode-panel-border, #3c3c3c);
+      margin-bottom: 10px;
+    }
+    .shimmer-line:last-child { margin-bottom: 0; width: 60%; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body>
+  <div class="filename">${esc(fileName)}</div>
+  <div class="grid">
+    <div class="shimmer-block">
+      <div class="shimmer-line"></div>
+      <div class="shimmer-line"></div>
+      <div class="shimmer-line"></div>
+      <div class="shimmer-line"></div>
+    </div>
+    <div class="shimmer-block">
+      <div class="shimmer-line"></div>
+      <div class="shimmer-line"></div>
+      <div class="shimmer-line"></div>
+      <div class="shimmer-line"></div>
+    </div>
+  </div>
+  <div class="shimmer-block" style="grid-column:1/-1">
+    <div class="shimmer-line"></div>
+    <div class="shimmer-line"></div>
+    <div class="shimmer-line" style="width:40%"></div>
+  </div>
+</body>
+</html>`;
 }
 
 // ---------------------------------------------------------------------------

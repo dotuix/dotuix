@@ -85,44 +85,84 @@ The viewer injects `window.__uix` (aliased as `window.uix`) into the running app
 }
 ```
 
-| Field         | Required | Description                                                                      |
-| ------------- | -------- | -------------------------------------------------------------------------------- |
-| `uix`         | Yes      | Format version. Always `"1.0"`.                                                  |
-| `id`          | Yes      | Reverse-domain identifier. e.g. `"com.example.myapp"`. Used for state isolation. |
-| `name`        | Yes      | Human-readable app name shown in viewer chrome.                                  |
-| `version`     | Yes      | SemVer app version. e.g. `"1.0.0"`.                                              |
-| `entry`       | Yes      | Path to the entry HTML file inside the archive.                                  |
-| `mode`        | Yes      | `"kiosk"` (locked UI, no address bar) or `"window"` (developer toolbar).         |
-| `network`     | No       | `"blocked"` (default) or `"allowed"`.                                            |
-| `permissions` | No       | `["local-storage"]`, `["print"]`, `["raw-sql"]`                                  |
-| `minViewer`   | No       | Minimum viewer version required.                                                 |
-| `expires`     | No       | ISO 8601 date — viewer refuses expired files before unpacking.                   |
-| `state.seed`  | No       | `true` = copy `state.db` from archive as initial user state on first open.       |
-| `security`    | No       | PIN auth + AES-256-GCM encryption block.                                         |
-| `signature`   | No       | Ed25519 signature block.                                                         |
-| `ai`          | No       | AI provenance block — informational only, no effect on behaviour.                |
+| Field           | Required | Description                                                                                                                              |
+| --------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `uix`           | Yes      | Format version. Always `"1.0"`.                                                                                                          |
+| `id`            | Yes      | Reverse-domain identifier. e.g. `"com.example.myapp"`. Used for state isolation.                                                         |
+| `name`          | Yes      | Human-readable app name shown in viewer chrome.                                                                                          |
+| `version`       | Yes      | SemVer app version. e.g. `"1.0.0"`.                                                                                                      |
+| `entry`         | Yes      | Path to the entry HTML file inside the archive.                                                                                          |
+| `mode`          | Yes      | `"kiosk"` (locked UI, no address bar) or `"window"` (developer toolbar).                                                                 |
+| `network`       | No       | `"blocked"` (default) or `"allowed"`.                                                                                                    |
+| `permissions`   | No       | `["local-storage"]`, `["print"]`, `["raw-sql"]`, `["file-save"]`, `["file-open"]`, `["open-url"]`, `["notifications"]`, `["local-sync"]` |
+| `sync.endpoint` | No       | HTTPS URL of a dotuix sync server. Required when `"local-sync"` permission is declared.                                                  |
+| `sync.secret`   | No       | Base64-encoded shared secret for the sync server.                                                                                        |
+| `minViewer`     | No       | Minimum viewer version required.                                                                                                         |
+| `expires`       | No       | ISO 8601 date — viewer refuses expired files before unpacking.                                                                           |
+| `state.seed`    | No       | `true` = copy `state.db` from archive as initial user state on first open.                                                               |
+| `security`      | No       | PIN auth + AES-256-GCM encryption block.                                                                                                 |
+| `signature`     | No       | Ed25519 signature block.                                                                                                                 |
+| `ai`            | No       | AI provenance block — informational only, no effect on behaviour.                                                                        |
 
 ### The `window.uix` bridge
 
 ```javascript
-// Data database — read-only (creator content from data.db)
-const records = await uix.data.find({ type: "product" });
-const record = await uix.data.get("product:001");
+// ── App metadata ────────────────────────────────────────────────────────────
+const manifest = await uix.manifest();
+const version = uix.viewer.version(); // synchronous
 
-// State database — read-write (user state, persisted across opens)
+// ── Data database — read-only (creator content) ─────────────────────────────
+const records = await uix.data.find({ type: "product" });
+// Extended where operators:  { price: { gte: 10 }, tags: { in: ["a","b"] }, archived: { is_null: true } }
+// Multi-field sort:           orderBy: [{ field: "cat", direction: "asc" }, { field: "sort", direction: "asc" }]
+// Pagination:                 limit: 20, offset: 40
+const record = await uix.data.get("product:001");
+const total = await uix.data.count({ type: "product" });
+
+// ── State database — read-write (user state, persisted across opens) ─────────
 const saved = await uix.state.find({ type: "cart_item" });
 const rec = await uix.state.insert({
   type: "cart_item",
   body: { id, name, price },
 });
+await uix.state.upsert({
+  id: "settings:main",
+  type: "settings",
+  body: { theme: "dark" },
+});
+await uix.state.insertMany([
+  { type: "order_line", body: { product: "product:001", qty: 1 } },
+]);
 await uix.state.update(rec.id, { id, name, price, qty: 2 });
 await uix.state.delete(rec.id);
 await uix.state.purge({ type: "session_log", olderThan: "24h" });
+await uix.state.clear({ type: "cart_item" });
+await uix.state.reset(); // wipe and restore to seed / empty
 
-// App
-const manifest = await uix.manifest();
-uix.print(); // system print dialog
-await uix.exit(); // return to viewer home
+const results = await uix.state.transaction([
+  { op: "insert", type: "order", body: { total: 120 } },
+  { op: "delete", id: "cart_item:x" },
+]);
+
+const info = await uix.state.size(); // { bytes, records, types }
+const stats = await uix.state.vacuum(); // { before, after }
+const json = await uix.state.export({ type: "order" }); // JSON string
+
+// Sync (push local changes + pull remote changes) — needs "local-sync"
+const { pushed, pulled } = await uix.state.sync();
+
+// ── OS bridge ────────────────────────────────────────────────────────────────
+uix.print(); // needs "print"
+await uix.exit();
+await uix.window.setTitle("Order #1042");
+await uix.clipboard.write("text"); // needs "clipboard-write"
+await uix.fullscreen.enter(); // needs "fullscreen"
+await uix.fullscreen.exit();
+await uix.fullscreen.toggle();
+await uix.file.save("export.csv", csvString, "text/csv"); // needs "file-save"
+const file = await uix.file.open({ accept: ".csv,.json" }); // needs "file-open"
+await uix.browser.open("https://example.com"); // needs "open-url"
+await uix.notify("Ready", "Your order is ready."); // needs "notifications"
 ```
 
 **Record shape** (returned by `find`, `get`, `insert`):

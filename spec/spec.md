@@ -119,6 +119,7 @@ It MUST be valid JSON encoded as UTF-8.
 | `author`      | string       | none        | Creator identity — email address or display name.                                                                                                                                                                                                                                              |
 | `expires`     | string\|null | null        | ISO 8601 date-time string. If present and non-null, a compliant viewer MUST check the expiry **before extracting any content**. If the current time is past `expires`, the viewer MUST refuse to open the file and MUST NOT display any of its content.                                        |
 | `state.seed`  | boolean      | false       | If `true`, the `state.db` file in the archive is a creator-provided seed. On the first open of a new installation, the viewer MUST copy the archive's `state.db` to the user's state store as the initial state. On subsequent opens the user's persisted state is used, not the archive copy. |
+| `sync`        | object       | none        | Sync configuration. `sync.endpoint` (string, HTTPS URL) and `sync.secret` (string, base64 shared secret). Both MUST be present together. Required when `"local-sync"` permission is declared.                                                                                                  |
 | `security`    | object       | none        | Optional PIN authentication and encryption. See §6.                                                                                                                                                                                                                                            |
 | `signature`   | object       | none        | Optional Ed25519 integrity signature. See §7.                                                                                                                                                                                                                                                  |
 | `ai`          | object       | none        | Optional AI provenance metadata. See §8.                                                                                                                                                                                                                                                       |
@@ -128,13 +129,18 @@ It MUST be valid JSON encoded as UTF-8.
 An application MUST declare a permission in `manifest.permissions` before the viewer
 exposes the corresponding capability. Undeclared capabilities MUST be silently blocked.
 
-| Permission value    | Capability granted                                     |
-| ------------------- | ------------------------------------------------------ |
-| `"local-storage"`   | Browser `localStorage` read/write access               |
-| `"print"`           | System print dialog via `uix.print()`                  |
-| `"clipboard-write"` | Clipboard write access                                 |
-| `"fullscreen"`      | Fullscreen API                                         |
-| `"raw-sql"`         | `uix.data.raw()` and `uix.state.raw()` — arbitrary SQL |
+| Permission value    | Capability granted                                                                                                                  |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `"local-storage"`   | Browser `localStorage` read/write access                                                                                            |
+| `"print"`           | System print dialog via `uix.print()`                                                                                               |
+| `"clipboard-write"` | Clipboard write access via `uix.clipboard.write()`                                                                                  |
+| `"fullscreen"`      | Fullscreen API via `uix.fullscreen.enter/exit/toggle()`                                                                             |
+| `"raw-sql"`         | `uix.data.raw()` and `uix.state.raw()` — arbitrary SQL                                                                              |
+| `"file-save"`       | Save files to the user's disk via `uix.file.save()`                                                                                 |
+| `"file-open"`       | Open files from the user's disk via `uix.file.open()`                                                                               |
+| `"open-url"`        | Open a URL in the system browser via `uix.browser.open()`                                                                           |
+| `"notifications"`   | OS-level notifications via `uix.notify()`                                                                                           |
+| `"local-sync"`      | Sync `state.db` records with an external server via `uix.state.sync()`. Requires `sync.endpoint` and `sync.secret` in the manifest. |
 
 ---
 
@@ -189,6 +195,10 @@ read-only and expose it through the `uix.data` bridge.
 write it through the `uix.state` bridge. If `manifest.state.seed` is `true`, the
 viewer MUST bootstrap the user's state from the archive copy on first open.
 
+A compliant viewer SHOULD open `state.db` with WAL journal mode (`PRAGMA journal_mode=WAL`)
+and INCREMENTAL auto-vacuum (`PRAGMA auto_vacuum=INCREMENTAL`) to improve write
+concurrency and allow space reclamation via `uix.state.vacuum()`.
+
 ### 3.4 Atomic Write on Close
 
 When the viewer closes a `.uix` file, it MUST write the updated `state.db` back into
@@ -236,12 +246,34 @@ or undefined) when no records match.
 uix.data.find({
   type: string,                              // REQUIRED — filters WHERE type = ?
   where?: Record<string, unknown>,           // OPTIONAL — additional json_extract filters
-  orderBy?: string | { field: string, direction: "asc" | "desc" },
+  orderBy?: string
+          | { field: string, direction: "asc" | "desc" }
+          | Array<{ field: string, direction: "asc" | "desc" }>,
   limit?: number,
+  offset?: number,                           // skip N rows (for pagination)
 }) → Promise<Record[]>
 ```
 
-The `where` object filters on `json_extract(body, '$.key') = value` for each key/value pair.
+**`where` operators:** Each value in `where` is either a plain scalar (shorthand for
+equality) or an operator object where **the key is the operator name** and the value
+is the operand. Example: `{ price: { gte: 10 }, tags: { in: ["a", "b"] } }`.
+
+| Operator key | SQL equivalent            | Notes                                   |
+| ------------ | ------------------------- | --------------------------------------- |
+| _(scalar)_   | `= ?`                     | Shorthand: `{ field: value }`           |
+| `eq`         | `= ?`                     | Explicit equality                       |
+| `neq`        | `!= ?`                    |                                         |
+| `gt`         | `> ?`                     |                                         |
+| `gte`        | `>= ?`                    |                                         |
+| `lt`         | `< ?`                     |                                         |
+| `lte`        | `<= ?`                    |                                         |
+| `like`       | `LIKE ?`                  | `%` wildcards must be in value          |
+| `in`         | `IN (?, ?, …)`            | Operand MUST be an array                |
+| `is_null`    | `IS NULL` / `IS NOT NULL` | `true` = IS NULL, `false` = IS NOT NULL |
+
+**`orderBy` forms:** A string (shorthand for `{ field, direction: "asc" }`), a single
+`{ field, direction }` object, or an array of such objects for multi-field ordering.
+
 `orderBy` as a string is shorthand for `{ field: string, direction: "asc" }`.
 
 #### `uix.data.get(id)`
@@ -250,6 +282,18 @@ Returns the single record with the given `id`, or `null` if not found.
 
 ```
 uix.data.get(id: string) → Promise<Record | null>
+```
+
+#### `uix.data.count(query)`
+
+Returns the total number of records matching `query` without fetching them.
+Accepts the same `type` and `where` parameters as `find()`.
+
+```
+uix.data.count({
+  type: string,
+  where?: Record<string, unknown>,
+}) → Promise<number>
 ```
 
 #### `uix.data.raw(sql, params?)`
@@ -268,11 +312,15 @@ Provides full read-write access to `state.db`.
 
 #### `uix.state.find(query)`
 
-Same signature and semantics as `uix.data.find`.
+Same signature and semantics as `uix.data.find` (with `offset`, extended `where`, array `orderBy`).
 
 #### `uix.state.get(id)`
 
 Same signature and semantics as `uix.data.get`.
+
+#### `uix.state.count(query)`
+
+Same signature and semantics as `uix.data.count`.
 
 #### `uix.state.insert(record)`
 
@@ -292,9 +340,49 @@ uix.state.insert({
 
 Replaces the `body` of the record with the given `id`. Updates `updated_at`.
 The `body` argument is a plain object — the viewer JSON-stringifies it.
+Returns the updated record.
 
 ```
-uix.state.update(id: string, body: Record<string, unknown>) → Promise<void>
+uix.state.update(id: string, body: Record<string, unknown>) → Promise<Record>
+```
+
+#### `uix.state.upsert(record)`
+
+Inserts the record if no record with the given `id` exists, or replaces its `body`
+if it does exist. The `id` field is required.
+
+```
+uix.state.upsert({
+  id: string,
+  type: string,
+  body: Record<string, unknown>,
+}) → Promise<Record>
+```
+
+#### `uix.state.insertMany(records)`
+
+Inserts multiple records in a single atomic transaction. Each record has the same
+shape as `uix.state.insert`. Returns the saved records in the same order.
+
+```
+uix.state.insertMany(records: Array<{ type, id?, body }>) → Promise<Record[]>
+```
+
+#### `uix.state.transaction(ops)`
+
+Executes an ordered list of operations in a single atomic SQLite transaction.
+Each operation is one of `"insert"`, `"upsert"`, `"update"`, or `"delete"`.
+Returns one result per operation in the same order (a `Record` for write operations,
+`null` for deletes or operations that produce no row).
+
+```
+uix.state.transaction(ops: Array<TransactionOp>) → Promise<(Record | null)[]>
+
+type TransactionOp =
+  | { op: "insert";  type: string; id?: string; body: object }
+  | { op: "upsert";  id: string;   type: string; body: object }
+  | { op: "update";  id: string;   body: object }
+  | { op: "delete";  id: string }
 ```
 
 #### `uix.state.delete(id)`
@@ -309,13 +397,66 @@ uix.state.delete(id: string) → Promise<void>
 
 Deletes all records of a given `type` older than the specified duration.
 Duration string format: `"<n><unit>"` where unit is `s` (seconds), `m` (minutes),
-`h` (hours), `d` (days), `y` (years).
+`h` (hours), `d` (days), `y` (years). Returns the number of deleted records.
 
 ```
 uix.state.purge({
   type: string,
   olderThan: string,  // e.g. "24h", "7d", "1y"
-}) → Promise<void>
+}) → Promise<number>
+```
+
+#### `uix.state.clear(options?)`
+
+Deletes all records of a given `type`. If `type` is omitted, deletes ALL records
+in `state.db`. Returns the number of deleted records.
+
+```
+uix.state.clear({ type?: string }) → Promise<number>
+```
+
+#### `uix.state.reset()`
+
+Wipes `state.db` entirely and restores the original seed (if `manifest.state.seed`
+is `true`) or leaves it empty, exactly as if the file were being opened for the
+first time on a new device.
+
+```
+uix.state.reset() → Promise<void>
+```
+
+#### `uix.state.size()`
+
+Returns metadata about the current `state.db` without fetching records.
+
+```
+uix.state.size() → Promise<{
+  bytes: number,                   // file size in bytes
+  records: number,                 // total row count
+  types: Record<string, number>,   // count per type
+}>
+```
+
+#### `uix.state.vacuum()`
+
+Runs `PRAGMA incremental_vacuum` to reclaim disk space freed by previous deletions.
+Returns the before and after file sizes in bytes.
+
+```
+uix.state.vacuum() → Promise<{ before: number, after: number }>
+```
+
+#### `uix.state.export(options?)`
+
+Serialises matching records to a JSON string suitable for uploading to a server or
+saving to disk. Accepts the same `type` and optional `before` (ISO 8601 string)
+filters. If no options are given, exports all records.
+
+```
+uix.state.export({
+  type?: string,
+  before?: string,  // ISO 8601 — only records created before this timestamp
+}) → Promise<string>  // JSON-encoded Record[]
 ```
 
 #### `uix.state.raw(sql, params?)`
@@ -359,7 +500,113 @@ Closes the current application and returns the viewer to its home screen.
 uix.exit() → Promise<void>
 ```
 
-### 4.9 Methods That Do NOT Exist
+### 4.9 `uix.viewer.version()`
+
+Returns the current viewer version string synchronously (no Promise).
+
+```
+uix.viewer.version() → string  // e.g. "1.0.0"
+```
+
+### 4.10 `uix.window.setTitle(title)`
+
+Sets the window title dynamically. The title is visible in the viewer chrome and
+the OS taskbar.
+
+```
+uix.window.setTitle(title: string) → Promise<void>
+```
+
+### 4.11 `uix.clipboard.write(text)`
+
+Writes `text` to the system clipboard. REQUIRES `"clipboard-write"` in
+`manifest.permissions`.
+
+```
+uix.clipboard.write(text: string) → Promise<void>
+```
+
+### 4.12 `uix.fullscreen`
+
+Enter, exit, or toggle fullscreen mode. REQUIRES `"fullscreen"` in
+`manifest.permissions`. All three methods are provided.
+
+```
+uix.fullscreen.enter()  → Promise<void>
+uix.fullscreen.exit()   → Promise<void>
+uix.fullscreen.toggle() → Promise<void>
+```
+
+### 4.13 `uix.file.save(filename, content, mime?)`
+
+Opens a system Save dialog and writes `content` to the chosen path. REQUIRES
+`"file-save"` in `manifest.permissions`. Returns `true` if the file was saved,
+`false` if the user cancelled.
+
+```
+uix.file.save(
+  filename: string,               // suggested filename, e.g. "orders.csv"
+  content:  string | ArrayBuffer, // text or binary content
+  mime?:    string,               // MIME type hint, e.g. "text/csv"
+) → Promise<boolean>
+```
+
+### 4.14 `uix.file.open(options?)`
+
+Opens a system Open dialog and returns the chosen file's name and raw bytes.
+REQUIRES `"file-open"` in `manifest.permissions`. Returns `null` if the user
+cancelled.
+
+```
+uix.file.open({
+  accept?: string,  // file-type filter, e.g. ".csv,.json"
+}) → Promise<{ name: string, content: ArrayBuffer } | null>
+```
+
+### 4.15 `uix.browser.open(url)`
+
+Opens `url` in the user's default system browser. REQUIRES `"open-url"` in
+`manifest.permissions`. The URL MUST be an `http://` or `https://` URL.
+
+```
+uix.browser.open(url: string) → Promise<void>
+```
+
+### 4.16 `uix.notify(title, body, options?)`
+
+Displays an OS-level notification. REQUIRES `"notifications"` in
+`manifest.permissions`. The viewer MUST silently ignore the call (not throw) if the
+user has denied notification permission at the OS level.
+
+```
+uix.notify(
+  title:    string,
+  body:     string,
+  options?: { icon?: string },
+) → Promise<void>
+```
+
+### 4.17 `uix.state.sync()`
+
+Pushes locally-changed `state.db` records to a remote sync server and merges returned
+records back into local state. REQUIRES `"local-sync"` in `manifest.permissions`.
+The viewer MUST also read `manifest.sync.endpoint` and `manifest.sync.secret`; if
+either is absent the call MUST reject with a clear error message.
+
+Conflict resolution: last-write-wins on `updated_at`. If the server holds a record
+with a higher `updated_at` than the local copy, the server’s version wins and the
+local record MUST be overwritten.
+
+```
+uix.state.sync() → Promise<{ pushed: number, pulled: number }>
+```
+
+The viewer MAY call `uix.state.sync()` automatically on app open and on close when
+the permission is granted. Applications MAY also call it manually at any time.
+
+---
+
+### 4.18 Methods That Do NOT Exist
 
 The following method names MUST NOT be exposed by a compliant viewer. Applications
 that call them will receive `undefined` or a rejection — never a result:
@@ -370,8 +617,8 @@ that call them will receive `undefined` or a rejection — never a result:
 - `uix.data.query()`, `uix.data.list()`, `uix.data.all()` — use `find()`
 - `uix.storage.*` — use `uix.state.*`
 - `uix.fetch()` — network is blocked by default; network access requires `"network": "allowed"` in manifest
-- `uix.notify()` — applications implement their own notification UI
-- `uix.fs.*` — no host filesystem access is provided
+- `uix.version()` — use `uix.viewer.version()` (synchronous, no await)
+- `uix.fs.*` — no direct host filesystem access is provided; use `uix.file.open/save()`
 - `window.__uix.db` — use `uix.data.find()` or `uix.state.*`
 
 ---

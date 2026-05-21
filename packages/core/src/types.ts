@@ -4,7 +4,11 @@ export type Permission =
   | "clipboard-write"
   | "fullscreen"
   | "raw-sql"
-  | "local-sync";
+  | "local-sync"
+  | "file-save"
+  | "file-open"
+  | "open-url"
+  | "notifications";
 
 // ---------------------------------------------------------------------------
 // Security — fully optional. Omit the block entirely for regular use cases.

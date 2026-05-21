@@ -28,8 +28,14 @@ struct AppState {
     state_db_path: Mutex<Option<std::path::PathBuf>>,
     /// Path to the .uix file set from argv on launch; consumed once by get_initial_file.
     initial_path: Mutex<Option<String>>,
+    /// manifest.name of the currently loaded app; used to prefix dynamic window titles.
+    app_name: Mutex<String>,
     /// manifest.permissions — gates raw-sql and other optional bridge capabilities.
     permissions: Mutex<Vec<String>>,
+    /// manifest.sync.endpoint — HTTPS URL of the sync server (None if not configured).
+    sync_endpoint: Mutex<Option<String>>,
+    /// manifest.sync.secret — base64 shared secret for the sync server.
+    sync_secret: Mutex<Option<String>>,
     /// Files from the archive pending PIN-based decryption.
     pending_files: Mutex<Option<HashMap<String, Vec<u8>>>>,
     /// Parsed manifest pending completion after PIN unlock.
@@ -50,7 +56,10 @@ impl Default for AppState {
             uix_path: Mutex::new(String::new()),
             state_db_path: Mutex::new(None),
             initial_path: Mutex::new(None),
+            app_name: Mutex::new(String::new()),
             permissions: Mutex::new(Vec::new()),
+            sync_endpoint: Mutex::new(None),
+            sync_secret: Mutex::new(None),
             pending_files: Mutex::new(None),
             pending_manifest: Mutex::new(None),
             pending_path: Mutex::new(None),
@@ -191,6 +200,11 @@ fn ensure_state_schema(conn: &rusqlite::Connection, app_id: &str) -> Result<(), 
     )
     .map_err(|e| e.to_string())?;
 
+    // Enable WAL for better read concurrency; incremental auto-vacuum so freed
+    // pages can be reclaimed via PRAGMA incremental_vacuum without a full VACUUM.
+    conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA auto_vacuum = INCREMENTAL;")
+        .map_err(|e| e.to_string())?;
+
     // Populate meta once; INSERT OR IGNORE is a no-op on subsequent opens.
     conn.execute_batch(&format!(
         "INSERT OR IGNORE INTO meta VALUES ('schema_version', '1');
@@ -198,7 +212,20 @@ fn ensure_state_schema(conn: &rusqlite::Connection, app_id: &str) -> Result<(), 
          INSERT OR IGNORE INTO meta VALUES ('app_id',         '{}');",
         app_id.replace('\'', "''")
     ))
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+
+    // Ensure a stable per-device UUID exists (generated once on first open, never changed).
+    let has_device: bool = conn
+        .query_row("SELECT COUNT(*) FROM meta WHERE key = 'device_id'", [], |r| r.get::<_, i64>(0))
+        .map(|n| n > 0)
+        .unwrap_or(false);
+    if !has_device {
+        let id = uuid::Uuid::new_v4().to_string();
+        conn.execute("INSERT INTO meta (key, value) VALUES ('device_id', ?1)", [&id])
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
 }
 
 /// Compare semver strings: returns true if v1 >= v2.
@@ -465,6 +492,7 @@ fn complete_load(
 ) -> Result<LoadResult, String> {
     let manifest_json = serde_json::to_string(manifest).map_err(|e| e.to_string())?;
     let app_id = manifest["id"].as_str().unwrap_or("unknown").to_string();
+    let app_name = manifest.get("name").and_then(|v| v.as_str()).unwrap_or(&app_id).to_string();
 
     let permissions: Vec<String> = manifest
         .get("permissions").and_then(|v| v.as_array())
@@ -513,6 +541,12 @@ fn complete_load(
     if !state_db_path.exists() && should_seed {
         if let Some(seed) = files.get("state.db") {
             std::fs::write(&state_db_path, seed).map_err(|e| e.to_string())?;
+            // Save the original seed as a permanent backup (never overwritten).
+            // state_reset() uses this to restore the app to its shipped state.
+            let seed_backup = data_dir.join("state_seed.db");
+            if !seed_backup.exists() {
+                let _ = std::fs::write(&seed_backup, seed);
+            }
         }
     }
     let state_conn = rusqlite::Connection::open(&state_db_path)
@@ -537,9 +571,16 @@ fn complete_load(
     *state.state_db.lock().unwrap() = Some(state_conn);
     *state.data_db.lock().unwrap() = data_conn;
     *state.app_id.lock().unwrap() = app_id;
+    *state.app_name.lock().unwrap() = app_name;
     *state.uix_path.lock().unwrap() = path.to_string();
     *state.state_db_path.lock().unwrap() = Some(state_db_path);
     *state.permissions.lock().unwrap() = permissions;
+    *state.sync_endpoint.lock().unwrap() = manifest
+        .get("sync").and_then(|s| s.get("endpoint")).and_then(|v| v.as_str())
+        .map(str::to_string);
+    *state.sync_secret.lock().unwrap() = manifest
+        .get("sync").and_then(|s| s.get("secret")).and_then(|v| v.as_str())
+        .map(str::to_string);
 
     Ok(LoadResult::Loaded { manifest: manifest_json })
 }
@@ -612,10 +653,13 @@ fn repack_uix(uix_path: &str, state_db_path: &std::path::Path) -> Result<(), Str
 // ---------------------------------------------------------------------------
 
 fn bridge_script(manifest_json: &str) -> String {
+    let viewer_version = VIEWER_VERSION;
     format!(
         r#"<script>
 (function () {{
   var m = {manifest_json};
+  var _viewer_version = "{viewer_version}";
+  var _perms = (m.permissions || []);
   var _seq = 0;
   var _pending = {{}};
 
@@ -646,6 +690,10 @@ fn bridge_script(manifest_json: &str) -> String {
         return relay('data_find', {{ query: q }});
       }},
       get:  function (id)              {{ return relay('data_get',  {{ id: id }}); }},
+      count: function (opts)            {{
+        var q = (typeof opts === 'string') ? {{ type: opts }} : Object.assign({{}}, opts);
+        return relay('data_count', {{ query: q }});
+      }},
       raw:  function (sql, params)     {{ return relay('data_raw',  {{ sql: sql, params: params || [] }}); }},
     }},
     state: {{
@@ -667,7 +715,114 @@ fn bridge_script(manifest_json: &str) -> String {
       purge:  function (opts)        {{
         return relay('state_purge', {{ type: (opts && opts.type) || opts, older_than: opts.olderThan || '30d' }});
       }},
+      count: function (opts) {{
+        var q = (typeof opts === 'string') ? {{ type: opts }} : Object.assign({{}}, opts);
+        return relay('state_count', {{ query: q }});
+      }},
+      transaction: function (ops) {{
+        var normalized = (ops || []).map(function(op) {{
+          var o = Object.assign({{}}, op);
+          if (o.body && typeof o.body === 'string') {{
+            try {{ o.body = JSON.parse(o.body); }} catch(e) {{}}
+          }}
+          return o;
+        }});
+        return relay('state_transaction', {{ ops: normalized }});
+      }},
+      clear: function (opts) {{
+        var payload = {{}};
+        if (opts && opts.type) payload.record_type = opts.type;
+        return relay('state_clear', payload);
+      }},
+      reset: function () {{ return relay('state_reset', {{}}); }},
+      upsert: function (opts) {{
+        var body = opts.body;
+        if (typeof body !== 'string') body = JSON.stringify(body);
+        return relay('state_upsert', {{ id: opts.id, type: opts.type, body: body }});
+      }},
+      insertMany: function (records) {{
+        var normalized = (records || []).map(function(r) {{
+          var o = Object.assign({{}}, r);
+          if (o.body && typeof o.body !== 'string') o.body = JSON.stringify(o.body);
+          return o;
+        }});
+        return relay('state_insert_many', {{ records: normalized }});
+      }},
+      size:   function ()            {{ return relay('state_size',   {{}}); }},
+      vacuum: function ()            {{ return relay('state_vacuum', {{}}); }},
+      export: function (opts) {{
+        opts = opts || {{}};
+        var p;
+        if (opts.type) {{
+          p = relay('state_find', {{ query: {{ type: opts.type }} }});
+        }} else if (_perms.indexOf('raw-sql') !== -1) {{
+          p = relay('state_raw', {{ sql: 'SELECT id, type, body, created_at, updated_at FROM records ORDER BY created_at', params: [] }});
+        }} else {{
+          return Promise.reject(new Error("state.export() without a type filter requires the 'raw-sql' permission."));
+        }}
+        return p.then(function(all) {{
+          if (opts.before) {{
+            var cutoff = opts.before;
+            all = all.filter(function(r) {{ return r.created_at < cutoff; }});
+          }}
+          return JSON.stringify(all);
+        }});
+      }},
       raw:    function (sql, params) {{ return relay('state_raw',  {{ sql: sql, params: params || [] }}); }},
+      sync: function () {{
+        if (_perms.indexOf('local-sync') === -1)
+          return Promise.reject(new Error("Permission denied: 'local-sync' not declared in manifest.json permissions."));
+        return relay('state_sync', {{}});
+      }},
+    }},
+    clipboard: {{
+      write: function (text) {{
+        if (_perms.indexOf('clipboard-write') === -1)
+          return Promise.reject(new Error("Permission denied: 'clipboard-write' not declared in manifest.json permissions."));
+        return navigator.clipboard.writeText(text);
+      }},
+    }},
+    fullscreen: {{
+      enter:  function () {{ return relay('uix_enter_fullscreen',  {{}}); }},
+      exit:   function () {{ return relay('uix_exit_fullscreen',   {{}}); }},
+      toggle: function () {{ return relay('uix_toggle_fullscreen', {{}}); }},
+    }},
+    viewer: {{
+      version: function () {{ return _viewer_version; }},
+    }},
+    file: {{
+      save: function (filename, content, mimeType) {{
+        var b64;
+        if (content instanceof ArrayBuffer) {{
+          var bytes = new Uint8Array(content);
+          var str = '';
+          for (var i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+          b64 = btoa(str);
+        }} else {{
+          b64 = btoa(unescape(encodeURIComponent(String(content))));
+        }}
+        return relay('uix_save_file', {{ filename: filename, content_b64: b64 }});
+      }},
+      open: function (opts) {{
+        var o = opts || {{}};
+        return relay('uix_open_file', {{ filter: o.filter || null }}).then(function(r) {{
+          if (!r) return null;
+          var bin = atob(r.content_b64);
+          var buf = new ArrayBuffer(bin.length);
+          var view = new Uint8Array(buf);
+          for (var i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
+          return {{ name: r.name, content: buf }};
+        }});
+      }},
+    }},
+    browser: {{
+      open: function (url) {{ return relay('uix_open_url', {{ url: url }}); }},
+    }},
+    window: {{
+      setTitle: function (title) {{ return relay('uix_set_window_title', {{ title: title }}); }},
+    }},
+    notify: function (title, body, opts) {{
+      return relay('uix_notify', {{ title: title, body: body }});
     }},
     print: function () {{ window.print(); }},
     exit:  function () {{ return relay('uix_exit', {{}}); }},
@@ -697,6 +852,9 @@ struct FindQuery {
     order_by: Option<serde_json::Value>,
     /// Maximum number of rows to return.
     limit: Option<u32>,
+    /// Number of rows to skip before returning results (pagination). SQLite requires
+    /// LIMIT when OFFSET is used; LIMIT -1 is appended automatically if needed.
+    offset: Option<u32>,
 }
 
 /// Reject identifier strings that could be used for SQL injection.
@@ -740,18 +898,135 @@ fn sqlite_val_to_json(val: rusqlite::types::Value) -> serde_json::Value {
     }
 }
 
+/// Build WHERE conditions and bound parameters from a filters map.
+/// Supports plain scalars (equality) and operator objects:
+/// eq, neq, gt, gte, lt, lte, like, in, is_null.
+/// Parameter indices start at 2 (?1 is always the type field).
+fn build_where_clause(
+    filters: &HashMap<String, serde_json::Value>,
+) -> Result<(Vec<String>, Vec<Box<dyn rusqlite::ToSql>>), String> {
+    let mut conditions: Vec<String> = Vec::new();
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    for (key, val) in filters {
+        validate_identifier(key, "where field")?;
+        let col = format!("json_extract(body, '$.{key}')");
+
+        match val {
+            serde_json::Value::Object(ops) => {
+                for (op, op_val) in ops {
+                    match op.as_str() {
+                        "eq" => {
+                            let idx = params.len() + 2;
+                            conditions.push(format!("{col} = ?{idx}"));
+                            params.push(json_to_sql_param(op_val));
+                        }
+                        "neq" => {
+                            let idx = params.len() + 2;
+                            conditions.push(format!("{col} != ?{idx}"));
+                            params.push(json_to_sql_param(op_val));
+                        }
+                        "gt" => {
+                            let idx = params.len() + 2;
+                            conditions.push(format!("{col} > ?{idx}"));
+                            params.push(json_to_sql_param(op_val));
+                        }
+                        "gte" => {
+                            let idx = params.len() + 2;
+                            conditions.push(format!("{col} >= ?{idx}"));
+                            params.push(json_to_sql_param(op_val));
+                        }
+                        "lt" => {
+                            let idx = params.len() + 2;
+                            conditions.push(format!("{col} < ?{idx}"));
+                            params.push(json_to_sql_param(op_val));
+                        }
+                        "lte" => {
+                            let idx = params.len() + 2;
+                            conditions.push(format!("{col} <= ?{idx}"));
+                            params.push(json_to_sql_param(op_val));
+                        }
+                        "like" => {
+                            let idx = params.len() + 2;
+                            conditions.push(format!("{col} LIKE ?{idx}"));
+                            params.push(json_to_sql_param(op_val));
+                        }
+                        "in" => {
+                            if let serde_json::Value::Array(arr) = op_val {
+                                if arr.is_empty() {
+                                    conditions.push("1 = 0".to_string()); // IN () is invalid SQL
+                                } else {
+                                    let placeholders: Vec<String> = (0..arr.len())
+                                        .map(|i| format!("?{}", params.len() + 2 + i))
+                                        .collect();
+                                    conditions.push(format!("{col} IN ({})", placeholders.join(", ")));
+                                    for item in arr {
+                                        params.push(json_to_sql_param(item));
+                                    }
+                                }
+                            } else {
+                                return Err(format!(
+                                    "'in' operator for '{key}' requires an array value"
+                                ));
+                            }
+                        }
+                        "is_null" => {
+                            if op_val.as_bool().unwrap_or(false) {
+                                conditions.push(format!("{col} IS NULL"));
+                            } else {
+                                conditions.push(format!("{col} IS NOT NULL"));
+                            }
+                        }
+                        unknown => return Err(format!(
+                            "Unknown where operator '{unknown}' for field '{key}'. \
+                             Valid: eq, neq, gt, gte, lt, lte, like, in, is_null"
+                        )),
+                    }
+                }
+            }
+            _ => {
+                let idx = params.len() + 2;
+                conditions.push(format!("{col} = ?{idx}"));
+                params.push(json_to_sql_param(val));
+            }
+        }
+    }
+
+    Ok((conditions, params))
+}
+
+/// Convert one orderBy entry (String or { field, direction } object) into a SQL ORDER BY term.
+fn order_term(val: &serde_json::Value) -> Result<String, String> {
+    let (col, dir) = match val {
+        serde_json::Value::String(s) => (s.as_str(), "ASC"),
+        serde_json::Value::Object(obj) => {
+            let field = obj.get("field").and_then(|v| v.as_str()).unwrap_or("created_at");
+            let dir = obj.get("direction").and_then(|v| v.as_str())
+                .map(|d| if d.eq_ignore_ascii_case("desc") { "DESC" } else { "ASC" })
+                .unwrap_or("ASC");
+            (field, dir)
+        }
+        _ => ("created_at", "ASC"),
+    };
+    let col_sql = match col {
+        "id" | "type" | "created_at" | "updated_at" => col.to_string(),
+        _ => {
+            validate_identifier(col, "orderBy")?;
+            format!("json_extract(body, '$.{col}')")
+        }
+    };
+    Ok(format!("{col_sql} {dir}"))
+}
+
 /// Build and execute a filtered SELECT against a `records` table.
 fn query_records(conn: &rusqlite::Connection, query: &FindQuery) -> Result<Vec<Record>, String> {
     let mut conditions: Vec<String> = vec!["type = ?1".to_string()];
     let mut extra_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
     if let Some(filters) = &query.filters {
-        for (key, val) in filters {
-            validate_identifier(key, "where field")?;
-            let idx = extra_params.len() + 2; // ?1 = type, ?2.. = filter values
-            conditions.push(format!("json_extract(body, '$.{key}') = ?{idx}"));
-            extra_params.push(json_to_sql_param(val));
-        }
+        let (conds, fparams) = build_where_clause(filters)?;
+        conditions.extend(conds);
+        extra_params.extend(fparams);
     }
 
     let mut sql = format!(
@@ -760,29 +1035,25 @@ fn query_records(conn: &rusqlite::Connection, query: &FindQuery) -> Result<Vec<R
     );
 
     if let Some(order_val) = &query.order_by {
-        let (col, dir) = match order_val {
-            serde_json::Value::String(s) => (s.as_str(), "ASC"),
-            serde_json::Value::Object(obj) => {
-                let field = obj.get("field").and_then(|v| v.as_str()).unwrap_or("created_at");
-                let dir = obj.get("direction").and_then(|v| v.as_str())
-                    .map(|d| if d.eq_ignore_ascii_case("desc") { "DESC" } else { "ASC" })
-                    .unwrap_or("ASC");
-                (field, dir)
+        let clause = match order_val {
+            serde_json::Value::Array(entries) => {
+                let terms: Result<Vec<String>, String> = entries.iter().map(order_term).collect();
+                let terms = terms?;
+                if terms.is_empty() { "created_at ASC".to_string() } else { terms.join(", ") }
             }
-            _ => ("created_at", "ASC"),
+            other => order_term(other)?,
         };
-        let col_sql = match col {
-            "id" | "type" | "created_at" | "updated_at" => col.to_string(),
-            _ => {
-                validate_identifier(col, "orderBy")?;
-                format!("json_extract(body, '$.{col}')")
-            }
-        };
-        sql.push_str(&format!(" ORDER BY {col_sql} {dir}"));
+        sql.push_str(&format!(" ORDER BY {clause}"));
     }
 
     if let Some(limit) = query.limit {
         sql.push_str(&format!(" LIMIT {limit}"));
+    }
+    if let Some(offset) = query.offset {
+        if query.limit.is_none() {
+            sql.push_str(" LIMIT -1"); // SQLite requires LIMIT before OFFSET
+        }
+        sql.push_str(&format!(" OFFSET {offset}"));
     }
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -855,6 +1126,46 @@ fn exec_raw_sql(
         .map_err(|e| e.to_string())?;
 
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+/// Query parameters for count() — type is required, where filters are optional.
+#[derive(serde::Deserialize, Default)]
+struct CountQuery {
+    #[serde(rename = "type")]
+    record_type: String,
+    #[serde(rename = "where")]
+    filters: Option<HashMap<String, serde_json::Value>>,
+}
+
+/// Run SELECT COUNT(*) with optional where-equality filters, same semantics as find().
+fn count_records(
+    conn: &rusqlite::Connection,
+    record_type: &str,
+    filters: &Option<HashMap<String, serde_json::Value>>,
+) -> Result<i64, String> {
+    let mut conditions: Vec<String> = vec!["type = ?1".to_string()];
+    let mut extra_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    if let Some(f) = filters {
+        let (conds, fparams) = build_where_clause(f)?;
+        conditions.extend(conds);
+        extra_params.extend(fparams);
+    }
+
+    let sql = format!(
+        "SELECT COUNT(*) FROM records WHERE {}",
+        conditions.join(" AND ")
+    );
+
+    let type_owned = record_type.to_owned();
+    let type_param: &dyn rusqlite::ToSql = &type_owned;
+    let mut all_params: Vec<&dyn rusqlite::ToSql> = vec![type_param];
+    for p in &extra_params {
+        all_params.push(p.as_ref());
+    }
+
+    conn.query_row(&sql, all_params.as_slice(), |row| row.get::<_, i64>(0))
+        .map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -1121,6 +1432,654 @@ fn state_raw(
     let db = state.state_db.lock().unwrap();
     let conn = db.as_ref().ok_or("No app loaded")?;
     exec_raw_sql(conn, &sql, &params.unwrap_or_default())
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1 additions: count, transaction, clear, reset
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn data_count(query: CountQuery, state: State<'_, AppState>) -> Result<i64, String> {
+    let db = state.data_db.lock().unwrap();
+    match db.as_ref() {
+        None => Ok(0),
+        Some(conn) => count_records(conn, &query.record_type, &query.filters),
+    }
+}
+
+#[tauri::command]
+fn state_count(query: CountQuery, state: State<'_, AppState>) -> Result<i64, String> {
+    let db = state.state_db.lock().unwrap();
+    let conn = db.as_ref().ok_or("No app loaded")?;
+    count_records(conn, &query.record_type, &query.filters)
+}
+
+/// Operation item for state_transaction — op is one of: insert, update, upsert, delete.
+#[derive(serde::Deserialize)]
+struct TransactionOp {
+    op: String,
+    #[serde(rename = "type")]
+    record_type: Option<String>,
+    id: Option<String>,
+    body: Option<serde_json::Value>,
+}
+
+/// Execute a list of write operations atomically: all succeed or all roll back.
+/// Returns a parallel array — Some(Record) for write ops, None for deletes.
+#[tauri::command]
+fn state_transaction(
+    ops: Vec<TransactionOp>,
+    state: State<'_, AppState>,
+) -> Result<Vec<Option<Record>>, String> {
+    let db = state.state_db.lock().unwrap();
+    let conn = db.as_ref().ok_or("No app loaded")?;
+
+    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+
+    let result: Result<Vec<Option<Record>>, String> = (|| {
+        let mut results: Vec<Option<Record>> = Vec::with_capacity(ops.len());
+        for item in &ops {
+            match item.op.as_str() {
+                "insert" => {
+                    let rtype = item.record_type.as_deref()
+                        .ok_or("transaction insert: 'type' is required")?;
+                    let bval = item.body.as_ref()
+                        .ok_or("transaction insert: 'body' is required")?;
+                    let body_str = match bval {
+                        serde_json::Value::String(s) => s.clone(),
+                        v => serde_json::to_string(v).map_err(|e| e.to_string())?,
+                    };
+                    let id = item.id.clone()
+                        .unwrap_or_else(|| format!("{}:{}", rtype, gen_id()));
+                    let now = now_ms() / 1000;
+                    conn.execute(
+                        "INSERT INTO records (id, type, body, created_at, updated_at) \
+                         VALUES (?1, ?2, ?3, ?4, ?5)",
+                        rusqlite::params![id, rtype, body_str, now, now],
+                    ).map_err(|e| e.to_string())?;
+                    results.push(Some(Record {
+                        id,
+                        r#type: rtype.to_string(),
+                        body: body_str,
+                        created_at: now,
+                        updated_at: now,
+                    }));
+                }
+                "update" => {
+                    let id = item.id.as_deref()
+                        .ok_or("transaction update: 'id' is required")?;
+                    let bval = item.body.as_ref()
+                        .ok_or("transaction update: 'body' is required")?;
+                    let body_str = match bval {
+                        serde_json::Value::String(s) => s.clone(),
+                        v => serde_json::to_string(v).map_err(|e| e.to_string())?,
+                    };
+                    let now = now_ms() / 1000;
+                    let changed = conn.execute(
+                        "UPDATE records SET body = ?1, updated_at = ?2 WHERE id = ?3",
+                        rusqlite::params![body_str, now, id],
+                    ).map_err(|e| e.to_string())?;
+                    if changed == 0 {
+                        return Err(format!("transaction update: record not found: {id}"));
+                    }
+                    results.push(get_record(conn, id)?);
+                }
+                "upsert" => {
+                    let id = item.id.as_deref()
+                        .ok_or("transaction upsert: 'id' is required")?;
+                    let rtype = item.record_type.as_deref()
+                        .ok_or("transaction upsert: 'type' is required")?;
+                    let bval = item.body.as_ref()
+                        .ok_or("transaction upsert: 'body' is required")?;
+                    let body_str = match bval {
+                        serde_json::Value::String(s) => s.clone(),
+                        v => serde_json::to_string(v).map_err(|e| e.to_string())?,
+                    };
+                    let now = now_ms() / 1000;
+                    conn.execute(
+                        "INSERT INTO records (id, type, body, created_at, updated_at) \
+                         VALUES (?1, ?2, ?3, ?4, ?5) \
+                         ON CONFLICT(id) DO UPDATE SET body = excluded.body, \
+                         updated_at = excluded.updated_at",
+                        rusqlite::params![id, rtype, body_str, now, now],
+                    ).map_err(|e| e.to_string())?;
+                    results.push(get_record(conn, id)?);
+                }
+                "delete" => {
+                    let id = item.id.as_deref()
+                        .ok_or("transaction delete: 'id' is required")?;
+                    conn.execute("DELETE FROM records WHERE id = ?1", [id])
+                        .map_err(|e| e.to_string())?;
+                    results.push(None);
+                }
+                other => return Err(format!(
+                    "Unknown transaction op: '{other}'. Valid: insert, update, upsert, delete"
+                )),
+            }
+        }
+        Ok(results)
+    })();
+
+    match result {
+        Ok(rows) => {
+            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            Ok(rows)
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
+    }
+}
+
+/// Delete records of one type, or all records when no type is given.
+/// Runs incremental_vacuum to partially reclaim freed pages.
+#[tauri::command]
+fn state_clear(
+    record_type: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<u64, String> {
+    let db = state.state_db.lock().unwrap();
+    let conn = db.as_ref().ok_or("No app loaded")?;
+    let n = match &record_type {
+        Some(t) => conn
+            .execute("DELETE FROM records WHERE type = ?1", [t])
+            .map_err(|e| e.to_string())?,
+        None => conn
+            .execute("DELETE FROM records", [])
+            .map_err(|e| e.to_string())?,
+    };
+    conn.execute_batch("PRAGMA incremental_vacuum").map_err(|e| e.to_string())?;
+    Ok(n as u64)
+}
+
+/// Restore state.db to its original shipped state:
+/// - If state.seed=true, copies state_seed.db (saved on first open) back over state.db.
+/// - If no seed, deletes all records (same as state_clear with no type).
+#[tauri::command]
+fn state_reset(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let app_id = state.app_id.lock().unwrap().clone();
+    if app_id.is_empty() {
+        return Err("No app loaded".into());
+    }
+    let state_db_path = state.state_db_path.lock().unwrap().clone()
+        .ok_or("No state.db path — app may not be fully loaded")?;
+    let data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Cannot get app data dir: {e}"))?.join(&app_id);
+    let seed_backup = data_dir.join("state_seed.db");
+    let tmp = data_dir.join("state_reset.tmp");
+
+    // Hold the lock for the entire operation to block concurrent DB access.
+    let mut db_guard = state.state_db.lock().unwrap();
+    *db_guard = None; // drop existing connection before touching the file
+
+    if seed_backup.exists() {
+        // Atomic restore: copy seed to tmp, then rename over state.db.
+        std::fs::copy(&seed_backup, &tmp)
+            .map_err(|e| format!("Cannot copy seed backup: {e}"))?;
+        std::fs::rename(&tmp, &state_db_path)
+            .map_err(|e| format!("Cannot restore state.db from seed: {e}"))?;
+    } else {
+        // No seed — open temporarily to clear all records.
+        let conn = rusqlite::Connection::open(&state_db_path)
+            .map_err(|e| format!("Cannot open state.db for reset: {e}"))?;
+        conn.execute("DELETE FROM records", []).map_err(|e| e.to_string())?;
+        conn.execute_batch("PRAGMA incremental_vacuum").map_err(|e| e.to_string())?;
+    }
+
+    // Reopen and restore to AppState.
+    let conn = rusqlite::Connection::open(&state_db_path)
+        .map_err(|e| format!("Cannot reopen state.db after reset: {e}"))?;
+    ensure_state_schema(&conn, &app_id)?;
+    *db_guard = Some(conn);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 additions: upsert, insertMany, size, vacuum, fullscreen
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn state_upsert(
+    id: String,
+    r#type: String,
+    body: String,
+    state: State<'_, AppState>,
+) -> Result<Record, String> {
+    let db = state.state_db.lock().unwrap();
+    let conn = db.as_ref().ok_or("No app loaded")?;
+    let now = now_ms() / 1000;
+    conn.execute(
+        "INSERT INTO records (id, type, body, created_at, updated_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5) \
+         ON CONFLICT(id) DO UPDATE SET body = excluded.body, \
+         updated_at = excluded.updated_at",
+        rusqlite::params![id, r#type, body, now, now],
+    ).map_err(|e| e.to_string())?;
+    get_record(conn, &id)?.ok_or_else(|| "upsert: record not found after write".into())
+}
+
+/// Item shape accepted by state_insert_many.
+#[derive(serde::Deserialize)]
+struct InsertItem {
+    #[serde(rename = "type")]
+    record_type: String,
+    id: Option<String>,
+    body: String,
+}
+
+/// Insert a batch of records atomically: all succeed or all roll back.
+#[tauri::command]
+fn state_insert_many(
+    records: Vec<InsertItem>,
+    state: State<'_, AppState>,
+) -> Result<Vec<Record>, String> {
+    let db = state.state_db.lock().unwrap();
+    let conn = db.as_ref().ok_or("No app loaded")?;
+
+    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+
+    let result: Result<Vec<Record>, String> = (|| {
+        let mut out: Vec<Record> = Vec::with_capacity(records.len());
+        for item in &records {
+            let id = item.id.clone()
+                .unwrap_or_else(|| format!("{}:{}", item.record_type, gen_id()));
+            let now = now_ms() / 1000;
+            conn.execute(
+                "INSERT INTO records (id, type, body, created_at, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![id, item.record_type, item.body, now, now],
+            ).map_err(|e| e.to_string())?;
+            out.push(Record {
+                id,
+                r#type: item.record_type.clone(),
+                body: item.body.clone(),
+                created_at: now,
+                updated_at: now,
+            });
+        }
+        Ok(out)
+    })();
+
+    match result {
+        Ok(rows) => {
+            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            Ok(rows)
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
+    }
+}
+
+/// Return the file size, total record count, and per-type record counts for state.db.
+#[derive(serde::Serialize)]
+struct StateSize {
+    bytes: u64,
+    records: i64,
+    types: HashMap<String, i64>,
+}
+
+#[tauri::command]
+fn state_size(state: State<'_, AppState>) -> Result<StateSize, String> {
+    let state_db_path = state.state_db_path.lock().unwrap().clone()
+        .ok_or("No state.db path")?;
+    let bytes = std::fs::metadata(&state_db_path).map(|m| m.len()).unwrap_or(0);
+
+    let db = state.state_db.lock().unwrap();
+    let conn = db.as_ref().ok_or("No app loaded")?;
+
+    let records: i64 = conn
+        .query_row("SELECT COUNT(*) FROM records", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare("SELECT type, COUNT(*) FROM records GROUP BY type")
+        .map_err(|e| e.to_string())?;
+    let types: HashMap<String, i64> = stmt
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(StateSize { bytes, records, types })
+}
+
+/// Reclaim all free pages in state.db via VACUUM. Returns bytes before and after.
+#[tauri::command]
+fn state_vacuum(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let state_db_path = state.state_db_path.lock().unwrap().clone()
+        .ok_or("No state.db path")?;
+    let before = std::fs::metadata(&state_db_path).map(|m| m.len()).unwrap_or(0);
+    {
+        let db = state.state_db.lock().unwrap();
+        let conn = db.as_ref().ok_or("No app loaded")?;
+        conn.execute_batch("VACUUM").map_err(|e| e.to_string())?;
+    }
+    let after = std::fs::metadata(&state_db_path).map(|m| m.len()).unwrap_or(0);
+    Ok(serde_json::json!({ "before": before, "after": after }))
+}
+
+/// Sync state.db records with a remote sync server (push local changes, pull remote changes).
+/// Requires the "local-sync" permission and `sync.endpoint` + `sync.secret` in the manifest.
+/// Conflict resolution: last-write-wins on `updated_at`.
+#[tauri::command]
+async fn state_sync(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    // ── 1. Permission check ────────────────────────────────────────────────
+    {
+        let perms = state.permissions.lock().unwrap();
+        if !perms.contains(&"local-sync".to_string()) {
+            return Err(
+                "Permission denied: 'local-sync' not declared in manifest.json permissions.".into(),
+            );
+        }
+    }
+
+    // ── 2. Read sync config ────────────────────────────────────────────
+    let endpoint = state
+        .sync_endpoint
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or("Sync not configured: 'sync.endpoint' missing from manifest.")?;
+    let app_id = state.app_id.lock().unwrap().clone();
+
+    // ── 3. Collect push payload (lock held, no await) ────────────────────
+    let (device_id, last_sync, push_records) = {
+        let db = state.state_db.lock().unwrap();
+        let conn = db.as_ref().ok_or("No app loaded")?;
+
+        let device_id: String = conn
+            .query_row("SELECT value FROM meta WHERE key = 'device_id'", [], |r| r.get(0))
+            .map_err(|e| format!("Cannot read device_id: {e}"))?;
+
+        let last_sync: i64 = conn
+            .query_row(
+                "SELECT value FROM meta WHERE key = 'last_sync'",
+                [],
+                |r| r.get::<_, String>(0).map(|s| s.parse::<i64>().unwrap_or(0)),
+            )
+            .unwrap_or(0);
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, type, body, created_at, updated_at \
+                 FROM records WHERE updated_at > ?1",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let push_records: Vec<serde_json::Value> = stmt
+            .query_map([last_sync], |r| {
+                Ok(serde_json::json!({
+                    "id":         r.get::<_, String>(0)?,
+                    "type":       r.get::<_, String>(1)?,
+                    "body":       r.get::<_, String>(2)?,
+                    "created_at": r.get::<_, i64>(3)?,
+                    "updated_at": r.get::<_, i64>(4)?,
+                    "deleted":    false,
+                }))
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        (device_id, last_sync, push_records)
+    }; // mutex released before await
+
+    // ── 4. HTTP push + pull ───────────────────────────────────────────────
+    let url = format!("{}/sync", endpoint.trim_end_matches('/'));
+    let body = serde_json::json!({
+        "appId":    app_id,
+        "deviceId": device_id,
+        "lastSync": last_sync,
+        "push":     push_records,
+    });
+
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Sync request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Sync server returned HTTP {}", resp.status().as_u16()));
+    }
+
+    let result: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Invalid sync response: {e}"))?;
+
+    // ── 5. Merge pulled records + persist last_sync ─────────────────────
+    let pull  = result.get("pull").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let pushed = result.get("pushed").and_then(|v| v.as_i64()).unwrap_or(0);
+    let server_time = result.get("serverTime").and_then(|v| v.as_i64()).unwrap_or_else(now_ms);
+    let pulled_count = pull.len() as i64;
+
+    {
+        let db = state.state_db.lock().unwrap();
+        let conn = db.as_ref().ok_or("No app loaded")?;
+
+        for record in &pull {
+            let id         = record["id"].as_str().unwrap_or_default();
+            let rtype      = record["type"].as_str().unwrap_or_default();
+            let body       = record["body"].as_str().unwrap_or("{}");
+            let created_at = record["created_at"].as_i64().unwrap_or(0);
+            let updated_at = record["updated_at"].as_i64().unwrap_or(0);
+            let deleted    = record["deleted"].as_bool().unwrap_or(false);
+
+            if deleted {
+                conn.execute("DELETE FROM records WHERE id = ?1", [id])
+                    .map_err(|e| e.to_string())?;
+            } else {
+                conn.execute(
+                    "INSERT INTO records (id, type, body, created_at, updated_at) \
+                     VALUES (?1, ?2, ?3, ?4, ?5) \
+                     ON CONFLICT (id) DO UPDATE SET \
+                       type       = CASE WHEN excluded.updated_at > updated_at THEN excluded.type       ELSE type       END, \
+                       body       = CASE WHEN excluded.updated_at > updated_at THEN excluded.body       ELSE body       END, \
+                       updated_at = CASE WHEN excluded.updated_at > updated_at THEN excluded.updated_at ELSE updated_at END",
+                    rusqlite::params![id, rtype, body, created_at, updated_at],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
+
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES ('last_sync', ?1) \
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            [&server_time.to_string()],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    Ok(serde_json::json!({ "pushed": pushed, "pulled": pulled_count }))
+}
+
+/// Bridge-accessible fullscreen controls — all require the "fullscreen" permission.
+#[tauri::command]
+async fn uix_enter_fullscreen(
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    {
+        let perms = state.permissions.lock().unwrap();
+        if !perms.contains(&"fullscreen".to_string()) {
+            return Err("Permission denied: 'fullscreen' not declared in manifest.json permissions.".into());
+        }
+    }
+    window.set_fullscreen(true).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn uix_exit_fullscreen(
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    {
+        let perms = state.permissions.lock().unwrap();
+        if !perms.contains(&"fullscreen".to_string()) {
+            return Err("Permission denied: 'fullscreen' not declared in manifest.json permissions.".into());
+        }
+    }
+    window.set_fullscreen(false).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn uix_toggle_fullscreen(
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    {
+        let perms = state.permissions.lock().unwrap();
+        if !perms.contains(&"fullscreen".to_string()) {
+            return Err("Permission denied: 'fullscreen' not declared in manifest.json permissions.".into());
+        }
+    }
+    let is_full = window.is_fullscreen().map_err(|e| e.to_string())?;
+    window.set_fullscreen(!is_full).map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 additions: file.save, file.open, browser.open, window.setTitle
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Serialize)]
+struct FileResult {
+    name: String,
+    content_b64: String,
+}
+
+/// Save bytes (base64-encoded) to a user-chosen path via the OS save dialog.
+/// Requires the `"file-save"` permission.
+#[tauri::command]
+fn uix_save_file(
+    filename: String,
+    content_b64: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    {
+        let perms = state.permissions.lock().unwrap();
+        if !perms.contains(&"file-save".to_string()) {
+            return Err("Permission denied: 'file-save' not declared in manifest.json permissions.".into());
+        }
+    }
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&content_b64)
+        .map_err(|e| format!("Invalid base64 content: {e}"))?;
+    use tauri_plugin_dialog::DialogExt;
+    let result = app.dialog().file().set_file_name(&filename).blocking_save_file();
+    match result {
+        None => Ok(false),
+        Some(p) => {
+            std::fs::write(std::path::PathBuf::from(p.to_string()), &bytes)
+                .map_err(|e| e.to_string())?;
+            Ok(true)
+        }
+    }
+}
+
+/// Open a user-chosen file and return its contents as base64.
+/// Requires the `"file-open"` permission.
+#[tauri::command]
+fn uix_open_file(
+    filter: Option<String>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<FileResult>, String> {
+    {
+        let perms = state.permissions.lock().unwrap();
+        if !perms.contains(&"file-open".to_string()) {
+            return Err("Permission denied: 'file-open' not declared in manifest.json permissions.".into());
+        }
+    }
+    use base64::Engine as _;
+    use tauri_plugin_dialog::DialogExt;
+    let mut dialog = app.dialog().file();
+    if let Some(ref ext) = filter {
+        dialog = dialog.add_filter("File", &[ext.as_str()]);
+    }
+    let result = dialog.blocking_pick_file();
+    match result {
+        None => Ok(None),
+        Some(p) => {
+            let path_buf = std::path::PathBuf::from(p.to_string());
+            let name = path_buf.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file")
+                .to_string();
+            let bytes = std::fs::read(&path_buf).map_err(|e| e.to_string())?;
+            let content_b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            Ok(Some(FileResult { name, content_b64 }))
+        }
+    }
+}
+
+/// Open a URL in the OS default browser.
+/// Only `https://` and `http://` schemes are allowed.
+/// Requires the `"open-url"` permission.
+#[tauri::command]
+fn uix_open_url(url: String, state: State<'_, AppState>) -> Result<(), String> {
+    {
+        let perms = state.permissions.lock().unwrap();
+        if !perms.contains(&"open-url".to_string()) {
+            return Err("Permission denied: 'open-url' not declared in manifest.json permissions.".into());
+        }
+    }
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("uix.browser.open: only https:// and http:// URLs are permitted.".into());
+    }
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open").arg(&url).status().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "linux")]
+    std::process::Command::new("xdg-open").arg(&url).status().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("cmd").args(["/C", "start", "", &url]).status().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Set the OS window title. The app name is always prepended to prevent misleading titles.
+#[tauri::command]
+fn uix_set_window_title(
+    title: String,
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let app_name = state.app_name.lock().unwrap().clone();
+    let full_title = if app_name.is_empty() {
+        title
+    } else {
+        format!("{app_name} \u{2014} {title}")
+    };
+    window.set_title(&full_title).map_err(|e| e.to_string())
+}
+
+/// Fire a native OS desktop notification.
+/// Requires the `"notifications"` permission.
+#[tauri::command]
+fn uix_notify(
+    title: String,
+    body: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    {
+        let perms = state.permissions.lock().unwrap();
+        if !perms.contains(&"notifications".to_string()) {
+            return Err("Permission denied: 'notifications' not declared in manifest.json permissions.".into());
+        }
+    }
+    use tauri_plugin_notification::NotificationExt;
+    app.notification()
+        .builder()
+        .title(&title)
+        .body(&body)
+        .show()
+        .map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -1409,6 +2368,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(app_state)
         .setup(|app| {
             // --- File association: handle .uix path passed as a CLI argument ---
@@ -1443,6 +2403,15 @@ pub fn run() {
                             if let Err(e) = repack_uix(&uix_path, &db_path) {
                                 eprintln!("dotuix-viewer: repack failed: {e}");
                                 // The .tmp file (if created) is the recovery path.
+                            }
+                            // SM-6: warn if state.db exceeds 50 MB after repacking.
+                            if let Ok(meta) = std::fs::metadata(&db_path) {
+                                if meta.len() > 50 * 1024 * 1024 {
+                                    let _ = handle.emit("state-db-large", serde_json::json!({
+                                        "bytes": meta.len(),
+                                        "mb": meta.len() / (1024 * 1024)
+                                    }));
+                                }
                             }
                         }
                     }
@@ -1572,6 +2541,24 @@ pub fn run() {
             state_delete,
             state_purge,
             state_raw,
+            data_count,
+            state_count,
+            state_transaction,
+            state_clear,
+            state_reset,
+            state_upsert,
+            state_insert_many,
+            state_size,
+            state_vacuum,
+            state_sync,
+            uix_enter_fullscreen,
+            uix_exit_fullscreen,
+            uix_toggle_fullscreen,
+            uix_save_file,
+            uix_open_file,
+            uix_open_url,
+            uix_set_window_title,
+            uix_notify,
             // Editor / developer mode
             editor_open_folder,
             editor_read_dir,
@@ -1617,4 +2604,214 @@ pub fn run() {
             #[cfg(not(target_os = "macos"))]
             let _ = (app, event);
         });
+}
+
+// =============================================================================
+// Unit tests
+// =============================================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    fn filters(pairs: &[(&str, serde_json::Value)]) -> HashMap<String, serde_json::Value> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+    }
+
+    // ── order_term ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn order_term_string_shorthand_is_body_asc() {
+        assert_eq!(
+            order_term(&json!("price")).unwrap(),
+            "json_extract(body, '$.price') ASC"
+        );
+    }
+
+    #[test]
+    fn order_term_builtin_columns_bypass_json_extract() {
+        for col in &["id", "type", "created_at", "updated_at"] {
+            assert_eq!(
+                order_term(&json!(col)).unwrap(),
+                format!("{col} ASC"),
+                "failed for column '{col}'"
+            );
+        }
+    }
+
+    #[test]
+    fn order_term_object_asc() {
+        assert_eq!(
+            order_term(&json!({ "field": "sort", "direction": "asc" })).unwrap(),
+            "json_extract(body, '$.sort') ASC"
+        );
+    }
+
+    #[test]
+    fn order_term_object_desc() {
+        assert_eq!(
+            order_term(&json!({ "field": "price", "direction": "desc" })).unwrap(),
+            "json_extract(body, '$.price') DESC"
+        );
+    }
+
+    #[test]
+    fn order_term_direction_is_case_insensitive() {
+        assert_eq!(
+            order_term(&json!({ "field": "price", "direction": "DESC" })).unwrap(),
+            "json_extract(body, '$.price') DESC"
+        );
+    }
+
+    #[test]
+    fn order_term_missing_direction_defaults_to_asc() {
+        assert_eq!(
+            order_term(&json!({ "field": "name" })).unwrap(),
+            "json_extract(body, '$.name') ASC"
+        );
+    }
+
+    #[test]
+    fn order_term_builtin_column_with_desc() {
+        assert_eq!(
+            order_term(&json!({ "field": "created_at", "direction": "desc" })).unwrap(),
+            "created_at DESC"
+        );
+    }
+
+    #[test]
+    fn order_term_non_string_non_object_falls_back_to_created_at_asc() {
+        assert_eq!(order_term(&json!(42)).unwrap(), "created_at ASC");
+        assert_eq!(order_term(&json!(null)).unwrap(), "created_at ASC");
+    }
+
+    // ── build_where_clause ────────────────────────────────────────────────────
+
+    #[test]
+    fn where_empty_filters_returns_nothing() {
+        let (conds, params) = build_where_clause(&HashMap::new()).unwrap();
+        assert!(conds.is_empty());
+        assert_eq!(params.len(), 0);
+    }
+
+    #[test]
+    fn where_scalar_shorthand_is_equality() {
+        let (conds, params) =
+            build_where_clause(&filters(&[("category", json!("burgers"))])).unwrap();
+        assert_eq!(conds, ["json_extract(body, '$.category') = ?2"]);
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn where_eq_operator() {
+        let (conds, params) =
+            build_where_clause(&filters(&[("status", json!({ "eq": "active" }))])).unwrap();
+        assert_eq!(conds, ["json_extract(body, '$.status') = ?2"]);
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn where_neq_operator() {
+        let (conds, params) =
+            build_where_clause(&filters(&[("status", json!({ "neq": "archived" }))])).unwrap();
+        assert_eq!(conds, ["json_extract(body, '$.status') != ?2"]);
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn where_gt_operator() {
+        let (conds, params) =
+            build_where_clause(&filters(&[("price", json!({ "gt": 10 }))])).unwrap();
+        assert_eq!(conds, ["json_extract(body, '$.price') > ?2"]);
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn where_gte_operator() {
+        let (conds, params) =
+            build_where_clause(&filters(&[("price", json!({ "gte": 10 }))])).unwrap();
+        assert_eq!(conds, ["json_extract(body, '$.price') >= ?2"]);
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn where_lt_operator() {
+        let (conds, params) =
+            build_where_clause(&filters(&[("qty", json!({ "lt": 5 }))])).unwrap();
+        assert_eq!(conds, ["json_extract(body, '$.qty') < ?2"]);
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn where_lte_operator() {
+        let (conds, params) =
+            build_where_clause(&filters(&[("qty", json!({ "lte": 5 }))])).unwrap();
+        assert_eq!(conds, ["json_extract(body, '$.qty') <= ?2"]);
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn where_like_operator() {
+        let (conds, params) =
+            build_where_clause(&filters(&[("name", json!({ "like": "%burger%" }))])).unwrap();
+        assert_eq!(conds, ["json_extract(body, '$.name') LIKE ?2"]);
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn where_in_operator_binds_all_items() {
+        let (conds, params) =
+            build_where_clause(&filters(&[("cat", json!({ "in": ["a", "b", "c"] }))])).unwrap();
+        assert_eq!(conds, ["json_extract(body, '$.cat') IN (?2, ?3, ?4)"]);
+        assert_eq!(params.len(), 3);
+    }
+
+    #[test]
+    fn where_in_empty_array_produces_always_false() {
+        let (conds, params) =
+            build_where_clause(&filters(&[("cat", json!({ "in": [] }))])).unwrap();
+        assert_eq!(conds, ["1 = 0"]);
+        assert_eq!(params.len(), 0);
+    }
+
+    #[test]
+    fn where_is_null_true_is_null() {
+        let (conds, params) =
+            build_where_clause(&filters(&[("archived", json!({ "is_null": true }))])).unwrap();
+        assert_eq!(conds, ["json_extract(body, '$.archived') IS NULL"]);
+        assert_eq!(params.len(), 0);
+    }
+
+    #[test]
+    fn where_is_null_false_is_not_null() {
+        let (conds, params) =
+            build_where_clause(&filters(&[("archived", json!({ "is_null": false }))])).unwrap();
+        assert_eq!(conds, ["json_extract(body, '$.archived') IS NOT NULL"]);
+        assert_eq!(params.len(), 0);
+    }
+
+    #[test]
+    fn where_unknown_operator_returns_error_mentioning_it() {
+        let result = build_where_clause(&filters(&[("f", json!({ "regex": ".*" }))]));
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(err.contains("regex"), "expected 'regex' in error: {err}");
+    }
+
+    #[test]
+    fn where_in_non_array_operand_returns_error() {
+        let result = build_where_clause(&filters(&[("f", json!({ "in": "not-array" }))]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn where_invalid_identifier_is_rejected() {
+        let result = build_where_clause(&filters(&[("field;drop", json!("value"))]));
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(err.contains("field;drop"), "expected field name in error: {err}");
+    }
 }

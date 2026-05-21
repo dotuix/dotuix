@@ -5,6 +5,16 @@ dist/
 .turbo/
 *.tsbuildinfo
 
+# Rust build artifacts
+target/
+apps/viewer/src-tauri/target/
+
+# Expo / React Native
+.expo/
+apps/mobile/.expo/
+apps/mobile/android/
+apps/mobile/ios/
+
 # dotuix runtime artefacts
 *.uix.lock
 ~*.uix

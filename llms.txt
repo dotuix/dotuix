@@ -86,6 +86,8 @@ and are referenced by relative path from the entry HTML.
 | `author` | string | No | Creator email or identifier. |
 | `expires` | string\|null | No | ISO 8601 date string or `null`. Viewer checks expiry **before extraction** — expired files never unpack. |
 | `state.seed` | boolean | No | `true` = copy `state.db` from archive as starting user state on first open. Default `false`. |
+| `sync.endpoint` | string | No | HTTPS URL of a dotuix sync server. Required when `"local-sync"` is declared. |
+| `sync.secret` | string | No | Base64-encoded shared secret used to authenticate with the sync server. |
 | `security` | object | No | Optional PIN auth + encryption. Omit entirely for regular apps. |
 | `signature` | object | No | Optional Ed25519 signature. Written by `dotuix sign`. |
 | `ai` | object | No | Optional AI provenance block. Omit for non-AI-generated files. |
@@ -94,9 +96,14 @@ and are referenced by relative path from the entry HTML.
 
 - `"local-storage"` — browser localStorage access
 - `"print"` — system print dialog
-- `"clipboard-write"` — write to clipboard
-- `"fullscreen"` — request fullscreen
-- `"raw-sql"` — enable `uix.data.raw()` and `uix.state.raw()` for arbitrary SQL queries
+- `"clipboard-write"` — write to clipboard via `uix.clipboard.write()`
+- `"fullscreen"` — `uix.fullscreen.enter/exit/toggle()`
+- `"raw-sql"` — `uix.data.raw()` and `uix.state.raw()` — arbitrary SQL
+- `"file-save"` — save a file to the user's disk via `uix.file.save()`
+- `"file-open"` — open a file from the user's disk via `uix.file.open()`
+- `"open-url"` — open a URL in the system browser via `uix.browser.open()`
+- `"notifications"` — OS-level notifications via `uix.notify()`
+- `"local-sync"` — sync `state.db` records with an external server via `uix.state.sync()`
 
 ### Security block (optional — omit entirely for regular apps)
 
@@ -192,7 +199,7 @@ const manifest = await uix.manifest();
 
 ### Data database — read-only (creator data shipped in the .uix)
 
-> **These are the only three methods on `uix.data`:** `find()`, `get()`, `raw()`.
+> **Methods on `uix.data`:** `find()`, `get()`, `count()`, `raw()`.
 > There is no `getAll`, `findAll`, `fetchAll`, `getItems`, `query`, `list`, `all`, or any other
 > variant. If you need all records of a type, call `find({ type: "..." })` — it returns all of them.
 
@@ -203,10 +210,25 @@ const products = await uix.data.find({ type: "product" });
 // Filtered, sorted, paginated
 const burgers = await uix.data.find({
   type: "product",
-  where: { category: "burgers" },   // json_extract(body, '$.category') = 'burgers'
-  orderBy: { field: "sort", direction: "asc" },  // or orderBy: "sort" (string shorthand)
+  where: {
+    category: "burgers",          // scalar shorthand = equality
+    price: { gte: 10 },           // operator object: key is the operator, value is the operand
+    tags: { in: ["beef", "chicken"] },  // supported: eq neq gt gte lt lte like in is_null
+    archived: { is_null: true },  // is_null: true → IS NULL, false → IS NOT NULL
+  },
+  orderBy: [                      // multi-field sort (array form)
+    { field: "category", direction: "asc" },
+    { field: "sort", direction: "asc" },
+  ],
+  // orderBy: { field: "sort", direction: "asc" }  ← single-field object form also works
+  // orderBy: "sort"                               ← string shorthand (asc, single field)
   limit: 20,
+  offset: 0,                      // for pagination (skip N records)
 });
+
+// Count records without fetching them
+const total = await uix.data.count({ type: "product" });
+const burgerCount = await uix.data.count({ type: "product", where: { category: "burgers" } });
 
 // Get a single record by id
 const product = await uix.data.get("product:001");
@@ -229,20 +251,75 @@ const record = await uix.state.insert({
 // Returns full record: { id, type, body, created_at, updated_at }
 // id is auto-generated as "cart_item:<uuid>"
 
-// Find records
+// Upsert — insert if not found, replace body if found (match by id)
+await uix.state.upsert({ id: "settings:main", type: "settings", body: { theme: "dark" } });
+
+// Insert many in one call (atomic, same transaction)
+await uix.state.insertMany([
+  { type: "order_line", body: { product: "product:001", qty: 1 } },
+  { type: "order_line", body: { product: "product:002", qty: 2 } },
+]);
+
+// Atomic transaction — array of operations, executed in one SQLite transaction
+const results = await uix.state.transaction([
+  { op: "insert", type: "order", body: { total: 120, placedAt: new Date().toISOString() } },
+  { op: "delete", id: "cart_item:abc" },
+  { op: "update", id: "cart_item:xyz", body: { qty: 3 } },
+  // Supported ops: "insert", "upsert", "update", "delete"
+]);
+// returns array of (Record | null) in same order as ops
+
+// Find records (same signature as uix.data.find, with offset + extended where)
 const cartItems = await uix.state.find({ type: "cart_item" });
+const recent = await uix.state.find({
+  type: "session_log",
+  where: { score: { op: "gt", value: 50 } },
+  orderBy: [{ field: "created_at", direction: "desc" }],
+  limit: 10,
+  offset: 0,
+});
+
+// Count records
+const total = await uix.state.count({ type: "cart_item" });
 
 // Get single record by id
 const item = await uix.state.get("cart_item:uuid");
 
 // Update — second argument is the new body object (replaces the existing body)
-await uix.state.update("cart_item:uuid", { qty: 3, price: 35.0 });
+const updated = await uix.state.update("cart_item:uuid", { qty: 3, price: 35.0 });
 
 // Delete
 await uix.state.delete("cart_item:uuid");
 
-// Purge records older than a duration (units: s, m, h, d, y)
-await uix.state.purge({ type: "session_log", olderThan: "24h" });
+// Purge records older than a duration (units: s, m, h, d, y); returns deleted count
+const n = await uix.state.purge({ type: "session_log", olderThan: "24h" });
+
+// Clear all records of a type (or ALL records if type omitted); returns deleted count
+const cleared = await uix.state.clear({ type: "cart_item" });
+await uix.state.clear(); // clears everything
+
+// Reset — wipe state and restore to seed (or empty) as if first open
+await uix.state.reset();
+
+// Size — current state.db size on disk
+const info = await uix.state.size();
+// { bytes: 204800, records: 42, types: { cart_item: 10, order: 32 } }
+
+// Vacuum — reclaim space after bulk deletes; returns before/after sizes
+const stats = await uix.state.vacuum();
+// { before: 204800, after: 98304 }
+
+// Export — snapshot records to a JSON string (for sending to a server, etc.)
+const json = await uix.state.export({ type: "order" }); // one type
+const all = await uix.state.export(); // all types, all records
+const recent = await uix.state.export({ type: "order", before: new Date().toISOString() });
+
+// Sync — push local changes and pull remote changes in one round-trip
+// Requires "local-sync" in manifest.permissions and sync.endpoint + sync.secret in manifest
+const syncResult = await uix.state.sync();
+// { pushed: number, pulled: number }
+// The viewer diffs state.db since the last sync, pushes changed records, and merges returned records.
+// Conflict resolution: last-write-wins on updated_at.
 
 // Raw SQL — requires "raw-sql" permission
 await uix.state.raw("DELETE FROM records WHERE type = ?", ["session_log"]);
@@ -264,21 +341,60 @@ The `body` field is stored as a JSON string in SQLite.
 - **Writing** (`insert`, `update`): pass a plain object — the bridge JSON-stringifies it automatically.
 - **Reading** (`find`, `get`): `body` comes back as a string — always call `JSON.parse(record.body)` before accessing fields.
 
-### Utilities
+### Utilities and OS bridge
 
 ```javascript
-// Trigger the system print dialog
-uix.print();
+// ── App ──────────────────────────────────────────────────────────────────────
+const manifest = await uix.manifest();     // full manifest.json as a plain object
+const version  = uix.viewer.version();     // current viewer version string (synchronous)
+uix.print();                               // system print dialog — needs "print" permission
+await uix.exit();                          // close app and return to viewer home
 
-// Close the .uix file and return to viewer home screen
-await uix.exit();
+// ── Window ───────────────────────────────────────────────────────────────────
+await uix.window.setTitle("Order #1042");  // set the window/tab title dynamically
+
+// ── Clipboard ────────────────────────────────────────────────────────────────
+// Requires "clipboard-write" permission in manifest.permissions
+await uix.clipboard.write("Hello, world!");
+
+// ── Fullscreen ───────────────────────────────────────────────────────────────
+// Requires "fullscreen" permission in manifest.permissions
+await uix.fullscreen.enter();
+await uix.fullscreen.exit();
+await uix.fullscreen.toggle();
+
+// ── File I/O ─────────────────────────────────────────────────────────────────
+// Save a file to disk — requires "file-save" permission
+// content can be a string (text) or ArrayBuffer (binary)
+const saved = await uix.file.save("orders.json", JSON.stringify(orders), "application/json");
+// Returns true on success, false if the user cancelled
+
+// Open a file from disk — requires "file-open" permission
+const result = await uix.file.open({
+  accept: ".csv,.json",   // optional file-type filter
+  multiple: false,
+});
+if (result) {
+  const text = new TextDecoder().decode(result.content);  // content is ArrayBuffer
+  console.log(result.name, text);
+}
+// Returns { name: string, content: ArrayBuffer } or null if user cancelled
+
+// ── Browser ──────────────────────────────────────────────────────────────────
+// Open a URL in the user's default system browser — requires "open-url" permission
+await uix.browser.open("https://example.com");
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+// Requires "notifications" permission in manifest.permissions
+await uix.notify("Order ready", "Your order #1042 is ready for pickup.");
+await uix.notify("Alert", "Low stock warning.", { icon: "warning" });
 ```
 
 ### What the bridge does NOT provide
 
 These APIs do **not** exist — do not generate code that uses them:
 
-**Data retrieval — `find()` is the only method:**
+**Data retrieval — `find()` is the primary method:**
 - `uix.data.getAll()` — use `uix.data.find({ type: "..." })`
 - `uix.data.findAll()` — use `uix.data.find({ type: "..." })`
 - `uix.data.fetchAll()` — use `uix.data.find({ type: "..." })`
@@ -287,10 +403,9 @@ These APIs do **not** exist — do not generate code that uses them:
 
 **Other non-existent APIs:**
 - `uix.storage.set / uix.storage.get` — use `uix.state.insert / uix.state.find` instead
-- `uix.notify()` — use your own in-app UI (toast div, alert, banner)
 - `uix.fetch()` — network is blocked by default (`"network": "blocked"`)
-- `uix.version()` — not exposed
-- `uix.fs` — no host filesystem access
+- `uix.version()` — use `uix.viewer.version()` instead (synchronous, no await)
+- `uix.fs` — no direct host filesystem access; use `uix.file.open()` / `uix.file.save()`
 - `uix.sendAction() / uix.dispatch() / uix.emit()` — no event or action bus exists
 - `window.__uix.db` — does not exist; use `uix.data.find / uix.state.insert`
 

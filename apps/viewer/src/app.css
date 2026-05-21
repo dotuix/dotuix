@@ -19,6 +19,29 @@ body,
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── Animations ─────────────────────────────────────────── */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.spinner {
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
 /* ── Shell ────────────────────────────────────────────────────── */
 .shell {
   display: flex;
@@ -27,6 +50,7 @@ body,
   height: 100%;
   background: #f6f5f1;
   transition: background 0.15s;
+  position: relative;
 }
 
 .shell--dragover {
@@ -43,6 +67,49 @@ body,
   max-width: 320px;
   width: 100%;
   padding: 0 16px;
+  animation: fade-up 0.25s ease both;
+}
+
+/* ── Loading overlay ────────────────────────────────────────── */
+.loading-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: #9d9c98;
+  animation: fade-up 0.2s ease both;
+}
+
+.loading-label {
+  font-size: 0.8rem;
+  color: #9d9c98;
+  letter-spacing: 0.01em;
+}
+
+/* ── Drag overlay ────────────────────────────────────────────── */
+.drag-overlay {
+  position: absolute;
+  inset: 8px;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.05);
+  border: 2px dashed #2563eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 10;
+  animation: fade-up 0.12s ease both;
+}
+
+.drag-overlay-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: #2563eb;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .brand {
@@ -136,17 +203,43 @@ body,
 }
 
 .error-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   font-size: 0.78rem;
   color: #b91c1c;
   margin-top: 2px;
   margin-bottom: 6px;
-  padding: 9px 12px;
+  padding: 9px 10px 9px 12px;
   background: rgba(185, 28, 28, 0.06);
   border-radius: 8px;
   border: 1px solid rgba(185, 28, 28, 0.14);
   text-align: left;
   line-height: 1.5;
   max-width: 100%;
+}
+
+.error-msg span {
+  flex: 1;
+}
+
+.error-dismiss {
+  background: none;
+  border: none;
+  color: #b91c1c;
+  opacity: 0.5;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 1px;
+  transition: opacity 0.12s;
+  font-family: inherit;
+}
+
+.error-dismiss:hover {
+  opacity: 1;
 }
 
 .dev-link {

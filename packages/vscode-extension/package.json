@@ -3,7 +3,7 @@
   "private": true,
   "displayName": "dotuix",
   "description": "Language support, IntelliSense, and commands for .uix files",
-  "version": "0.4.8",
+  "version": "0.4.9",
   "publisher": "intenttext",
   "license": "MIT",
   "icon": "icons/icon.png",

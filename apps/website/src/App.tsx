@@ -905,7 +905,7 @@ const MANIFEST_FIELDS: {
     field: "mode",
     type: "string",
     req: true,
-    desc: '"kiosk" — locked UI, no address bar. "window" — toolbar visible. Use window for AI agent apps.',
+    desc: '"kiosk" — locked UI, no address bar. "window" — toolbar visible.',
   },
   {
     field: "minViewer",
@@ -1005,7 +1005,7 @@ const MANIFEST_EXAMPLE = `{
 
 const BRIDGE_API_CODE = `// App metadata
 const manifest = await uix.manifest();
-const viewerVer = await uix.version();
+const viewerVer = uix.viewer.version(); // synchronous — no await
 
 // Data database — read-only (creator data shipped in the .uix)
 const products = await uix.data.find({ type: "product" });
@@ -1032,7 +1032,7 @@ const rec = await uix.state.insert({
 // id auto-generated as "cart_item:<uuid>"
 
 const items = await uix.state.find({ type: "cart_item" });
-await uix.state.update(rec.id, { body: { qty: 3 } });
+await uix.state.update(rec.id, { qty: 3 });
 await uix.state.delete(rec.id);
 await uix.state.purge({ type: "session_log", olderThan: 86400 });`;
 
@@ -1460,7 +1460,7 @@ export function App() {
         {/* badge */}
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/15 bg-white/5 text-xs text-gray-400 mb-8">
           <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
-          Open format · MIT · v0.2.1
+          Open format · MIT · v0.3.1
           <span className="text-white/20">·</span>
           <GitHubStars />
         </div>

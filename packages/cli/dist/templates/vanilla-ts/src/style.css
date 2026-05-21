@@ -1,4 +1,10 @@
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
 body {
   font-family: system-ui, -apple-system, sans-serif;
@@ -8,7 +14,10 @@ body {
   min-height: 100dvh;
 }
 
-h1 { color: #c8a96e; margin-bottom: 1.5rem; }
+h1 {
+  color: #c8a96e;
+  margin-bottom: 1.5rem;
+}
 
 button {
   background: #c8a96e;
@@ -20,9 +29,16 @@ button {
   font-weight: 600;
   cursor: pointer;
 }
-button:hover { opacity: 0.85; }
+button:hover {
+  opacity: 0.85;
+}
 
-#records { margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+#records {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
 
 .record-card {
   background: #262626;

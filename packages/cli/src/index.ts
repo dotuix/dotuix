@@ -16,6 +16,7 @@
  *   build         [project-dir]             Run vite build → pack → .uix
  *   dev           [project-dir]             Start vite dev server with bridge mock
  *   create        <name> [-t <template>]    Scaffold a new Vite-based .uix project
+ *   spec          <validate|scaffold|init>  AI spec format helpers
  */
 
 import {
@@ -1275,6 +1276,333 @@ async function cmdCreate(args: string[]) {
 }
 
 // ---------------------------------------------------------------------------
+// spec — AI spec format: init, validate, scaffold
+// ---------------------------------------------------------------------------
+
+interface AppSpec {
+  identity: {
+    id?: string;
+    name?: string;
+    mode?: string;
+    state?: string;
+    schemaVersion?: number;
+    framework?: string;
+  };
+  dataModel: Array<{ type: string; fields: string[] }>;
+  screens: string[];
+  permissions: string[];
+  theme: { color?: string; background?: string };
+  seedData: string[];
+}
+
+function specSection(md: string, heading: string): string {
+  const esc = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`##\\s+${esc}[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s|$)`, "i");
+  return (re.exec(md)?.[1] ?? "").trim();
+}
+
+function parseKV(text: string): Record<string, string> {
+  const kv: Record<string, string> = {};
+  for (const line of text.split("\n")) {
+    const m = line.match(/^[-*]\s+([\w][\w /-]*):\s*(.+)/);
+    if (m) kv[m[1].trim().toLowerCase().replace(/\s+/g, "-")] = m[2].split("#")[0].trim();
+  }
+  return kv;
+}
+
+function parseList(text: string): string[] {
+  return text
+    .split("\n")
+    .map((l) => l.replace(/^\s*(?:[-*]|\d+\.)\s+/, "").trim())
+    .filter((l) => l.length > 0);
+}
+
+function parseTable(text: string): Array<{ type: string; fields: string[] }> {
+  const rows: Array<{ type: string; fields: string[] }> = [];
+  for (const line of text.split("\n")) {
+    if (!line.includes("|")) continue;
+    const cols = line.split("|").map((c) => c.trim()).filter(Boolean);
+    if (cols.length < 2 || /type/i.test(cols[0]) || /^[-|: ]+$/.test(cols[0])) continue;
+    rows.push({
+      type: cols[0],
+      fields: cols[1].split(/[,;]/).map((f) => f.trim()).filter(Boolean),
+    });
+  }
+  return rows;
+}
+
+function parseSpec(md: string): AppSpec {
+  const id = parseKV(specSection(md, "Identity"));
+  return {
+    identity: {
+      id:            id.id,
+      name:          id.name,
+      mode:          id.mode,
+      state:         id.state,
+      schemaVersion: id.schemaversion ? Number(id.schemaversion) : undefined,
+      framework:     id.framework,
+    },
+    dataModel:   parseTable(specSection(md, "Data Model")),
+    screens:     parseList(specSection(md, "Screens")),
+    permissions: parseList(specSection(md, "Permissions")),
+    theme:       parseKV(specSection(md, "Theme")),
+    seedData:    parseList(specSection(md, "Seed Data")),
+  };
+}
+
+function validateSpec(spec: AppSpec): { errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (!spec.identity.id)
+    errors.push("Identity.id is required  (e.g.  - id: com.example.my-app)");
+  if (!spec.identity.name)
+    errors.push("Identity.name is required  (e.g.  - name: My App)");
+  if (spec.screens.length === 0)
+    errors.push("At least one screen is required in ## Screens");
+  if (spec.identity.mode && !["window", "kiosk"].includes(spec.identity.mode))
+    errors.push(`Unknown mode "${spec.identity.mode}" — must be window or kiosk`);
+  if (spec.identity.state && !["device", "file"].includes(spec.identity.state))
+    errors.push(`Unknown state "${spec.identity.state}" — must be device or file`);
+  if (spec.dataModel.length === 0)
+    warnings.push("No data model — add a ## Data Model table if your app stores data");
+  if (!spec.identity.schemaVersion)
+    warnings.push("schemaVersion not set — will default to 1");
+  if (!spec.identity.state)
+    warnings.push("state not set — will default to device");
+  if (!spec.theme.color)
+    warnings.push("Theme color not set — using default");
+  if (spec.permissions.length === 0)
+    warnings.push("No permissions listed — clipboard, notifications etc. will be unavailable");
+  return { errors, warnings };
+}
+
+function chooseTemplate(spec: AppSpec): ViteTemplateName {
+  const fw = (spec.identity.framework ?? "").toLowerCase();
+  const map: Record<string, ViteTemplateName> = {
+    "vanilla-ts": "vanilla-ts", vanilla: "vanilla-ts",
+    "react-ts":   "react-ts",   react:   "react-ts",
+    "vue-ts":     "vue-ts",     vue:     "vue-ts",
+    form:         "form",
+    report:       "report",
+  };
+  if (map[fw]) return map[fw];
+  if ((spec.identity.state ?? "device") === "file") {
+    return /form|input|fill|edit|write|submit/.test(spec.screens.join(" ").toLowerCase())
+      ? "form" : "report";
+  }
+  return "react-ts";
+}
+
+function specToUixConfig(spec: AppSpec, slug: string): string {
+  const perms = spec.permissions.length > 0
+    ? spec.permissions
+    : ["clipboard-write", "notifications"];
+  return [
+    `import { defineConfig } from "@dotuix/types";`,
+    ``,
+    `export default defineConfig({`,
+    `  id: "${spec.identity.id ?? `com.example.${slug}`}",`,
+    `  name: "${spec.identity.name ?? slug}",`,
+    `  version: "1.0.0",`,
+    `  entry: "index.html",`,
+    `  mode: "${spec.identity.mode ?? "window"}",`,
+    `  schemaVersion: ${spec.identity.schemaVersion ?? 1},`,
+    `  state: { mode: "${spec.identity.state ?? "device"}" },`,
+    `  permissions: [${perms.map((p) => `"${p}"`).join(", ")}],`,
+    `  network: "blocked",`,
+    `  theme: { color: "${spec.theme.color ?? "#c8a96e"}", background: "${spec.theme.background ?? "#1a1a1a"}" },`,
+    `});`,
+  ].join("\n");
+}
+
+const SPEC_TEMPLATE = `# App Spec: My App
+
+> Generated by \`dotuix spec init\`. Fill in the sections below, then
+> ask your AI assistant to implement the project.
+>
+> Commands:
+>   dotuix spec validate app.spec.md   # check before handing to AI
+>   dotuix spec scaffold app.spec.md   # preview generated config + template
+
+## Identity
+
+- id: com.example.my-app
+- name: My App
+- mode: window          # window | kiosk
+- state: device         # device (persists per-viewer) | file (embedded in archive)
+- schemaVersion: 1
+- framework: react-ts   # vanilla-ts | react-ts | vue-ts | form | report
+
+## Data Model
+
+| Type    | Key fields                                  |
+| ------- | ------------------------------------------- |
+| item    | name, status, createdAt                     |
+
+## Screens
+
+1. **List** — show all items with status filter and search
+2. **Detail** — item detail with edit and delete
+3. **New item** — form to create a new item
+
+## Seed Data
+
+- 5 sample items with varied statuses
+
+## Permissions
+
+- clipboard-write
+- notifications
+
+## Theme
+
+- color: #c8a96e
+- background: #1a1a1a
+`;
+
+function cmdSpecInit(args: string[]) {
+  const outPath = resolve(pos(args)[0] ?? "app.spec.md");
+  if (existsSync(outPath)) {
+    console.error(c.red("✗") + ` Already exists: ${outPath}`);
+    process.exit(1);
+  }
+  writeFileSync(outPath, SPEC_TEMPLATE, "utf8");
+  const rel = outPath.startsWith(process.cwd())
+    ? outPath.slice(process.cwd().length + 1)
+    : outPath;
+  console.log(`\n  ${c.green("✓")} Created ${c.bold(rel)}\n`);
+  console.log(`  Edit it, then:\n`);
+  console.log(`    ${c.cyan(`dotuix spec validate`)} ${rel}`);
+  console.log(`    ${c.cyan(`dotuix spec scaffold`)} ${rel}\n`);
+}
+
+function printSpecSummary(spec: AppSpec): void {
+  console.log(`  ${c.bold("App:")}         ${spec.identity.name ?? "(unnamed)"}`);
+  console.log(`  ${c.bold("ID:")}          ${spec.identity.id ?? "(not set)"}`);
+  console.log(
+    `  ${c.bold("Mode:")}        ${spec.identity.mode ?? "window"}` +
+    `  /  state: ${spec.identity.state ?? "device"}`,
+  );
+  console.log(`  ${c.bold("Template:")}    ${chooseTemplate(spec)}`);
+  console.log(`  ${c.bold("Screens:")}     ${spec.screens.length}`);
+  if (spec.dataModel.length > 0)
+    console.log(`  ${c.bold("Data types:")} ${spec.dataModel.map((d) => d.type).join(", ")}`);
+  console.log();
+}
+
+function cmdSpecValidate(args: string[]) {
+  const specPath = resolve(pos(args)[0] ?? "app.spec.md");
+  if (!existsSync(specPath)) {
+    console.error(c.red("✗") + ` File not found: ${specPath}`);
+    process.exit(1);
+  }
+  const spec = parseSpec(readFileSync(specPath, "utf8"));
+  const { errors, warnings } = validateSpec(spec);
+  if (errors.length > 0) {
+    console.log(`\n  ${c.red("✗")} ${errors.length} error${errors.length > 1 ? "s" : ""}:\n`);
+    for (const e of errors) console.log(`    ${c.red("•")} ${e}`);
+  }
+  if (warnings.length > 0) {
+    console.log(`\n  ${c.yellow("⚠")} ${warnings.length} warning${warnings.length > 1 ? "s" : ""}:\n`);
+    for (const w of warnings) console.log(`    ${c.yellow("•")} ${w}`);
+  }
+  if (errors.length === 0) {
+    console.log(
+      `\n  ${c.green("✓")} Spec is valid` +
+      (warnings.length > 0 ? ` (${warnings.length} warning${warnings.length > 1 ? "s" : ""})` : "") +
+      " — ready to hand to AI\n",
+    );
+    printSpecSummary(spec);
+  } else {
+    process.exit(1);
+  }
+}
+
+function cmdSpecScaffold(args: string[]) {
+  const specPath = resolve(pos(args)[0] ?? "app.spec.md");
+  if (!existsSync(specPath)) {
+    console.error(c.red("✗") + ` File not found: ${specPath}`);
+    process.exit(1);
+  }
+  const spec = parseSpec(readFileSync(specPath, "utf8"));
+  const { errors } = validateSpec(spec);
+  if (errors.length > 0) {
+    console.error(c.red("✗") + ` Spec has errors. Run ${c.cyan("dotuix spec validate")} first.`);
+    process.exit(1);
+  }
+
+  const displayName = spec.identity.name ?? "my-app";
+  const slug = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const template = chooseTemplate(spec);
+  const outDir = opt(args, "-o", "--output") ?? slug;
+  const configContent = specToUixConfig(spec, slug);
+
+  const srcEntry =
+    template === "react-ts" || template === "report" ? "src/main.tsx" : "src/main.ts";
+  const srcComponent =
+    template === "react-ts" ? "src/App.tsx" :
+    template === "report"   ? "src/Report.tsx" :
+    template === "vue-ts"   ? "src/App.vue" : null;
+
+  const templateFiles = [
+    "package.json", "vite.config.ts", "tsconfig.json", "index.html",
+    srcEntry, ...(srcComponent ? [srcComponent] : []), "src/style.css", "README.md",
+  ];
+
+  console.log(`\n  ${c.bold("Spec scaffold:")} ${basename(specPath)}\n`);
+  console.log(`  ${c.bold("Template:")}   ${c.cyan(template)}`);
+  console.log(`  ${c.bold("Output dir:")} ${outDir}/\n`);
+
+  console.log(`  ${c.bold("Files that would be created:")}\n`);
+  for (const f of ["uix.config.ts", ...templateFiles])
+    console.log(`    ${c.muted("+")} ${outDir}/${f}`);
+
+  console.log(`\n  ${c.bold("Generated uix.config.ts:")}\n`);
+  for (const line of configContent.split("\n"))
+    console.log(`    ${c.muted(line)}`);
+
+  if (spec.dataModel.length > 0) {
+    console.log(
+      `\n  ${c.bold(`Data model (${spec.dataModel.length} type${spec.dataModel.length > 1 ? "s" : ""}):`)}\n`,
+    );
+    for (const d of spec.dataModel)
+      console.log(`    ${c.cyan(d.type.padEnd(14))} ${c.muted(d.fields.join(", "))}`);
+  }
+
+  if (spec.screens.length > 0) {
+    console.log(`\n  ${c.bold(`Screens (${spec.screens.length}):`)}\n`);
+    spec.screens.forEach((s, i) => console.log(`    ${c.muted(`${i + 1}.`)} ${s}`));
+  }
+
+  if (spec.seedData.length > 0) {
+    console.log(`\n  ${c.bold("Seed data:")}\n`);
+    for (const s of spec.seedData) console.log(`    ${c.muted("•")} ${s}`);
+  }
+
+  console.log(`\n  ${c.bold("Next steps:")}\n`);
+  console.log(`    1. ${c.cyan(`dotuix create ${slug} -t ${template}`)}`);
+  console.log(`    2. Ask your AI to implement the screens from ${basename(specPath)}`);
+  console.log(`    3. ${c.cyan("pnpm install && pnpm dev")}`);
+  console.log(`    4. ${c.cyan("pnpm build")} ${c.muted(`# → ${slug}.uix`)}\n`);
+}
+
+async function cmdSpec(args: string[]) {
+  const sub = args[0];
+  if (!sub) {
+    console.error(c.red("✗") + " Usage: dotuix spec <validate|scaffold|init> [args]");
+    process.exit(1);
+  }
+  const subArgs = args.slice(1);
+  if (sub === "validate") { cmdSpecValidate(subArgs); return; }
+  if (sub === "scaffold") { cmdSpecScaffold(subArgs); return; }
+  if (sub === "init")     { cmdSpecInit(subArgs);     return; }
+  console.error(
+    c.red("✗") + ` Unknown spec subcommand "${sub}". Use: validate, scaffold, init`,
+  );
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
 // build / dev — thin Vite wrappers
 // ---------------------------------------------------------------------------
 
@@ -1398,6 +1726,15 @@ function printHelp() {
     ${c.cyan(
       "create",
     )}   <name> [-t vanilla-ts|react-ts|vue-ts|form|report]  Scaffold a Vite project
+    ${c.cyan(
+      "spec init",
+    )}  [file]                               Create a starter app.spec.md
+    ${c.cyan(
+      "spec validate",
+    )} <spec.md>                            Validate a spec file
+    ${c.cyan(
+      "spec scaffold",
+    )} <spec.md> [-o dir]                   Preview template + config from spec
 
   ${c.bold("Examples:")}
     dotuix pack ./my-app
@@ -1415,6 +1752,9 @@ function printHelp() {
     dotuix device-id
     dotuix create my-pos -t react-ts
     dotuix create my-invoice -t form
+    dotuix spec init
+    dotuix spec validate app.spec.md
+    dotuix spec scaffold app.spec.md
 `);
 }
 
@@ -1481,6 +1821,9 @@ async function main() {
       break;
     case "create":
       await cmdCreate(rest);
+      break;
+    case "spec":
+      await cmdSpec(rest);
       break;
     default:
       console.error(

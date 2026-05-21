@@ -85,7 +85,7 @@ Viewer flow:
 
 ---
 
-### Phase 3 — `.uixdata` Bundle Format + CLI Export/Import
+### Phase 3 — `.uixdata` Bundle Format + CLI Export/Import ✅ Done (`7d39ec5`)
 
 **Goal:** Give users explicit, safe tools to move data from one version of an app to another. The original file is never touched.
 
@@ -133,7 +133,7 @@ In-app UX: "Transfer my data → Export bundle" → save `.uixdata` → open new
 
 ---
 
-### Phase 4 — In-App `exportBundle` / `importBundle` Bridge Methods
+### Phase 4 — In-App `exportBundle` / `importBundle` Bridge Methods ← **CURRENT**
 
 Expose Phase 3 bundle I/O through the runtime bridge so apps can build their own transfer UI without requiring the CLI.
 

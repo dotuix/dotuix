@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read, Write};
 use std::path::Component;
 use std::sync::{Arc, Mutex};
@@ -427,6 +427,39 @@ fn html_with_injected_bridge(
             .into_bytes()
     } else {
         let mut out = script.into_bytes();
+        out.extend_from_slice(html_bytes);
+        out
+    }
+}
+
+fn script_tag_to_source(script_tag: &str) -> String {
+    script_tag
+        .strip_prefix("<script>")
+        .and_then(|body| body.strip_suffix("</script>"))
+        .unwrap_or(script_tag)
+        .to_string()
+}
+
+fn fallback_bridge_script_source(manifest_json: &str, stored_schema_version: u32) -> String {
+    let mut out = String::new();
+    out.push_str(&script_tag_to_source(diagnostics_script()));
+    out.push('\n');
+    out.push_str(&script_tag_to_source(&bridge_script(
+        manifest_json,
+        stored_schema_version,
+    )));
+    out
+}
+
+fn html_with_external_bridge_loader(html_bytes: &[u8], bridge_file_name: &str) -> Vec<u8> {
+    let script_tag = format!(r#"<script src="./{bridge_file_name}"></script>"#);
+    let html = String::from_utf8_lossy(html_bytes);
+
+    if html.contains("<head>") {
+        html.replacen("<head>", &format!("<head>{script_tag}"), 1)
+            .into_bytes()
+    } else {
+        let mut out = script_tag.into_bytes();
         out.extend_from_slice(html_bytes);
         out
     }
@@ -2125,6 +2158,10 @@ fn prepare_iframe_fallback_entry(
     std::fs::create_dir_all(&root)
         .map_err(|e| format!("Cannot create fallback web root {}: {e}", root.display()))?;
 
+    let bridge_file_name = "__dotuix_viewer_bridge.js";
+    let bridge_script = fallback_bridge_script_source(&manifest_json, stored_schema_version);
+    let mut bridge_written_dirs = HashSet::<std::path::PathBuf>::new();
+
     for (raw_path, bytes) in files {
         let Some(rel_path) = archive_relative_path(&raw_path) else {
             continue;
@@ -2142,7 +2179,22 @@ fn prepare_iframe_fallback_entry(
 
         let rel_for_mime = rel_path.to_string_lossy().replace('\\', "/");
         let payload = if mime_for(&rel_for_mime).starts_with("text/html") {
-            html_with_injected_bridge(&bytes, &manifest_json, stored_schema_version)
+            let bridge_dir = dest
+                .parent()
+                .map(|parent| parent.to_path_buf())
+                .unwrap_or_else(|| root.clone());
+
+            if bridge_written_dirs.insert(bridge_dir.clone()) {
+                let bridge_path = bridge_dir.join(bridge_file_name);
+                std::fs::write(&bridge_path, bridge_script.as_bytes()).map_err(|e| {
+                    format!(
+                        "Cannot write fallback bridge script {}: {e}",
+                        bridge_path.display()
+                    )
+                })?;
+            }
+
+            html_with_external_bridge_loader(&bytes, bridge_file_name)
         } else {
             bytes
         };

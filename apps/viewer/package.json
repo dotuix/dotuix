@@ -1,12 +1,14 @@
 {
   "name": "@dotuix/viewer",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Desktop viewer — Tauri (Rust + WebView)",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
+    "build:compact": "tauri build && pnpm clean:tauri-cache",
+    "clean:tauri-cache": "rm -rf src-tauri/target/debug src-tauri/target/release/deps src-tauri/target/release/build src-tauri/target/release/incremental src-tauri/target/release/.fingerprint",
     "vite:dev": "vite",
     "vite:build": "vite build"
   },

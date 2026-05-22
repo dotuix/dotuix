@@ -1,4 +1,10 @@
-import { useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import DbViewer from "./components/DbViewer";
@@ -75,7 +81,7 @@ function Spinner({ size = 16 }: { size?: number }) {
 }
 
 type LoadResult =
-  | { status: "loaded"; manifest: string }
+  | { status: "loaded"; manifest: string; path: string }
   | { status: "pin_required"; app_name: string; app_id: string }
   | {
       status: "license_required";
@@ -88,6 +94,7 @@ type LoadResult =
 type Manifest = {
   name?: string;
   expires?: string | null;
+  network?: "blocked" | "allowed";
   signature?: { algorithm: string };
 };
 
@@ -105,8 +112,10 @@ type ViewerState =
   | {
       status: "loaded";
       manifestName: string;
+      appPath: string;
       expires?: string;
       signed: boolean;
+      networkAllowed: boolean;
     }
   | { status: "error"; message: string };
 
@@ -116,8 +125,10 @@ function handleLoadResult(result: LoadResult): ViewerState {
     return {
       status: "loaded",
       manifestName: m.name ?? "UIX App",
+      appPath: result.path,
       expires: m.expires ?? undefined,
       signed: !!m.signature,
+      networkAllowed: m.network === "allowed",
     };
   }
   if (result.status === "license_required") {
@@ -136,8 +147,36 @@ function daysUntil(dateStr: string): number {
   return Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86_400_000);
 }
 
+const RECENT_FILES_KEY = "dotuix.viewer.recent.files";
+
+function readRecentFiles(): string[] {
+  try {
+    const raw = window.localStorage.getItem(RECENT_FILES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((p): p is string => typeof p === "string");
+  } catch {
+    return [];
+  }
+}
+
+function writeRecentFiles(paths: string[]) {
+  try {
+    window.localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(paths));
+  } catch {
+    // Ignore storage errors; viewer still works without recents persistence.
+  }
+}
+
+function filenameFromPath(path: string): string {
+  const parts = path.split(/[/\\]/);
+  return parts[parts.length - 1] || path;
+}
+
 export default function App() {
   const [state, setState] = useState<ViewerState>({ status: "idle" });
+  const [recentFiles, setRecentFiles] = useState<string[]>(() => readRecentFiles());
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
@@ -149,6 +188,55 @@ export default function App() {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  const registerRecentFile = useCallback((path: string) => {
+    const normalized = path.trim();
+    if (!normalized) return;
+    setRecentFiles((prev) => {
+      const next = [normalized, ...prev.filter((p) => p !== normalized)].slice(
+        0,
+        12,
+      );
+      writeRecentFiles(next);
+      return next;
+    });
+  }, []);
+
+  const clearRecentFiles = useCallback(() => {
+    setRecentFiles([]);
+    writeRecentFiles([]);
+  }, []);
+
+  const removeRecentFile = useCallback((path: string) => {
+    setRecentFiles((prev) => {
+      const next = prev.filter((p) => p !== path);
+      writeRecentFiles(next);
+      return next;
+    });
+  }, []);
+
+  const applyLoadResult = useCallback(
+    (result: LoadResult) => {
+      if (result.status === "loaded") {
+        registerRecentFile(result.path);
+      }
+      setState(handleLoadResult(result));
+    },
+    [registerRecentFile],
+  );
+
+  const loadPath = useCallback(
+    async (path: string) => {
+      setState({ status: "loading" });
+      try {
+        const result = await invoke<LoadResult>("load_uix", { path });
+        applyLoadResult(result);
+      } catch (err) {
+        setState({ status: "error", message: String(err) });
+      }
+    },
+    [applyLoadResult],
+  );
 
   // ── Bridge: relay postMessages from the uix:// iframe to Tauri ──────────
   // useLayoutEffect fires before browser paint, so the listener is always
@@ -184,8 +272,13 @@ export default function App() {
   // ── Fetch db paths when a .uix is loaded ────────────────────────────────
   useEffect(() => {
     if (state.status === "loaded") {
-      invoke<{ state_path: string | null; data_path: string | null }>("get_db_paths")
-        .then((p) => { setDbStatePath(p.state_path); setDbDataPath(p.data_path); })
+      invoke<{ state_path: string | null; data_path: string | null }>(
+        "get_db_paths",
+      )
+        .then((p) => {
+          setDbStatePath(p.state_path);
+          setDbDataPath(p.data_path);
+        })
         .catch(() => {});
     } else {
       setDbStatePath(null);
@@ -198,23 +291,33 @@ export default function App() {
   useEffect(() => {
     invoke<string | null>("get_initial_file").then((path) => {
       if (!path) return;
-      setState({ status: "loading" });
-      invoke<LoadResult>("load_uix", { path })
-        .then((result) => setState(handleLoadResult(result)))
-        .catch((err) => setState({ status: "error", message: String(err) }));
+      void loadPath(path);
     });
-  }, []);
+  }, [loadPath]);
 
   // ── Menu + file-drop events from Tauri ───────────────────────────────────
   useEffect(() => {
     const unsubs: Array<() => void> = [];
 
-    listen("menu-open-file", () => {
+    listen("menu-open-file", async () => {
       const s = stateRef.current;
+      if (s.status === "loaded") {
+        try {
+          const path = await invoke<string>("pick_uix_path");
+          await invoke("open_uix_in_new_process", { path });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg !== "No file selected") {
+            setState({ status: "error", message: msg });
+          }
+        }
+        return;
+      }
+
       if (s.status === "idle" || s.status === "error") {
         setState({ status: "loading" });
         invoke<LoadResult>("pick_and_load_uix")
-          .then((r) => setState(handleLoadResult(r)))
+          .then((r) => applyLoadResult(r))
           .catch((err) => {
             const msg = err instanceof Error ? err.message : String(err);
             setState(
@@ -238,10 +341,7 @@ export default function App() {
       const path = (event.payload.paths ?? []).find((p) => p.endsWith(".uix"));
       if (!path) return;
       setIsDragOver(false);
-      setState({ status: "loading" });
-      invoke<LoadResult>("load_uix", { path })
-        .then((r) => setState(handleLoadResult(r)))
-        .catch((err) => setState({ status: "error", message: String(err) }));
+      void loadPath(path);
     }).then((u) => unsubs.push(u));
 
     listen("tauri://drag-enter", () => setIsDragOver(true)).then((u) =>
@@ -253,20 +353,22 @@ export default function App() {
 
     // macOS file association: fired by RunEvent::Opened when a .uix is opened
     listen<string>("uix-file-opened", (event) => {
-      setState({ status: "loading" });
-      invoke<LoadResult>("load_uix", { path: event.payload })
-        .then((r) => setState(handleLoadResult(r)))
-        .catch((err) => setState({ status: "error", message: String(err) }));
+      const s = stateRef.current;
+      if (s.status === "loaded" && s.appPath === event.payload) {
+        invoke("focus_main_window").catch(() => {});
+        return;
+      }
+      void loadPath(event.payload);
     }).then((u) => unsubs.push(u));
 
     return () => unsubs.forEach((u) => u());
-  }, []);
+  }, [applyLoadResult, loadPath]);
 
   const openFile = useCallback(async () => {
     setState({ status: "loading" });
     try {
       const result = await invoke<LoadResult>("pick_and_load_uix");
-      setState(handleLoadResult(result));
+      applyLoadResult(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setState(
@@ -275,7 +377,7 @@ export default function App() {
           : { status: "error", message: msg },
       );
     }
-  }, []);
+  }, [applyLoadResult]);
 
   const submitPin = useCallback(async () => {
     if (!pin.trim()) return;
@@ -283,13 +385,25 @@ export default function App() {
     try {
       const result = await invoke<LoadResult>("unlock_with_pin", { pin });
       setPin("");
-      setState(handleLoadResult(result));
+      applyLoadResult(result);
     } catch (err) {
       setPinError(err instanceof Error ? err.message : String(err));
     }
-  }, [pin]);
+  }, [applyLoadResult, pin]);
 
   const closeApp = useCallback(() => setState({ status: "idle" }), []);
+
+  const openInNewWindow = useCallback(async () => {
+    try {
+      const path = await invoke<string>("pick_uix_path");
+      await invoke("open_uix_in_new_process", { path });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg !== "No file selected") {
+        setState({ status: "error", message: msg });
+      }
+    }
+  }, []);
 
   // ── ⌘O / Ctrl+O keyboard shortcut to open a file ────────────────────────
   useEffect(() => {
@@ -297,12 +411,18 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
         e.preventDefault();
         const s = stateRef.current;
-        if (s.status === "idle" || s.status === "error") openFile();
+        if (s.status === "idle" || s.status === "error") {
+          openFile();
+          return;
+        }
+        if (s.status === "loaded") {
+          openInNewWindow();
+        }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [openFile]);
+  }, [openFile, openInNewWindow]);
 
   const toggleFullscreen = useCallback(
     () => invoke("toggle_fullscreen").catch(console.warn),
@@ -348,6 +468,20 @@ export default function App() {
                 Signed
               </span>
             )}
+            <span
+              className={`badge ${
+                state.networkAllowed
+                  ? "badge--network-on"
+                  : "badge--network-off"
+              }`}
+              title={
+                state.networkAllowed
+                  ? "Network access is enabled by this app manifest."
+                  : "Network access is blocked by this app manifest."
+              }
+            >
+              {state.networkAllowed ? "Network On" : "Network Off"}
+            </span>
             {days !== null && (
               <span
                 className={`badge ${
@@ -361,13 +495,57 @@ export default function App() {
           <div className="toolbar-actions">
             <button
               className="toolbar-icon-btn"
+              onClick={openInNewWindow}
+              title="Open another .uix file in a new window"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                <rect
+                  x="4"
+                  y="7"
+                  width="13"
+                  height="13"
+                  rx="2"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+                <path
+                  d="M11 4h7a2 2 0 0 1 2 2v7"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M10 14l10-10"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+            <button
+              className="toolbar-icon-btn"
               onClick={() => setDbOpen((o) => !o)}
               title="DB Viewer (diagnostics)"
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                <ellipse cx="12" cy="5" rx="9" ry="3" stroke="currentColor" strokeWidth="1.5"/>
-                <path d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5" stroke="currentColor" strokeWidth="1.5"/>
-                <path d="M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3" stroke="currentColor" strokeWidth="1.5"/>
+                <ellipse
+                  cx="12"
+                  cy="5"
+                  rx="9"
+                  ry="3"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+                <path
+                  d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+                <path
+                  d="M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
               </svg>
             </button>
             <button
@@ -391,13 +569,18 @@ export default function App() {
           ref={iframeRef}
           src="uix://localhost/index.html"
           className="viewer-frame"
-          title={state.manifestName}
+          title={`${state.manifestName} · ${state.appPath}`}
         />
         {dbOpen && (
           <div className="db-overlay">
             <div className="db-overlay-header">
               <span>DB Viewer</span>
-              <button className="db-overlay-close" onClick={() => setDbOpen(false)}>✕</button>
+              <button
+                className="db-overlay-close"
+                onClick={() => setDbOpen(false)}
+              >
+                ✕
+              </button>
             </div>
             <DbViewer statePath={dbStatePath} dataPath={dbDataPath} />
           </div>
@@ -460,7 +643,7 @@ export default function App() {
                 const result = await invoke<LoadResult>("load_uix", {
                   path: uixPath,
                 });
-                setState(handleLoadResult(result));
+                applyLoadResult(result);
               } catch (err) {
                 setState({
                   status: "error",
@@ -556,7 +739,7 @@ export default function App() {
 
   // ── Home / idle / error ──────────────────────────────────────────────────
   return (
-    <div className={`shell${isDragOver ? " shell--dragover" : ""}`}>
+    <div className={`shell shell--home${isDragOver ? " shell--dragover" : ""}`}>
       {isDragOver && (
         <div className="drag-overlay">
           <div className="drag-overlay-inner">
@@ -585,51 +768,112 @@ export default function App() {
           </div>
         </div>
       )}
-      <div className="home-wrap">
-        <div className="brand">
-          <div className="brand-icon">
-            <BrandIcon />
+      <div className="start-shell">
+        <header className="start-header">
+          <div className="start-brand-wrap">
+            <div className="brand-icon">
+              <BrandIcon />
+            </div>
+            <div className="start-brand-copy">
+              <span className="start-brand-name">dotuix Viewer</span>
+              <p className="start-brand-subtitle">Desktop workspace for executable documents</p>
+            </div>
           </div>
-          <span className="brand-name">dotuix</span>
-        </div>
-        <p className="home-sub">The executable document format.</p>
-
-        <div className="drop-zone">
-          <svg
-            className="drop-file-svg"
-            width="38"
-            height="38"
-            viewBox="0 0 24 24"
-            fill="none"
-          >
-            <path
-              d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <polyline
-              points="14 2 14 8 20 8"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <button className="open-btn" onClick={openFile}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                stroke="currentColor"
-                strokeWidth="1.75"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            Open .uix file
+          <button className="start-link-btn" onClick={openInNewWindow}>
+            Open In New Window
           </button>
-          <span className="drop-hint">or drag a .uix file here · ⌘O</span>
+        </header>
+
+        <div className="start-grid">
+          <section className="start-hero">
+            <p className="start-kicker">Home</p>
+            <h1 className="start-title">Open and review UIX apps with a real desktop workflow.</h1>
+            <p className="start-description">
+              Start by opening a document, dragging one into this window, or jumping back into a recent project.
+              dotuix Viewer keeps each app isolated while giving you fast multi-window navigation.
+            </p>
+
+            <div className="start-actions">
+              <button className="open-btn" onClick={openFile}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Open UIX File
+              </button>
+              <button className="start-secondary-btn" onClick={openInNewWindow}>
+                Open In Separate Window
+              </button>
+            </div>
+
+            <div className="start-shortcuts">
+              <span>Quick Open: ⌘O</span>
+              <span>Drag and drop: enabled</span>
+              <span>Multiple documents: enabled</span>
+            </div>
+          </section>
+
+          <aside className="start-side-panel">
+            <div className="start-side-header">
+              <h2>Recent Files</h2>
+              {recentFiles.length > 0 && (
+                <button className="start-link-btn" onClick={clearRecentFiles}>
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {recentFiles.length === 0 ? (
+              <div className="recent-empty-state">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path
+                    d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M14 3v5h5"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <p>No recent files yet.</p>
+                <span>Your recently opened UIX documents will appear here.</span>
+              </div>
+            ) : (
+              <ul className="recent-list">
+                {recentFiles.map((path) => (
+                  <li key={path} className="recent-item">
+                    <button
+                      className="recent-open-btn"
+                      onClick={() => {
+                        void loadPath(path);
+                      }}
+                    >
+                      <span className="recent-name">{filenameFromPath(path)}</span>
+                      <span className="recent-path">{path}</span>
+                    </button>
+                    <button
+                      className="recent-remove-btn"
+                      title="Remove from recent files"
+                      onClick={() => removeRecentFile(path)}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </aside>
         </div>
 
         {state.status === "error" && (
@@ -644,7 +888,6 @@ export default function App() {
             </button>
           </div>
         )}
-
       </div>
     </div>
   );

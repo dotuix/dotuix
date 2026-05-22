@@ -38,6 +38,8 @@ struct AppState {
     state_mode: Mutex<String>,
     /// Data schema version stored in state.db meta table; read on open, updated via schema_version_set.
     stored_schema_version: Arc<Mutex<u32>>,
+    /// Content-Security-Policy served with uix:// HTML responses for the current app.
+    content_security_policy: Arc<Mutex<String>>,
     /// manifest.sync.endpoint — HTTPS URL of the sync server (None if not configured).
     sync_endpoint: Mutex<Option<String>>,
     /// manifest.sync.secret — base64 shared secret for the sync server.
@@ -68,6 +70,7 @@ impl Default for AppState {
             permissions: Mutex::new(Vec::new()),
             state_mode: Mutex::new("file".to_string()),
             stored_schema_version: Arc::new(Mutex::new(1)),
+            content_security_policy: Arc::new(Mutex::new(csp_for_network(false).to_string())),
             sync_endpoint: Mutex::new(None),
             sync_secret: Mutex::new(None),
             pending_files: Mutex::new(None),
@@ -86,7 +89,7 @@ impl Default for AppState {
 #[serde(tag = "status", rename_all = "snake_case")]
 enum LoadResult {
     /// App loaded successfully; caller receives the serialised manifest JSON.
-    Loaded { manifest: String },
+    Loaded { manifest: String, path: String },
     /// App requires a PIN; caller must show a PIN dialog and call unlock_with_pin.
     PinRequired { app_name: String, app_id: String },
     /// App requires a .uixlicense; caller must prompt the user to install one then retry.
@@ -187,6 +190,38 @@ fn lock_file_pid(lock_path: &str) -> Option<u32> {
         .and_then(|s| s.trim().parse::<u32>().ok())
 }
 
+fn canonical_uix_path(path: &str) -> String {
+    std::fs::canonicalize(path)
+        .ok()
+        .and_then(|p| p.to_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| path.to_string())
+}
+
+fn running_lock_owner(path: &str) -> Option<u32> {
+    let lock_path = format!("{path}.lock");
+    lock_file_pid(&lock_path).filter(|pid| pid_is_running(*pid))
+}
+
+#[cfg(target_os = "macos")]
+fn focus_process_by_pid(pid: u32) -> bool {
+    let script = format!(
+        "tell application \"System Events\" to set frontmost of (first process whose unix id is {pid}) to true"
+    );
+    std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn focus_process_by_pid(_pid: u32) -> bool {
+    false
+}
+
 fn gen_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
@@ -211,6 +246,41 @@ fn mime_for(path: &str) -> &'static str {
         "woff"          => "font/woff",
         _               => "application/octet-stream",
     }
+}
+
+fn network_allowed(manifest: &serde_json::Value) -> bool {
+    manifest.get("network").and_then(|v| v.as_str()) == Some("allowed")
+}
+
+fn csp_for_network(allowed: bool) -> &'static str {
+    if allowed {
+        "default-src 'self' uix: data: blob: https:; \
+         script-src 'self' 'unsafe-inline' uix: https:; \
+         style-src 'self' 'unsafe-inline' uix: https:; \
+         img-src 'self' uix: data: blob: https:; \
+         font-src 'self' uix: data: https:; \
+         media-src 'self' uix: data: blob: https:; \
+         connect-src 'self' uix: https: wss:; \
+         frame-src 'self' uix: https:; \
+         object-src 'none'; \
+         base-uri 'none'"
+    } else {
+        "default-src 'self' uix: data: blob:; \
+         script-src 'self' 'unsafe-inline' uix:; \
+         style-src 'self' 'unsafe-inline' uix:; \
+         img-src 'self' uix: data: blob:; \
+         font-src 'self' uix: data:; \
+         media-src 'self' uix: data: blob:; \
+         connect-src 'self' uix:; \
+         frame-src 'self' uix:; \
+         object-src 'none'; \
+         base-uri 'none'; \
+         form-action 'none'"
+    }
+}
+
+fn csp_for_manifest(manifest: &serde_json::Value) -> &'static str {
+    csp_for_network(network_allowed(manifest))
 }
 
 // ---------------------------------------------------------------------------
@@ -747,6 +817,7 @@ fn complete_load(
         .get("state").and_then(|s| s.get("mode")).and_then(|v| v.as_str())
         .unwrap_or("file").to_string();
     *state.stored_schema_version.lock().unwrap() = stored_schema_version;
+    *state.content_security_policy.lock().unwrap() = csp_for_manifest(manifest).to_string();
     *state.sync_endpoint.lock().unwrap() = manifest
         .get("sync").and_then(|s| s.get("endpoint")).and_then(|v| v.as_str())
         .map(str::to_string);
@@ -755,7 +826,10 @@ fn complete_load(
         .map(str::to_string);
     *state.license_info.lock().unwrap() = license_payload;
 
-    Ok(LoadResult::Loaded { manifest: manifest_json })
+    Ok(LoadResult::Loaded {
+        manifest: manifest_json,
+        path: path.to_string(),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1383,6 +1457,11 @@ async fn pick_and_load_uix(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<LoadResult, String> {
+    let path = pick_uix_path_inner(&app).await?;
+    probe_uix_inner(&path, &app, &state)
+}
+
+async fn pick_uix_path_inner(app: &AppHandle) -> Result<String, String> {
     use tauri_plugin_dialog::DialogExt;
     use tokio::sync::oneshot;
 
@@ -1397,7 +1476,12 @@ async fn pick_and_load_uix(
         .map_err(|_| "Dialog closed unexpectedly".to_string())?
         .ok_or_else(|| "No file selected".to_string())?;
 
-    probe_uix_inner(&file.to_string(), &app, &state)
+    Ok(file.to_string())
+}
+
+#[tauri::command]
+async fn pick_uix_path(app: AppHandle) -> Result<String, String> {
+    pick_uix_path_inner(&app).await
 }
 
 #[tauri::command]
@@ -1407,6 +1491,33 @@ fn load_uix(
     state: State<'_, AppState>,
 ) -> Result<LoadResult, String> {
     probe_uix_inner(&path, &app, &state)
+}
+
+#[tauri::command]
+fn open_uix_in_new_process(path: String) -> Result<(), String> {
+    let normalized_path = canonical_uix_path(&path);
+    if let Some(owner_pid) = running_lock_owner(&normalized_path).or_else(|| running_lock_owner(&path)) {
+        if owner_pid != std::process::id() {
+            if focus_process_by_pid(owner_pid) {
+                return Ok(());
+            }
+            return Err("This .uix file is already open, but the existing window could not be focused.".to_string());
+        }
+        return Ok(());
+    }
+
+    let exe = std::env::current_exe().map_err(|e| format!("Cannot locate viewer executable: {e}"))?;
+    std::process::Command::new(exe)
+        .arg(normalized_path)
+        .spawn()
+        .map_err(|e| format!("Cannot open a new viewer window: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn focus_main_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.show().map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1426,6 +1537,7 @@ fn close_uix(state: State<'_, AppState>) {
     *state.uix_path.lock().unwrap() = String::new();
     *state.state_db_path.lock().unwrap() = None;
     *state.license_info.lock().unwrap() = None;
+    *state.content_security_policy.lock().unwrap() = csp_for_network(false).to_string();
     state.files.lock().unwrap().clear();
 }
 
@@ -2745,6 +2857,7 @@ pub fn run() {
     // through Tauri State (UriSchemeContext has no .state() method).
     let protocol_files = Arc::clone(&app_state.files);
     let protocol_schema_version = Arc::clone(&app_state.stored_schema_version);
+    let protocol_csp = Arc::clone(&app_state.content_security_policy);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -2756,7 +2869,14 @@ pub fn run() {
             // On macOS, the deep-link plugin is needed; argv works in dev mode.
             let args: Vec<String> = std::env::args().collect();
             if let Some(path) = args.get(1).filter(|p| p.ends_with(".uix")) {
-                *app.state::<AppState>().initial_path.lock().unwrap() = Some(path.clone());
+                let normalized_path = canonical_uix_path(path);
+                if let Some(owner_pid) = running_lock_owner(&normalized_path) {
+                    if owner_pid != std::process::id() && focus_process_by_pid(owner_pid) {
+                        app.handle().exit(0);
+                        return Ok(());
+                    }
+                }
+                *app.state::<AppState>().initial_path.lock().unwrap() = Some(normalized_path);
             }
 
             // --- Window refs ---
@@ -2809,7 +2929,6 @@ pub fn run() {
             use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
             let open_m  = MenuItemBuilder::with_id("open_file", "Open\u{2026}").accelerator("CmdOrCtrl+O").build(app)?;
             let close_m = MenuItemBuilder::with_id("close_app", "Close File").accelerator("CmdOrCtrl+W").build(app)?;
-            let fs_m    = MenuItemBuilder::with_id("toggle_fullscreen", "Enter Full Screen").accelerator("Ctrl+Cmd+F").build(app)?;
             let undo_m  = MenuItemBuilder::with_id("undo", "Undo").accelerator("CmdOrCtrl+Z").build(app)?;
             let redo_m  = MenuItemBuilder::with_id("redo", "Redo").accelerator("CmdOrCtrl+Shift+Z").build(app)?;
             let cut_m   = MenuItemBuilder::with_id("cut", "Cut").accelerator("CmdOrCtrl+X").build(app)?;
@@ -2822,19 +2941,13 @@ pub fn run() {
                 .item(&undo_m).item(&redo_m).separator()
                 .item(&cut_m).item(&copy_m).item(&paste_m).separator()
                 .item(&selall_m).build()?;
-            let view_menu = SubmenuBuilder::new(app, "View")
-                .item(&fs_m).build()?;
-            let menu = MenuBuilder::new(app).item(&file_menu).item(&edit_menu).item(&view_menu).build()?;
+            let menu = MenuBuilder::new(app).item(&file_menu).item(&edit_menu).build()?;
             app.set_menu(menu)?;
 
             app.on_menu_event(move |_app, event| {
                 match event.id().as_ref() {
                     "open_file"         => { win_for_menu.emit("menu-open-file", ()).ok(); }
                     "close_app"         => { win_for_menu.emit("menu-close-app", ()).ok(); }
-                    "toggle_fullscreen" => {
-                        let is = win_for_menu.is_fullscreen().unwrap_or(false);
-                        win_for_menu.set_fullscreen(!is).ok();
-                    }
                     _ => {}
                 }
             });
@@ -2851,7 +2964,8 @@ pub fn run() {
             match map.get(path) {
                 Some(data) => {
                     let mime = mime_for(path);
-                    let body = if mime.starts_with("text/html") {
+                    let is_html = mime.starts_with("text/html");
+                    let body = if is_html {
                         let manifest_json = map
                             .get("manifest.json")
                             .map(|b| String::from_utf8_lossy(b).into_owned())
@@ -2871,12 +2985,17 @@ pub fn run() {
                         data.to_vec()
                     };
 
-                    Response::builder()
+                    let mut response = Response::builder()
                         .status(200)
                         .header("Content-Type", mime)
-                        .header("Access-Control-Allow-Origin", "*")
-                        .body(body)
-                        .unwrap()
+                        .header("Access-Control-Allow-Origin", "*");
+
+                    if is_html {
+                        let csp = protocol_csp.lock().unwrap().clone();
+                        response = response.header("Content-Security-Policy", csp);
+                    }
+
+                    response.body(body).unwrap()
                 }
                 None => Response::builder()
                     .status(404)
@@ -2887,7 +3006,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             pick_and_load_uix,
+            pick_uix_path,
             load_uix,
+            open_uix_in_new_process,
+            focus_main_window,
             close_uix,
             unlock_with_pin,
             get_initial_file,
@@ -2951,11 +3073,40 @@ pub fn run() {
                         .iter()
                         .filter_map(|u| u.to_file_path().ok())
                         .filter(|p| p.extension().map(|e| e == "uix").unwrap_or(false))
-                        .filter_map(|p| p.to_str().map(String::from))
+                        .filter_map(|p| p.to_str().map(canonical_uix_path))
                         .collect();
                     if let Some(path) = paths.first().cloned() {
-                        // Store so get_initial_file() picks it up on frontend mount
                         let state = app.state::<AppState>();
+                        let current_path = state.uix_path.lock().unwrap().clone();
+                        let current_path = if current_path.is_empty() {
+                            current_path
+                        } else {
+                            canonical_uix_path(&current_path)
+                        };
+                        let already_open_here = !current_path.is_empty() && current_path == path;
+
+                        if already_open_here {
+                            if let Some(win) = app.get_webview_window("main") {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                            }
+                            return;
+                        }
+
+                        if let Some(owner_pid) = running_lock_owner(&path) {
+                            if owner_pid != std::process::id() && focus_process_by_pid(owner_pid) {
+                                return;
+                            }
+                        }
+
+                        // If this window already has another file open, keep it untouched
+                        // and open the newly requested app in a separate viewer process.
+                        if !current_path.is_empty() {
+                            let _ = open_uix_in_new_process(path);
+                            return;
+                        }
+
+                        // Store so get_initial_file() picks it up on frontend mount
                         *state.initial_path.lock().unwrap() = Some(path.clone());
                         // Also emit for the case where the window is already loaded
                         if let Some(win) = app.get_webview_window("main") {
@@ -2982,6 +3133,23 @@ mod tests {
 
     fn filters(pairs: &[(&str, serde_json::Value)]) -> HashMap<String, serde_json::Value> {
         pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+    }
+
+    #[test]
+    fn manifest_network_defaults_to_blocked() {
+        let manifest = json!({});
+
+        assert!(!network_allowed(&manifest));
+        assert!(csp_for_manifest(&manifest).contains("connect-src 'self' uix:"));
+        assert!(!csp_for_manifest(&manifest).contains("connect-src 'self' uix: https:"));
+    }
+
+    #[test]
+    fn manifest_network_allowed_enables_https_connects() {
+        let manifest = json!({ "network": "allowed" });
+
+        assert!(network_allowed(&manifest));
+        assert!(csp_for_manifest(&manifest).contains("connect-src 'self' uix: https: wss:"));
     }
 
     // ── order_term ────────────────────────────────────────────────────────────

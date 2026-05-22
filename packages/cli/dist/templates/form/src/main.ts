@@ -1,3 +1,4 @@
+/// <reference types="@dotuix/types" />
 /**
  * main.ts — form document entry point
  *

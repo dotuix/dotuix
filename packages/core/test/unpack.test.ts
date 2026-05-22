@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { readFileSync, rmSync, mkdtempSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { zipSync } from "fflate";
 import { pack } from "../src/pack.js";
 import { unpack, unpackBuffer } from "../src/unpack.js";
 
@@ -72,5 +73,20 @@ describe("unpackBuffer", () => {
 
   it("throws on corrupt data", () => {
     expect(() => unpackBuffer(new Uint8Array([0x00, 0x01, 0x02]))).toThrow();
+  });
+
+  it.each([
+    "../escape.txt",
+    "nested/../../escape.txt",
+    "/tmp/escape.txt",
+    "C:/escape.txt",
+    "..\\escape.txt",
+  ])("rejects unsafe archive path %s", (unsafePath) => {
+    const archive = zipSync({
+      "manifest.json": new TextEncoder().encode("{}"),
+      [unsafePath]: new TextEncoder().encode("bad"),
+    });
+
+    expect(() => unpackBuffer(archive)).toThrow(/Unsafe archive path/);
   });
 });

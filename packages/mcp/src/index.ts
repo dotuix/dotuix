@@ -4,11 +4,11 @@ import { z } from "zod";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { createDataDb } from "@dotuix/core";
+import { createDataDb, resolveSafeChild } from "@dotuix/core";
 
 const execFileAsync = promisify(execFile);
 
@@ -284,8 +284,8 @@ server.tool(
     const written: string[] = [];
 
     for (const file of files) {
-      const fullPath = join(dir, file.path);
-      const parent = fullPath.substring(0, fullPath.lastIndexOf("/"));
+      const fullPath = resolveSafeChild(dir, file.path);
+      const parent = dirname(fullPath);
       await mkdir(parent, { recursive: true });
       await writeFile(fullPath, file.content, "utf8");
       written.push(file.path);
@@ -396,7 +396,7 @@ server.tool(
       ? resolve(directory)
       : join(tmpdir(), `dotuix-${randomUUID()}`);
     await mkdir(parent, { recursive: true });
-    const projectDir = join(parent, name);
+    const projectDir = resolveSafeChild(parent, name);
     await mkdir(projectDir, { recursive: true });
 
     // Stamp ai provenance
@@ -420,8 +420,8 @@ server.tool(
 
     // Write source files
     for (const file of files) {
-      const fullPath = join(projectDir, file.path);
-      const fileParent = fullPath.substring(0, fullPath.lastIndexOf("/"));
+      const fullPath = resolveSafeChild(projectDir, file.path);
+      const fileParent = dirname(fullPath);
       await mkdir(fileParent, { recursive: true });
       await writeFile(fullPath, file.content, "utf8");
     }
@@ -439,7 +439,7 @@ server.tool(
     }
 
     // Pack
-    const outputPath = join(parent, `${name}.uix`);
+    const outputPath = resolveSafeChild(parent, `${name}.uix`);
     const { stdout } = await runDotuix(["pack", projectDir, "-o", outputPath]);
 
     const filesWritten = ["manifest.json", ...files.map((f) => f.path)];

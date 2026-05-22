@@ -1,3 +1,4 @@
+/// <reference types="@dotuix/types" />
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";

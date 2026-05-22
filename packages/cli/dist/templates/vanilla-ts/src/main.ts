@@ -1,3 +1,4 @@
+/// <reference types="@dotuix/types" />
 /**
  * main.ts — entry point for __NAME__
  *

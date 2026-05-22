@@ -1,6 +1,6 @@
-import { pack } from "@dotuix/core";
+import { pack, resolveSafeChild } from "@dotuix/core";
 import { writeFile, mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import type { UIXAiMeta } from "@dotuix/core";
@@ -73,7 +73,7 @@ export async function createUIX(options: CreateUIXOptions): Promise<string> {
     typeof manifest.name === "string"
       ? manifest.name.toLowerCase().replace(/[^a-z0-9-]/g, "-")
       : randomUUID();
-  const projectDir = join(workDir, projectName);
+  const projectDir = resolveSafeChild(workDir, projectName);
   await mkdir(projectDir, { recursive: true });
 
   // Stamp ai provenance
@@ -96,8 +96,8 @@ export async function createUIX(options: CreateUIXOptions): Promise<string> {
 
   // Write source files
   for (const [relativePath, content] of Object.entries(files)) {
-    const fullPath = join(projectDir, relativePath);
-    const parent = fullPath.substring(0, fullPath.lastIndexOf("/"));
+    const fullPath = resolveSafeChild(projectDir, relativePath);
+    const parent = dirname(fullPath);
     if (parent !== projectDir) {
       await mkdir(parent, { recursive: true });
     }

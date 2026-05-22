@@ -96,7 +96,12 @@ jobs:
           workspaces: "./apps/viewer/src-tauri -> target"
 
       - name: Install Node dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate core and viewer
+        run: |
+          pnpm --filter @dotuix/core test
+          pnpm --filter @dotuix/viewer vite:build
 
       - name: Build and upload
         uses: tauri-apps/tauri-action@v0

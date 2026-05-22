@@ -1,5 +1,6 @@
 export { pack, packBuffer } from "./pack.js";
 export { unpack, unpackBuffer } from "./unpack.js";
+export { normalizeArchivePath, resolveSafeChild } from "./paths.js";
 export { validate, validateBuffer } from "./validate.js";
 export {
   readManifest,

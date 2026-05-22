@@ -381,8 +381,7 @@ fn csp_for_network(allowed: bool) -> &'static str {
          frame-src 'self' uix: https:; \
          object-src 'none'; \
          base-uri 'none'; \
-         form-action 'none'; \
-         frame-ancestors 'none'"
+         form-action 'none'"
     } else {
         "default-src 'self' uix: data: blob:; \
          script-src 'self' 'unsafe-inline' uix:; \
@@ -395,8 +394,7 @@ fn csp_for_network(allowed: bool) -> &'static str {
          frame-src 'self' uix:; \
          object-src 'none'; \
          base-uri 'none'; \
-         form-action 'none'; \
-         frame-ancestors 'none'"
+         form-action 'none'"
     }
 }
 

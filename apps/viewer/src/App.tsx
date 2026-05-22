@@ -256,25 +256,49 @@ export default function App() {
   useLayoutEffect(() => {
     if (state.status !== "loaded") return;
 
-    const iframeOrigin = "uix://localhost";
+    const expectedIframeOrigin = "uix://localhost";
+    const normalizeOrigin = (origin: string) =>
+      origin.replace(/\/+$/, "").toLowerCase();
+    const expectedOriginNormalized = normalizeOrigin(expectedIframeOrigin);
+    const iframeSrcOrigin = (() => {
+      const src = iframeRef.current?.src;
+      if (!src) return null;
+      try {
+        return normalizeOrigin(new URL(src).origin);
+      } catch {
+        return null;
+      }
+    })();
 
     const handler = async (e: MessageEvent) => {
       if (e.source !== iframeRef.current?.contentWindow) return;
-      const isOpaqueOrigin = e.origin === "null";
-      if (e.origin !== iframeOrigin && !isOpaqueOrigin) {
+      const rawOrigin = (e.origin ?? "").trim();
+      const isOpaqueOrigin = rawOrigin === "null" || rawOrigin === "";
+      const normalizedOrigin = normalizeOrigin(rawOrigin);
+      const isUixLocalhostOrigin = /^uix:\/\/localhost(?::\d+)?$/i.test(
+        normalizedOrigin,
+      );
+      const originAllowed =
+        isOpaqueOrigin ||
+        normalizedOrigin === expectedOriginNormalized ||
+        (iframeSrcOrigin !== null && normalizedOrigin === iframeSrcOrigin) ||
+        isUixLocalhostOrigin;
+
+      if (!originAllowed) {
         emitDesktopEvent({
           code: "desktop.bridge.origin_rejected",
           severity: "warn",
           reason: "unexpected_origin",
           metadata: {
-            origin: e.origin,
-            expected: iframeOrigin,
+            origin: rawOrigin,
+            expected: expectedIframeOrigin,
+            iframeSrcOrigin,
           },
         });
         return;
       }
 
-      const replyTargetOrigin = isOpaqueOrigin ? "*" : iframeOrigin;
+      const replyTargetOrigin = isOpaqueOrigin ? "*" : rawOrigin;
 
       if (
         typeof e.data !== "object" ||

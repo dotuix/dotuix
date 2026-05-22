@@ -331,6 +331,39 @@ fn protocol_get_file<'a>(
     None
 }
 
+fn decode_hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn percent_decode_path(path: &str) -> String {
+    let bytes = path.as_bytes();
+    let mut output = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(hi), Some(lo)) = (
+                decode_hex_nibble(bytes[i + 1]),
+                decode_hex_nibble(bytes[i + 2]),
+            ) {
+                output.push((hi << 4) | lo);
+                i += 3;
+                continue;
+            }
+        }
+
+        output.push(bytes[i]);
+        i += 1;
+    }
+
+    String::from_utf8_lossy(&output).into_owned()
+}
+
 fn network_allowed(manifest: &serde_json::Value) -> bool {
     manifest.get("network").and_then(|v| v.as_str()) == Some("allowed")
 }
@@ -3526,8 +3559,10 @@ pub fn run() {
             }
 
             let raw_path = req.uri().path().to_string();
-            let path = raw_path.trim_start_matches('/');
-            let path = path.trim_start_matches("./").trim_start_matches(".\\");
+            let decoded_path = percent_decode_path(raw_path.trim_start_matches('/'));
+            let path = decoded_path
+                .trim_start_matches("./")
+                .trim_start_matches(".\\");
             let path = if path.is_empty() { "index.html" } else { path };
 
             let map = protocol_files.lock().unwrap();

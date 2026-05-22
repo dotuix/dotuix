@@ -1,25 +1,24 @@
 import { z } from "zod";
 import type { Manifest } from "./types.js";
+import {
+  MANIFEST_MODES,
+  MANIFEST_NETWORK_POLICIES,
+  MANIFEST_PERMISSIONS,
+  MANIFEST_SECURITY_AUTH,
+  MANIFEST_SECURITY_KDF_DEFAULT_ITERATIONS,
+  MANIFEST_SECURITY_KDF_MIN_ITERATIONS,
+  MANIFEST_SECURITY_KDF,
+  MANIFEST_SIGNATURE_ALGORITHMS,
+} from "./generated/manifest-contract.generated.js";
 
-const PermissionSchema = z.enum([
-  "local-storage",
-  "print",
-  "clipboard-write",
-  "fullscreen",
-  "raw-sql",
-  "local-sync",
-  "file-save",
-  "file-open",
-  "open-url",
-  "notifications",
-]);
+const PermissionSchema = z.enum(MANIFEST_PERMISSIONS);
 
 // ---------------------------------------------------------------------------
 // Security sub-schema — all fields optional, no effect when omitted
 // ---------------------------------------------------------------------------
 
 const UIXSignatureSchema = z.object({
-  algorithm: z.literal("Ed25519"),
+  algorithm: z.enum(MANIFEST_SIGNATURE_ALGORITHMS),
   publicKey: z.string(),
   value: z.string(),
   signedAt: z.string(),
@@ -27,10 +26,21 @@ const UIXSignatureSchema = z.object({
 
 const UIXSecuritySchema = z
   .object({
-    auth: z.enum(["none", "pin"]).optional().default("none"),
+    auth: z
+      .enum(MANIFEST_SECURITY_AUTH)
+      .optional()
+      .default(MANIFEST_SECURITY_AUTH[0]),
     encryptedPaths: z.array(z.string()).optional().default([]),
-    kdf: z.literal("PBKDF2-SHA256").optional().default("PBKDF2-SHA256"),
-    kdfIterations: z.number().int().positive().optional().default(200000),
+    kdf: z
+      .enum(MANIFEST_SECURITY_KDF)
+      .optional()
+      .default(MANIFEST_SECURITY_KDF[0]),
+    kdfIterations: z
+      .number()
+      .int()
+      .min(MANIFEST_SECURITY_KDF_MIN_ITERATIONS)
+      .optional()
+      .default(MANIFEST_SECURITY_KDF_DEFAULT_ITERATIONS),
     keySalt: z.string().optional(),
     maxOpens: z.number().int().positive().optional(),
     screenshot: z.boolean().optional().default(false),
@@ -53,11 +63,14 @@ export const ManifestSchema = z.object({
   version: z.string({ required_error: "version is required" }),
   minViewer: z.string().optional(),
   entry: z.string({ required_error: "entry is required" }),
-  mode: z.enum(["kiosk", "window"], {
+  mode: z.enum(MANIFEST_MODES, {
     required_error: 'mode is required — must be "kiosk" or "window"',
   }),
   permissions: z.array(PermissionSchema).optional().default([]),
-  network: z.enum(["blocked", "allowed"]).optional().default("blocked"),
+  network: z
+    .enum(MANIFEST_NETWORK_POLICIES)
+    .optional()
+    .default(MANIFEST_NETWORK_POLICIES[0]),
   theme: z
     .object({
       color: z.string().optional(),

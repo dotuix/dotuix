@@ -1,5 +1,5 @@
 import type { Plugin, ResolvedConfig } from "vite";
-import { UIX } from "@dotuix/core";
+import { MANIFEST_PERMISSIONS, UIX } from "@dotuix/core";
 import { join } from "node:path";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -84,6 +84,7 @@ function buildDevBridgeScript(
   const APP_NAME = JSON.stringify(appName);
   const APP_VER  = JSON.stringify(appVersion);
   const SCHEMA   = String(schemaVersion);
+  const DEFAULT_PERMISSIONS = JSON.stringify([...MANIFEST_PERMISSIONS]);
   return `(function () {
   if (window.__uix) return;
   var _APP_ID = ${APP_ID};
@@ -241,7 +242,7 @@ function buildDevBridgeScript(
   window.__uix = {
     manifest: function(){ return { uix:'1.0', id:_APP_ID, name:_APP_NAME, version:_APP_VERSION,
       entry:'index.html', mode:'window', schemaVersion:_SCHEMA_VERSION,
-      permissions:['raw-sql','clipboard-write','fullscreen','print','file-save','file-open','notifications','open-url'],
+      permissions:${DEFAULT_PERMISSIONS},
       network:'allowed' }; },
     state: state,
     data:  { find:function(){return Promise.resolve([]);}, get:function(){return Promise.resolve(null);},

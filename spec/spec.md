@@ -158,8 +158,8 @@ CREATE TABLE records (
   id         TEXT    PRIMARY KEY,
   type       TEXT    NOT NULL,
   body       TEXT    NOT NULL,
-  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+  created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER) * 1000),
+  updated_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER) * 1000)
 );
 CREATE INDEX idx_type       ON records (type);
 CREATE INDEX idx_created_at ON records (created_at);
@@ -183,8 +183,8 @@ first-open timestamp). Applications MUST NOT read or write to `meta` directly un
 - **`id`** — Application-defined primary key. RECOMMENDED convention: `"type:identifier"`, e.g. `"product:001"`, `"cart_item:a1b2c3d4"`. MUST be unique within a database.
 - **`type`** — Application-defined record category. Used as the primary query dimension.
 - **`body`** — Application-defined data payload. MUST be a valid JSON string. The viewer stores and returns it without inspecting its contents.
-- **`created_at`** — Unix timestamp (seconds). Set by the viewer on insert. MUST NOT be changed by subsequent updates.
-- **`updated_at`** — Unix timestamp (seconds). Set by the viewer on insert and updated on every `update` call.
+- **`created_at`** — Unix timestamp (milliseconds, epoch ms). Set by the viewer on insert. MUST NOT be changed by subsequent updates.
+- **`updated_at`** — Unix timestamp (milliseconds, epoch ms). Set by the viewer on insert and updated on every `update` call.
 
 ### 3.3 Database Roles
 
@@ -514,8 +514,8 @@ interface UIXRecord {
   id: string; // e.g. "product:001", "cart_item:a1b2c3d4"
   type: string; // e.g. "product", "cart_item"
   body: string; // JSON string — call JSON.parse(record.body) to read fields
-  created_at: number; // Unix timestamp (seconds)
-  updated_at: number; // Unix timestamp (seconds)
+  created_at: number; // Unix timestamp (milliseconds, epoch ms)
+  updated_at: number; // Unix timestamp (milliseconds, epoch ms)
 }
 ```
 
@@ -961,8 +961,8 @@ CREATE TABLE records (
   id         TEXT    PRIMARY KEY,
   type       TEXT    NOT NULL,
   body       TEXT    NOT NULL,
-  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+  created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER) * 1000),
+  updated_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER) * 1000)
 );
 CREATE INDEX idx_type       ON records (type);
 CREATE INDEX idx_created_at ON records (created_at);

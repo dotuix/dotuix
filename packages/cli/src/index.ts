@@ -22,6 +22,8 @@
 import {
   readFileSync,
   writeFileSync,
+  renameSync,
+  rmSync,
   mkdirSync,
   existsSync,
   cpSync,
@@ -44,12 +46,23 @@ import {
   sign,
   verify,
   createDataDb,
+  MANIFEST_MODES,
+  MANIFEST_PERMISSIONS,
 } from "@dotuix/core";
 import type { UIXRecord, DataRecord } from "@dotuix/core";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 
-const CLI_VERSION = "0.1.4";
+const CLI_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(
+      readFileSync(join(__dirname, "..", "package.json"), "utf8"),
+    ) as { version?: string };
+    return typeof pkg.version === "string" ? pkg.version : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 // ---------------------------------------------------------------------------
 // ANSI colours (no deps)
@@ -172,6 +185,21 @@ function pos(args: string[]): string[] {
   return args.filter(
     (a, i) => !a.startsWith("-") && (i === 0 || !args[i - 1].startsWith("-")),
   );
+}
+
+function atomicWriteFile(targetPath: string, data: Uint8Array): void {
+  const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    writeFileSync(tempPath, data);
+    renameSync(tempPath, targetPath);
+  } catch (error) {
+    try {
+      rmSync(tempPath, { force: true });
+    } catch {
+      // no-op cleanup best effort
+    }
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -355,10 +383,17 @@ async function cmdExport(args: string[]) {
       "sha256:" +
       createHash("sha256").update(JSON.stringify(records)).digest("hex");
     const uniqueTypes = [...new Set(records.map((r) => r.type))];
+    const rawSchemaVersion = Reflect.get(manifest as object, "schemaVersion");
+    const schemaVersion =
+      typeof rawSchemaVersion === "number" &&
+      Number.isFinite(rawSchemaVersion) &&
+      rawSchemaVersion > 0
+        ? Math.trunc(rawSchemaVersion)
+        : 1;
     const bundle = {
       format: "uixdata/1.0",
       appId: manifest.id,
-      schemaVersion: (manifest as Record<string, unknown>).schemaVersion ?? 1,
+      schemaVersion,
       exportedAt: new Date().toISOString(),
       exportedBy: `dotuix-cli/${CLI_VERSION}`,
       checksum,
@@ -578,7 +613,7 @@ async function cmdImport(args: string[]) {
 
   const updatedFiles = { ...iFiles, "state.db": newStateDb };
   const packed = packBuffer(updatedFiles);
-  writeFileSync(uixPath, packed);
+  atomicWriteFile(uixPath, packed);
 
   console.log(
     c.green("✓") +
@@ -1200,11 +1235,18 @@ async function cmdIssueLicense(args: string[]) {
 // create — Vite project scaffolding
 // ---------------------------------------------------------------------------
 
-const VITE_TEMPLATES = ["vanilla-ts", "react-ts", "vue-ts", "form", "report"] as const;
+const VITE_TEMPLATES = [
+  "vanilla-ts",
+  "react-ts",
+  "vue-ts",
+  "form",
+  "report",
+] as const;
 type ViteTemplateName = (typeof VITE_TEMPLATES)[number];
 
 async function cmdCreate(args: string[]) {
-  const templateArg = (opt(args, "-t", "--template") ?? "vanilla-ts") as ViteTemplateName;
+  const templateArg = (opt(args, "-t", "--template") ??
+    "vanilla-ts") as ViteTemplateName;
   const name = pos(args)[0] ?? "my-uix-app";
   const dir = resolve(name);
   const slug = basename(name)
@@ -1216,7 +1258,9 @@ async function cmdCreate(args: string[]) {
   if (!VITE_TEMPLATES.includes(templateArg)) {
     console.error(
       c.red("✗") +
-        ` Unknown template "${templateArg}". Available: ${VITE_TEMPLATES.join(", ")}`,
+        ` Unknown template "${templateArg}". Available: ${VITE_TEMPLATES.join(
+          ", ",
+        )}`,
     );
     process.exit(1);
   }
@@ -1231,7 +1275,9 @@ async function cmdCreate(args: string[]) {
     console.error(
       c.red("✗") +
         ` Template files not found at ${tmplDir}.\n` +
-        `  Run ${c.cyan("pnpm --filter @dotuix/cli build")} to rebuild the CLI.`,
+        `  Run ${c.cyan(
+          "pnpm --filter @dotuix/cli build",
+        )} to rebuild the CLI.`,
     );
     process.exit(1);
   }
@@ -1239,7 +1285,15 @@ async function cmdCreate(args: string[]) {
   cpSync(tmplDir, dir, { recursive: true });
 
   // Patch __SLUG__ / __NAME__ placeholders in all text files
-  const TEXT_EXTS = new Set([".ts", ".tsx", ".vue", ".json", ".html", ".css", ".md"]);
+  const TEXT_EXTS = new Set([
+    ".ts",
+    ".tsx",
+    ".vue",
+    ".json",
+    ".html",
+    ".css",
+    ".md",
+  ]);
   const allFiles = readdirSync(dir, { recursive: true }) as string[];
   for (const rel of allFiles) {
     const abs = join(dir, rel);
@@ -1258,7 +1312,9 @@ async function cmdCreate(args: string[]) {
     (f) => !statSync(join(dir, f)).isDirectory(),
   );
   console.log(
-    `\n  ${c.green("✓")} Created ${c.bold(name)}/ from template ${c.cyan(templateArg)}\n`,
+    `\n  ${c.green("✓")} Created ${c.bold(name)}/ from template ${c.cyan(
+      templateArg,
+    )}\n`,
   );
   for (const f of created) console.log(`    ${c.muted("+")} ${f}`);
 
@@ -1267,7 +1323,9 @@ async function cmdCreate(args: string[]) {
 
     ${c.cyan("cd")} ${name}
     ${c.cyan("pnpm install")}
-    ${c.cyan("pnpm dev")}       ${c.muted("# hot-reload dev server with uix bridge mock")}
+    ${c.cyan("pnpm dev")}       ${c.muted(
+    "# hot-reload dev server with uix bridge mock",
+  )}
 
   When ready to build:
 
@@ -1297,7 +1355,10 @@ interface AppSpec {
 
 function specSection(md: string, heading: string): string {
   const esc = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`##\\s+${esc}[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s|$)`, "i");
+  const re = new RegExp(
+    `##\\s+${esc}[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s|$)`,
+    "i",
+  );
   return (re.exec(md)?.[1] ?? "").trim();
 }
 
@@ -1305,7 +1366,10 @@ function parseKV(text: string): Record<string, string> {
   const kv: Record<string, string> = {};
   for (const line of text.split("\n")) {
     const m = line.match(/^[-*]\s+([\w][\w /-]*):\s*(.+)/);
-    if (m) kv[m[1].trim().toLowerCase().replace(/\s+/g, "-")] = m[2].split("#")[0].trim();
+    if (m)
+      kv[m[1].trim().toLowerCase().replace(/\s+/g, "-")] = m[2]
+        .split("#")[0]
+        .trim();
   }
   return kv;
 }
@@ -1321,11 +1385,18 @@ function parseTable(text: string): Array<{ type: string; fields: string[] }> {
   const rows: Array<{ type: string; fields: string[] }> = [];
   for (const line of text.split("\n")) {
     if (!line.includes("|")) continue;
-    const cols = line.split("|").map((c) => c.trim()).filter(Boolean);
-    if (cols.length < 2 || /type/i.test(cols[0]) || /^[-|: ]+$/.test(cols[0])) continue;
+    const cols = line
+      .split("|")
+      .map((c) => c.trim())
+      .filter(Boolean);
+    if (cols.length < 2 || /type/i.test(cols[0]) || /^[-|: ]+$/.test(cols[0]))
+      continue;
     rows.push({
       type: cols[0],
-      fields: cols[1].split(/[,;]/).map((f) => f.trim()).filter(Boolean),
+      fields: cols[1]
+        .split(/[,;]/)
+        .map((f) => f.trim())
+        .filter(Boolean),
     });
   }
   return rows;
@@ -1335,18 +1406,18 @@ function parseSpec(md: string): AppSpec {
   const id = parseKV(specSection(md, "Identity"));
   return {
     identity: {
-      id:            id.id,
-      name:          id.name,
-      mode:          id.mode,
-      state:         id.state,
+      id: id.id,
+      name: id.name,
+      mode: id.mode,
+      state: id.state,
       schemaVersion: id.schemaversion ? Number(id.schemaversion) : undefined,
-      framework:     id.framework,
+      framework: id.framework,
     },
-    dataModel:   parseTable(specSection(md, "Data Model")),
-    screens:     parseList(specSection(md, "Screens")),
+    dataModel: parseTable(specSection(md, "Data Model")),
+    screens: parseList(specSection(md, "Screens")),
     permissions: parseList(specSection(md, "Permissions")),
-    theme:       parseKV(specSection(md, "Theme")),
-    seedData:    parseList(specSection(md, "Seed Data")),
+    theme: parseKV(specSection(md, "Theme")),
+    seedData: parseList(specSection(md, "Seed Data")),
   };
 }
 
@@ -1359,44 +1430,72 @@ function validateSpec(spec: AppSpec): { errors: string[]; warnings: string[] } {
     errors.push("Identity.name is required  (e.g.  - name: My App)");
   if (spec.screens.length === 0)
     errors.push("At least one screen is required in ## Screens");
-  if (spec.identity.mode && !["window", "kiosk"].includes(spec.identity.mode))
-    errors.push(`Unknown mode "${spec.identity.mode}" — must be window or kiosk`);
+  if (
+    spec.identity.mode &&
+    !MANIFEST_MODES.includes(spec.identity.mode as (typeof MANIFEST_MODES)[number])
+  )
+    errors.push(
+      `Unknown mode "${spec.identity.mode}" — must be window or kiosk`,
+    );
   if (spec.identity.state && !["device", "file"].includes(spec.identity.state))
-    errors.push(`Unknown state "${spec.identity.state}" — must be device or file`);
+    errors.push(
+      `Unknown state "${spec.identity.state}" — must be device or file`,
+    );
   if (spec.dataModel.length === 0)
-    warnings.push("No data model — add a ## Data Model table if your app stores data");
+    warnings.push(
+      "No data model — add a ## Data Model table if your app stores data",
+    );
   if (!spec.identity.schemaVersion)
     warnings.push("schemaVersion not set — will default to 1");
   if (!spec.identity.state)
     warnings.push("state not set — will default to device");
-  if (!spec.theme.color)
-    warnings.push("Theme color not set — using default");
+  if (!spec.theme.color) warnings.push("Theme color not set — using default");
   if (spec.permissions.length === 0)
-    warnings.push("No permissions listed — clipboard, notifications etc. will be unavailable");
+    warnings.push(
+      "No permissions listed — clipboard, notifications etc. will be unavailable",
+    );
+  for (const permission of spec.permissions) {
+    if (
+      !MANIFEST_PERMISSIONS.includes(
+        permission as (typeof MANIFEST_PERMISSIONS)[number],
+      )
+    ) {
+      errors.push(
+        `Unknown permission "${permission}" — must be one of: ${MANIFEST_PERMISSIONS.join(", ")}`,
+      );
+    }
+  }
   return { errors, warnings };
 }
 
 function chooseTemplate(spec: AppSpec): ViteTemplateName {
   const fw = (spec.identity.framework ?? "").toLowerCase();
   const map: Record<string, ViteTemplateName> = {
-    "vanilla-ts": "vanilla-ts", vanilla: "vanilla-ts",
-    "react-ts":   "react-ts",   react:   "react-ts",
-    "vue-ts":     "vue-ts",     vue:     "vue-ts",
-    form:         "form",
-    report:       "report",
+    "vanilla-ts": "vanilla-ts",
+    vanilla: "vanilla-ts",
+    "react-ts": "react-ts",
+    react: "react-ts",
+    "vue-ts": "vue-ts",
+    vue: "vue-ts",
+    form: "form",
+    report: "report",
   };
   if (map[fw]) return map[fw];
   if ((spec.identity.state ?? "device") === "file") {
-    return /form|input|fill|edit|write|submit/.test(spec.screens.join(" ").toLowerCase())
-      ? "form" : "report";
+    return /form|input|fill|edit|write|submit/.test(
+      spec.screens.join(" ").toLowerCase(),
+    )
+      ? "form"
+      : "report";
   }
   return "react-ts";
 }
 
 function specToUixConfig(spec: AppSpec, slug: string): string {
-  const perms = spec.permissions.length > 0
-    ? spec.permissions
-    : ["clipboard-write", "notifications"];
+  const perms =
+    spec.permissions.length > 0
+      ? spec.permissions
+      : ["clipboard-write", "notifications"];
   return [
     `import { defineConfig } from "@dotuix/types";`,
     ``,
@@ -1410,7 +1509,9 @@ function specToUixConfig(spec: AppSpec, slug: string): string {
     `  state: { mode: "${spec.identity.state ?? "device"}" },`,
     `  permissions: [${perms.map((p) => `"${p}"`).join(", ")}],`,
     `  network: "blocked",`,
-    `  theme: { color: "${spec.theme.color ?? "#c8a96e"}", background: "${spec.theme.background ?? "#1a1a1a"}" },`,
+    `  theme: { color: "${spec.theme.color ?? "#c8a96e"}", background: "${
+      spec.theme.background ?? "#1a1a1a"
+    }" },`,
     `});`,
   ].join("\n");
 }
@@ -1477,16 +1578,22 @@ function cmdSpecInit(args: string[]) {
 }
 
 function printSpecSummary(spec: AppSpec): void {
-  console.log(`  ${c.bold("App:")}         ${spec.identity.name ?? "(unnamed)"}`);
+  console.log(
+    `  ${c.bold("App:")}         ${spec.identity.name ?? "(unnamed)"}`,
+  );
   console.log(`  ${c.bold("ID:")}          ${spec.identity.id ?? "(not set)"}`);
   console.log(
     `  ${c.bold("Mode:")}        ${spec.identity.mode ?? "window"}` +
-    `  /  state: ${spec.identity.state ?? "device"}`,
+      `  /  state: ${spec.identity.state ?? "device"}`,
   );
   console.log(`  ${c.bold("Template:")}    ${chooseTemplate(spec)}`);
   console.log(`  ${c.bold("Screens:")}     ${spec.screens.length}`);
   if (spec.dataModel.length > 0)
-    console.log(`  ${c.bold("Data types:")} ${spec.dataModel.map((d) => d.type).join(", ")}`);
+    console.log(
+      `  ${c.bold("Data types:")} ${spec.dataModel
+        .map((d) => d.type)
+        .join(", ")}`,
+    );
   console.log();
 }
 
@@ -1499,18 +1606,28 @@ function cmdSpecValidate(args: string[]) {
   const spec = parseSpec(readFileSync(specPath, "utf8"));
   const { errors, warnings } = validateSpec(spec);
   if (errors.length > 0) {
-    console.log(`\n  ${c.red("✗")} ${errors.length} error${errors.length > 1 ? "s" : ""}:\n`);
+    console.log(
+      `\n  ${c.red("✗")} ${errors.length} error${
+        errors.length > 1 ? "s" : ""
+      }:\n`,
+    );
     for (const e of errors) console.log(`    ${c.red("•")} ${e}`);
   }
   if (warnings.length > 0) {
-    console.log(`\n  ${c.yellow("⚠")} ${warnings.length} warning${warnings.length > 1 ? "s" : ""}:\n`);
+    console.log(
+      `\n  ${c.yellow("⚠")} ${warnings.length} warning${
+        warnings.length > 1 ? "s" : ""
+      }:\n`,
+    );
     for (const w of warnings) console.log(`    ${c.yellow("•")} ${w}`);
   }
   if (errors.length === 0) {
     console.log(
       `\n  ${c.green("✓")} Spec is valid` +
-      (warnings.length > 0 ? ` (${warnings.length} warning${warnings.length > 1 ? "s" : ""})` : "") +
-      " — ready to hand to AI\n",
+        (warnings.length > 0
+          ? ` (${warnings.length} warning${warnings.length > 1 ? "s" : ""})`
+          : "") +
+        " — ready to hand to AI\n",
     );
     printSpecSummary(spec);
   } else {
@@ -1527,26 +1644,44 @@ function cmdSpecScaffold(args: string[]) {
   const spec = parseSpec(readFileSync(specPath, "utf8"));
   const { errors } = validateSpec(spec);
   if (errors.length > 0) {
-    console.error(c.red("✗") + ` Spec has errors. Run ${c.cyan("dotuix spec validate")} first.`);
+    console.error(
+      c.red("✗") +
+        ` Spec has errors. Run ${c.cyan("dotuix spec validate")} first.`,
+    );
     process.exit(1);
   }
 
   const displayName = spec.identity.name ?? "my-app";
-  const slug = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const slug = displayName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   const template = chooseTemplate(spec);
   const outDir = opt(args, "-o", "--output") ?? slug;
   const configContent = specToUixConfig(spec, slug);
 
   const srcEntry =
-    template === "react-ts" || template === "report" ? "src/main.tsx" : "src/main.ts";
+    template === "react-ts" || template === "report"
+      ? "src/main.tsx"
+      : "src/main.ts";
   const srcComponent =
-    template === "react-ts" ? "src/App.tsx" :
-    template === "report"   ? "src/Report.tsx" :
-    template === "vue-ts"   ? "src/App.vue" : null;
+    template === "react-ts"
+      ? "src/App.tsx"
+      : template === "report"
+      ? "src/Report.tsx"
+      : template === "vue-ts"
+      ? "src/App.vue"
+      : null;
 
   const templateFiles = [
-    "package.json", "vite.config.ts", "tsconfig.json", "index.html",
-    srcEntry, ...(srcComponent ? [srcComponent] : []), "src/style.css", "README.md",
+    "package.json",
+    "vite.config.ts",
+    "tsconfig.json",
+    "index.html",
+    srcEntry,
+    ...(srcComponent ? [srcComponent] : []),
+    "src/style.css",
+    "README.md",
   ];
 
   console.log(`\n  ${c.bold("Spec scaffold:")} ${basename(specPath)}\n`);
@@ -1563,15 +1698,23 @@ function cmdSpecScaffold(args: string[]) {
 
   if (spec.dataModel.length > 0) {
     console.log(
-      `\n  ${c.bold(`Data model (${spec.dataModel.length} type${spec.dataModel.length > 1 ? "s" : ""}):`)}\n`,
+      `\n  ${c.bold(
+        `Data model (${spec.dataModel.length} type${
+          spec.dataModel.length > 1 ? "s" : ""
+        }):`,
+      )}\n`,
     );
     for (const d of spec.dataModel)
-      console.log(`    ${c.cyan(d.type.padEnd(14))} ${c.muted(d.fields.join(", "))}`);
+      console.log(
+        `    ${c.cyan(d.type.padEnd(14))} ${c.muted(d.fields.join(", "))}`,
+      );
   }
 
   if (spec.screens.length > 0) {
     console.log(`\n  ${c.bold(`Screens (${spec.screens.length}):`)}\n`);
-    spec.screens.forEach((s, i) => console.log(`    ${c.muted(`${i + 1}.`)} ${s}`));
+    spec.screens.forEach((s, i) =>
+      console.log(`    ${c.muted(`${i + 1}.`)} ${s}`),
+    );
   }
 
   if (spec.seedData.length > 0) {
@@ -1581,7 +1724,9 @@ function cmdSpecScaffold(args: string[]) {
 
   console.log(`\n  ${c.bold("Next steps:")}\n`);
   console.log(`    1. ${c.cyan(`dotuix create ${slug} -t ${template}`)}`);
-  console.log(`    2. Ask your AI to implement the screens from ${basename(specPath)}`);
+  console.log(
+    `    2. Ask your AI to implement the screens from ${basename(specPath)}`,
+  );
   console.log(`    3. ${c.cyan("pnpm install && pnpm dev")}`);
   console.log(`    4. ${c.cyan("pnpm build")} ${c.muted(`# → ${slug}.uix`)}\n`);
 }
@@ -1589,15 +1734,27 @@ function cmdSpecScaffold(args: string[]) {
 async function cmdSpec(args: string[]) {
   const sub = args[0];
   if (!sub) {
-    console.error(c.red("✗") + " Usage: dotuix spec <validate|scaffold|init> [args]");
+    console.error(
+      c.red("✗") + " Usage: dotuix spec <validate|scaffold|init> [args]",
+    );
     process.exit(1);
   }
   const subArgs = args.slice(1);
-  if (sub === "validate") { cmdSpecValidate(subArgs); return; }
-  if (sub === "scaffold") { cmdSpecScaffold(subArgs); return; }
-  if (sub === "init")     { cmdSpecInit(subArgs);     return; }
+  if (sub === "validate") {
+    cmdSpecValidate(subArgs);
+    return;
+  }
+  if (sub === "scaffold") {
+    cmdSpecScaffold(subArgs);
+    return;
+  }
+  if (sub === "init") {
+    cmdSpecInit(subArgs);
+    return;
+  }
   console.error(
-    c.red("✗") + ` Unknown spec subcommand "${sub}". Use: validate, scaffold, init`,
+    c.red("✗") +
+      ` Unknown spec subcommand "${sub}". Use: validate, scaffold, init`,
   );
   process.exit(1);
 }

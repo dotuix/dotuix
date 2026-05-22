@@ -1,14 +1,14 @@
-export type Permission =
-  | "local-storage"
-  | "print"
-  | "clipboard-write"
-  | "fullscreen"
-  | "raw-sql"
-  | "local-sync"
-  | "file-save"
-  | "file-open"
-  | "open-url"
-  | "notifications";
+import type {
+  ManifestMode,
+  ManifestNetworkPolicy,
+  ManifestPermission,
+  ManifestSecurityAuth,
+  ManifestSecurityKdf,
+  ManifestSignatureAlgorithm,
+  ManifestUixVersion,
+} from "./generated/manifest-contract.generated.js";
+
+export type Permission = ManifestPermission;
 
 // ---------------------------------------------------------------------------
 // Security — fully optional. Omit the block entirely for regular use cases.
@@ -23,7 +23,7 @@ export type Permission =
  */
 export interface UIXSignature {
   /** Always "Ed25519" in v1. */
-  algorithm: "Ed25519";
+  algorithm: ManifestSignatureAlgorithm;
   /** Base64url-encoded Ed25519 public key used to sign this file. */
   publicKey: string;
   /** Base64url-encoded signature of the canonical content hash. */
@@ -44,7 +44,7 @@ export interface UIXSecurity {
    * in `encryptedPaths`. Omit (or set "none") for no authentication.
    * Default: "none"
    */
-  auth?: "none" | "pin";
+  auth?: ManifestSecurityAuth;
 
   /**
    * Paths inside the archive that are AES-256-GCM encrypted.
@@ -59,7 +59,7 @@ export interface UIXSecurity {
    * Only relevant when `encryptedPaths` is non-empty.
    * Default: "PBKDF2-SHA256"
    */
-  kdf?: "PBKDF2-SHA256";
+  kdf?: ManifestSecurityKdf;
 
   /** PBKDF2 iteration count. Higher = slower brute-force. Default: 200000. */
   kdfIterations?: number;
@@ -111,7 +111,7 @@ export interface UIXAiMeta {
 
 export interface Manifest {
   /** Format version, e.g. "1.0" */
-  uix: string;
+  uix: ManifestUixVersion;
   /** Reverse-domain identifier, e.g. "com.almadina.menu" */
   id: string;
   name: string;
@@ -120,9 +120,9 @@ export interface Manifest {
   minViewer?: string;
   /** Path to the entry HTML file, relative to archive root */
   entry: string;
-  mode: "kiosk" | "window";
+  mode: ManifestMode;
   permissions?: Permission[];
-  network?: "blocked" | "allowed";
+  network?: ManifestNetworkPolicy;
   theme?: { color?: string; background?: string };
   author?: string;
   /** ISO-8601 date string after which the file should be considered expired */

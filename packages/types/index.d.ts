@@ -12,6 +12,16 @@
  * After that `uix` is globally available and fully typed.
  */
 
+import type {
+  ManifestAiContract,
+  ManifestMode,
+  ManifestNetworkPolicy,
+  ManifestPermission,
+  ManifestSecurityContract,
+  ManifestSignatureContract,
+  ManifestUixVersion,
+} from "./generated/manifest-contract.generated";
+
 // ---------------------------------------------------------------------------
 // Shared record types
 // ---------------------------------------------------------------------------
@@ -118,33 +128,26 @@ export interface OpenFileOptions {
 // Manifest shape (subset — for `uix.manifest()` return type)
 // ---------------------------------------------------------------------------
 
-export type UIXPermission =
-  | "local-storage"
-  | "print"
-  | "clipboard-write"
-  | "fullscreen"
-  | "raw-sql"
-  | "local-sync"
-  | "file-save"
-  | "file-open"
-  | "open-url"
-  | "notifications";
+export type UIXPermission = ManifestPermission;
 
 /** The `manifest.json` structure as returned by `uix.manifest()`. */
 export interface UIXManifest {
-  uix: string;
+  uix: ManifestUixVersion;
   id: string;
   name: string;
   version: string;
   minViewer?: string;
   entry: string;
-  mode: "kiosk" | "window";
+  mode: ManifestMode;
   permissions?: UIXPermission[];
-  network?: "blocked" | "allowed";
+  network?: ManifestNetworkPolicy;
   theme?: { color?: string; background?: string };
   author?: string;
   expires?: string | null;
   schemaVersion?: number;
+  security?: ManifestSecurityContract;
+  signature?: ManifestSignatureContract;
+  ai?: ManifestAiContract;
   state?: {
     mode?: "file" | "device";
     seed?: boolean;
@@ -181,7 +184,7 @@ export interface UIXStateBridge {
    */
   upsert(input: UpsertInput & { id: string }): Promise<UIXRecord>;
   /** Insert multiple records in a single transaction. */
-  insertMany(records: UpsertInput[]): Promise<void>;
+  insertMany(records: UpsertInput[]): Promise<UIXRecord[]>;
   /** Delete a record by `id`. */
   delete(id: string): Promise<void>;
   /**
@@ -191,15 +194,15 @@ export interface UIXStateBridge {
    */
   purge(opts: { type: string; olderThan?: string } | string): Promise<number>;
   /** Delete all records, optionally filtered to a single type. */
-  clear(opts?: { type?: string }): Promise<void>;
+  clear(opts?: { type?: string }): Promise<number>;
   /** Delete ALL records across all types. */
   reset(): Promise<void>;
   /** Execute multiple insert/update/delete ops atomically. */
-  transaction(ops: TransactionOp[]): Promise<void>;
-  /** Total bytes used by `state.db`. */
-  size(): Promise<number>;
-  /** Run SQLite `VACUUM` to reclaim freed space. Requires the `raw-sql` permission. */
-  vacuum(): Promise<void>;
+  transaction(ops: TransactionOp[]): Promise<Array<UIXRecord | null>>;
+  /** Total bytes, record count, and per-type counts in `state.db`. */
+  size(): Promise<{ bytes: number; records: number; types: Record<string, number> }>;
+  /** Run SQLite `VACUUM` to reclaim freed space. Returns file size before/after. */
+  vacuum(): Promise<{ before: number; after: number }>;
   /**
    * Export records as a JSON string.
    * Requires the `raw-sql` permission when no `type` filter is provided.
@@ -218,7 +221,7 @@ export interface UIXStateBridge {
    * Sync state to/from the local dotuix sync server.
    * Requires the `local-sync` permission.
    */
-  sync(): Promise<void>;
+  sync(): Promise<{ pushed: number; pulled: number; serverTime: number }>;
 }
 
 /** `uix.data.*` — read-only access to the app's seed / static data DB. */
@@ -389,7 +392,7 @@ export interface UIXConfig {
   version: string;
   /** Entry HTML file relative to project root. Defaults to `"index.html"`. */
   entry?: string;
-  mode?: "kiosk" | "window";
+  mode?: ManifestMode;
   /** Monotonically increasing integer. Increment whenever stored record schemas change. */
   schemaVersion?: number;
   state?: {
@@ -397,11 +400,14 @@ export interface UIXConfig {
     seed?: boolean;
   };
   permissions?: UIXPermission[];
-  network?: "blocked" | "allowed";
+  network?: ManifestNetworkPolicy;
   theme?: { color?: string; background?: string };
   author?: string;
   /** ISO-8601 date after which the viewer refuses to open this file. */
   expires?: string;
+  security?: ManifestSecurityContract;
+  signature?: ManifestSignatureContract;
+  ai?: ManifestAiContract;
   license?: {
     required?: boolean;
     /** Ed25519 public key in `"ed25519:<base64url>"` format. */

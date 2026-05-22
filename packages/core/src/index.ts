@@ -20,6 +20,29 @@ export {
   safeParseManifest,
   ManifestSchema,
 } from "./manifest.js";
+export {
+  MANIFEST_UIX_VERSIONS,
+  MANIFEST_MODES,
+  MANIFEST_NETWORK_POLICIES,
+  MANIFEST_PERMISSIONS,
+  MANIFEST_SECURITY_AUTH,
+  MANIFEST_SECURITY_KDF,
+  MANIFEST_SECURITY_KDF_MIN_ITERATIONS,
+  MANIFEST_SECURITY_KDF_DEFAULT_ITERATIONS,
+  MANIFEST_SIGNATURE_ALGORITHMS,
+} from "./generated/manifest-contract.generated.js";
+export type {
+  ManifestUixVersion,
+  ManifestMode,
+  ManifestNetworkPolicy,
+  ManifestPermission,
+  ManifestSecurityAuth,
+  ManifestSecurityKdf,
+  ManifestSignatureAlgorithm,
+  ManifestSecurityContract,
+  ManifestSignatureContract,
+  ManifestAiContract,
+} from "./generated/manifest-contract.generated.js";
 export type {
   Manifest,
   UIXRecord,

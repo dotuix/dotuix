@@ -156,6 +156,55 @@ fn now_ms() -> i64 {
         .as_millis() as i64
 }
 
+fn desktop_observability_enabled() -> bool {
+    std::env::var("DOTUIX_OBSERVABILITY")
+        .map(|v| v.to_lowercase() != "false")
+        .unwrap_or(true)
+}
+
+fn emit_desktop_event(
+    code: &str,
+    severity: &str,
+    app_id: Option<&str>,
+    reason: Option<&str>,
+    metadata: Option<serde_json::Value>,
+) {
+    if !desktop_observability_enabled() {
+        return;
+    }
+
+    let mut payload = serde_json::Map::new();
+    payload.insert("schemaVersion".to_string(), serde_json::json!(1));
+    payload.insert("component".to_string(), serde_json::json!("desktop-viewer"));
+    payload.insert("ts".to_string(), serde_json::json!(now_ms()));
+    payload.insert("code".to_string(), serde_json::json!(code));
+    payload.insert("severity".to_string(), serde_json::json!(severity));
+
+    if let Some(value) = app_id {
+        if !value.is_empty() {
+            payload.insert("appId".to_string(), serde_json::json!(value));
+        }
+    }
+
+    if let Some(value) = reason {
+        if !value.is_empty() {
+            payload.insert("reason".to_string(), serde_json::json!(value));
+        }
+    }
+
+    if let Some(value) = metadata {
+        payload.insert("metadata".to_string(), value);
+    }
+
+    let line = format!("[dotuix-obs] {}", serde_json::Value::Object(payload));
+
+    match severity {
+        "error" => eprintln!("{line}"),
+        "warn" => eprintln!("{line}"),
+        _ => println!("{line}"),
+    }
+}
+
 /// Returns true if a process with the given PID is currently running.
 /// On Unix we send signal 0 (no-op) — succeeds iff the process exists.
 /// On Windows we open a handle with SYNCHRONIZE rights.
@@ -261,9 +310,12 @@ fn csp_for_network(allowed: bool) -> &'static str {
          font-src 'self' uix: data: https:; \
          media-src 'self' uix: data: blob: https:; \
          connect-src 'self' uix: https: wss:; \
+         worker-src 'self' uix: blob: https:; \
          frame-src 'self' uix: https:; \
          object-src 'none'; \
-         base-uri 'none'"
+         base-uri 'none'; \
+         form-action 'none'; \
+         frame-ancestors 'none'"
     } else {
         "default-src 'self' uix: data: blob:; \
          script-src 'self' 'unsafe-inline' uix:; \
@@ -272,10 +324,12 @@ fn csp_for_network(allowed: bool) -> &'static str {
          font-src 'self' uix: data:; \
          media-src 'self' uix: data: blob:; \
          connect-src 'self' uix:; \
+         worker-src 'self' uix: blob:; \
          frame-src 'self' uix:; \
          object-src 'none'; \
          base-uri 'none'; \
-         form-action 'none'"
+         form-action 'none'; \
+         frame-ancestors 'none'"
     }
 }
 
@@ -459,6 +513,150 @@ fn base64_url_decode(s: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("base64url decode error: {e}"))
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+struct SyncWireRecord {
+    id: String,
+    #[serde(rename = "type")]
+    r#type: String,
+    body: String,
+    created_at: i64,
+    updated_at: i64,
+    deleted: bool,
+}
+
+fn normalize_epoch_ms(value: i64) -> i64 {
+    if value <= 0 { return 0; }
+    if value < 1_000_000_000_000 { value * 1000 } else { value }
+}
+
+fn normalize_sync_record(mut r: SyncWireRecord) -> SyncWireRecord {
+    r.created_at = normalize_epoch_ms(r.created_at);
+    r.updated_at = normalize_epoch_ms(r.updated_at);
+    r
+}
+
+fn normalize_and_sort_sync_records(records: Vec<SyncWireRecord>) -> Vec<SyncWireRecord> {
+    let mut out: Vec<SyncWireRecord> = records
+        .into_iter()
+        .map(normalize_sync_record)
+        .collect();
+
+    out.sort_by(|a, b| a.id.cmp(&b.id).then(a.updated_at.cmp(&b.updated_at)));
+    out
+}
+
+fn decode_sync_secret(secret: &str) -> Result<Vec<u8>, String> {
+    if let Ok(bytes) = base64_url_decode(secret) {
+        if !bytes.is_empty() { return Ok(bytes); }
+    }
+
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD
+        .decode(secret)
+        .map_err(|e| format!("sync.secret decode error: {e}"))
+}
+
+fn sync_last_sync_meta_key(app_id: &str, endpoint: &str) -> String {
+    let endpoint_hash = sha256_hex(endpoint.trim().as_bytes());
+    format!("last_sync::{app_id}::{endpoint_hash}")
+}
+
+fn sync_records_hash(records: &[SyncWireRecord]) -> Result<String, String> {
+    let json = serde_json::to_string(records).map_err(|e| e.to_string())?;
+    Ok(sha256_hex(json.as_bytes()))
+}
+
+fn sync_request_string_to_sign(
+    app_id: &str,
+    device_id: &str,
+    sent_at: i64,
+    last_sync: i64,
+    nonce: &str,
+    push: &[SyncWireRecord],
+) -> Result<String, String> {
+    let push_hash = sync_records_hash(push)?;
+    Ok(format!(
+        "dotuix-sync-v2\n{app_id}\n{device_id}\n{}\n{}\n{nonce}\n{push_hash}",
+        normalize_epoch_ms(sent_at),
+        normalize_epoch_ms(last_sync),
+    ))
+}
+
+fn sync_response_string_to_sign(
+    app_id: &str,
+    device_id: &str,
+    server_time: i64,
+    pushed: i64,
+    nonce: &str,
+    pull: &[SyncWireRecord],
+) -> Result<String, String> {
+    let pull_hash = sync_records_hash(pull)?;
+    Ok(format!(
+        "dotuix-sync-v2-response\n{app_id}\n{device_id}\n{}\n{pushed}\n{nonce}\n{pull_hash}",
+        normalize_epoch_ms(server_time),
+    ))
+}
+
+fn hmac_sha256_base64url(secret: &[u8], payload: &str) -> Result<String, String> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+
+    let mut mac = HmacSha256::new_from_slice(secret)
+        .map_err(|e| format!("Cannot initialise HMAC signer: {e}"))?;
+    mac.update(payload.as_bytes());
+    let out = mac.finalize().into_bytes();
+
+    use base64::Engine;
+    Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(out))
+}
+
+fn ensure_sync_clock_ms(conn: &rusqlite::Connection) -> Result<(), String> {
+    let clock_version: String = conn
+        .query_row(
+            "SELECT value FROM meta WHERE key = 'sync_clock_version'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
+        .unwrap_or_default();
+
+    if clock_version == "ms-v2" {
+        return Ok(());
+    }
+
+    conn.execute(
+        "UPDATE records SET created_at = created_at * 1000 \
+         WHERE created_at > 0 AND created_at < 1000000000000",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE records SET updated_at = updated_at * 1000 \
+         WHERE updated_at > 0 AND updated_at < 1000000000000",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE meta SET value = CAST(CAST(value AS INTEGER) * 1000 AS TEXT) \
+         WHERE key LIKE 'last_sync%' \
+           AND CAST(value AS INTEGER) > 0 \
+           AND CAST(value AS INTEGER) < 1000000000000",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES ('sync_clock_version', 'ms-v2') \
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 /// Verify the `signature` block of a manifest against the archive files.
 /// Returns `Ok(())` when absent (unsigned) or when the signature is valid.
 /// Returns `Err(msg)` when the signature is present but invalid.
@@ -633,10 +831,22 @@ fn probe_uix_inner(path: &str, app: &AppHandle, state: &AppState) -> Result<Load
     let manifest_json = String::from_utf8_lossy(manifest_bytes).into_owned();
     let manifest: serde_json::Value = serde_json::from_str(&manifest_json)
         .map_err(|e| format!("Invalid manifest.json: {e}"))?;
+    let observed_app_id = manifest
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
 
     // --- Expiry check ---
     if let Some(exp) = manifest.get("expires").and_then(|v| v.as_str()) {
         if exp < today_iso().as_str() {
+            emit_desktop_event(
+                "desktop.trust_gate.blocked",
+                "warn",
+                Some(observed_app_id.as_str()),
+                Some("expired"),
+                Some(serde_json::json!({ "expires": exp })),
+            );
             return Err(format!("This .uix file expired on {exp}. It can no longer be opened."));
         }
     }
@@ -644,6 +854,16 @@ fn probe_uix_inner(path: &str, app: &AppHandle, state: &AppState) -> Result<Load
     // --- minViewer check ---
     if let Some(min_ver) = manifest.get("minViewer").and_then(|v| v.as_str()) {
         if !version_gte(VIEWER_VERSION, min_ver) {
+            emit_desktop_event(
+                "desktop.trust_gate.blocked",
+                "warn",
+                Some(observed_app_id.as_str()),
+                Some("min_viewer"),
+                Some(serde_json::json!({
+                    "minViewer": min_ver,
+                    "viewerVersion": VIEWER_VERSION,
+                })),
+            );
             return Err(format!(
                 "This file requires viewer v{min_ver} or later. Current viewer: v{VIEWER_VERSION}."
             ));
@@ -651,7 +871,16 @@ fn probe_uix_inner(path: &str, app: &AppHandle, state: &AppState) -> Result<Load
     }
 
     // --- Signature verification ---
-    verify_signature(&files, &manifest)?;
+    if let Err(error) = verify_signature(&files, &manifest) {
+        emit_desktop_event(
+            "desktop.trust_gate.blocked",
+            "warn",
+            Some(observed_app_id.as_str()),
+            Some("signature_invalid"),
+            Some(serde_json::json!({ "error": error })),
+        );
+        return Err(error);
+    }
 
     // --- maxOpens check ---
     let app_id = manifest["id"].as_str().unwrap_or("unknown").to_string();
@@ -665,6 +894,13 @@ fn probe_uix_inner(path: &str, app: &AppHandle, state: &AppState) -> Result<Load
             .map_err(|e| format!("Cannot get app data dir: {e}"))?.join(&app_id);
         let _ = std::fs::create_dir_all(&data_dir);
         if read_open_count(&data_dir) >= max_opens {
+            emit_desktop_event(
+                "desktop.trust_gate.blocked",
+                "warn",
+                Some(observed_app_id.as_str()),
+                Some("max_opens_reached"),
+                Some(serde_json::json!({ "maxOpens": max_opens })),
+            );
             return Err(format!(
                 "This .uix file has reached its maximum number of opens ({max_opens})."
             ));
@@ -683,6 +919,13 @@ fn probe_uix_inner(path: &str, app: &AppHandle, state: &AppState) -> Result<Load
         *state.pending_files.lock().unwrap() = Some(files);
         *state.pending_manifest.lock().unwrap() = Some(manifest);
         *state.pending_path.lock().unwrap() = Some(path.to_string());
+        emit_desktop_event(
+            "desktop.trust_gate.blocked",
+            "warn",
+            Some(observed_app_id.as_str()),
+            Some("pin_required"),
+            None,
+        );
         return Ok(LoadResult::PinRequired { app_name, app_id });
     }
 
@@ -741,6 +984,15 @@ fn complete_load(
         .as_deref()
         .and_then(|key| verify_and_load_license(&data_dir, &app_id, key, &device_id));
     if license_required && license_payload.is_none() {
+        emit_desktop_event(
+            "desktop.trust_gate.blocked",
+            "warn",
+            Some(app_id.as_str()),
+            Some("license_required"),
+            Some(serde_json::json!({
+                "deviceId": device_id,
+            })),
+        );
         // Clear the stale uix_path so a subsequent open works cleanly.
         *state.uix_path.lock().unwrap() = String::new();
         return Ok(LoadResult::LicenseRequired {
@@ -808,7 +1060,7 @@ fn complete_load(
     *state.files.lock().unwrap() = files;
     *state.state_db.lock().unwrap() = Some(state_conn);
     *state.data_db.lock().unwrap() = data_conn;
-    *state.app_id.lock().unwrap() = app_id;
+    *state.app_id.lock().unwrap() = app_id.clone();
     *state.app_name.lock().unwrap() = app_name;
     *state.uix_path.lock().unwrap() = path.to_string();
     *state.state_db_path.lock().unwrap() = Some(state_db_path);
@@ -825,6 +1077,17 @@ fn complete_load(
         .get("sync").and_then(|s| s.get("secret")).and_then(|v| v.as_str())
         .map(str::to_string);
     *state.license_info.lock().unwrap() = license_payload;
+
+    emit_desktop_event(
+        "desktop.trust_gate.passed",
+        "info",
+        Some(app_id.as_str()),
+        Some("load_completed"),
+        Some(serde_json::json!({
+            "signed": manifest.get("signature").is_some(),
+            "networkAllowed": network_allowed(manifest),
+        })),
+    );
 
     Ok(LoadResult::Loaded {
         manifest: manifest_json,
@@ -1575,6 +1838,11 @@ fn unlock_with_pin(
         .get("encryptedPaths").and_then(|v| v.as_array())
         .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
         .unwrap_or_default();
+    let observed_app_id = manifest
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
 
     let salt = base64_url_decode(key_salt_b64)?;
     let key = derive_aes_key(&pin, &salt, iterations);
@@ -1583,7 +1851,19 @@ fn unlock_with_pin(
         let encrypted = files.get(ep)
             .ok_or_else(|| format!("Encrypted path not found in archive: {ep}"))?
             .clone();
-        let decrypted = decrypt_aes_gcm(&encrypted, &key)?;
+        let decrypted = decrypt_aes_gcm(&encrypted, &key).map_err(|error| {
+            emit_desktop_event(
+                "desktop.trust_gate.blocked",
+                "warn",
+                Some(observed_app_id.as_str()),
+                Some("pin_invalid"),
+                Some(serde_json::json!({
+                    "path": ep,
+                    "error": error,
+                })),
+            );
+            error
+        })?;
         files.insert(ep.clone(), decrypted);
     }
 
@@ -1813,7 +2093,7 @@ fn state_transaction(
                     };
                     let id = item.id.clone()
                         .unwrap_or_else(|| format!("{}:{}", rtype, gen_id()));
-                    let now = now_ms() / 1000;
+                    let now = now_ms();
                     conn.execute(
                         "INSERT INTO records (id, type, body, created_at, updated_at) \
                          VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -1836,7 +2116,7 @@ fn state_transaction(
                         serde_json::Value::String(s) => s.clone(),
                         v => serde_json::to_string(v).map_err(|e| e.to_string())?,
                     };
-                    let now = now_ms() / 1000;
+                    let now = now_ms();
                     let changed = conn.execute(
                         "UPDATE records SET body = ?1, updated_at = ?2 WHERE id = ?3",
                         rusqlite::params![body_str, now, id],
@@ -1857,7 +2137,7 @@ fn state_transaction(
                         serde_json::Value::String(s) => s.clone(),
                         v => serde_json::to_string(v).map_err(|e| e.to_string())?,
                     };
-                    let now = now_ms() / 1000;
+                    let now = now_ms();
                     conn.execute(
                         "INSERT INTO records (id, type, body, created_at, updated_at) \
                          VALUES (?1, ?2, ?3, ?4, ?5) \
@@ -1970,7 +2250,7 @@ fn state_upsert(
 ) -> Result<Record, String> {
     let db = state.state_db.lock().unwrap();
     let conn = db.as_ref().ok_or("No app loaded")?;
-    let now = now_ms() / 1000;
+    let now = now_ms();
     conn.execute(
         "INSERT INTO records (id, type, body, created_at, updated_at) \
          VALUES (?1, ?2, ?3, ?4, ?5) \
@@ -2006,7 +2286,7 @@ fn state_insert_many(
         for item in &records {
             let id = item.id.clone()
                 .unwrap_or_else(|| format!("{}:{}", item.record_type, gen_id()));
-            let now = now_ms() / 1000;
+            let now = now_ms();
             conn.execute(
                 "INSERT INTO records (id, type, body, created_at, updated_at) \
                  VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -2418,6 +2698,10 @@ fn state_import_bundle(
 /// Conflict resolution: last-write-wins on `updated_at`.
 #[tauri::command]
 async fn state_sync(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let started_at = now_ms();
+    let observed_app_id = state.app_id.lock().unwrap().clone();
+
+    let result: Result<serde_json::Value, String> = async {
     // ── 1. Permission check ────────────────────────────────────────────────
     {
         let perms = state.permissions.lock().unwrap();
@@ -2435,24 +2719,51 @@ async fn state_sync(state: State<'_, AppState>) -> Result<serde_json::Value, Str
         .unwrap()
         .clone()
         .ok_or("Sync not configured: 'sync.endpoint' missing from manifest.")?;
+    let sync_secret = state
+        .sync_secret
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or("Sync not configured: 'sync.secret' missing from manifest.")?;
+
+    let secret_bytes = decode_sync_secret(&sync_secret)?;
+    if secret_bytes.len() < 32 {
+        return Err("Sync not configured securely: 'sync.secret' must decode to at least 32 bytes.".into());
+    }
+
     let app_id = state.app_id.lock().unwrap().clone();
+    let last_sync_key = sync_last_sync_meta_key(&app_id, &endpoint);
 
     // ── 3. Collect push payload (lock held, no await) ────────────────────
     let (device_id, last_sync, push_records) = {
         let db = state.state_db.lock().unwrap();
         let conn = db.as_ref().ok_or("No app loaded")?;
 
+        ensure_sync_clock_ms(conn)?;
+
         let device_id: String = conn
             .query_row("SELECT value FROM meta WHERE key = 'device_id'", [], |r| r.get(0))
             .map_err(|e| format!("Cannot read device_id: {e}"))?;
 
-        let last_sync: i64 = conn
+        let scoped_last_sync: Option<i64> = conn
+            .query_row(
+                "SELECT value FROM meta WHERE key = ?1",
+                [&last_sync_key],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+            .and_then(|s| s.parse::<i64>().ok());
+
+        let legacy_last_sync: Option<i64> = conn
             .query_row(
                 "SELECT value FROM meta WHERE key = 'last_sync'",
                 [],
-                |r| r.get::<_, String>(0).map(|s| s.parse::<i64>().unwrap_or(0)),
+                |r| r.get::<_, String>(0),
             )
-            .unwrap_or(0);
+            .ok()
+            .and_then(|s| s.parse::<i64>().ok());
+
+        let last_sync = normalize_epoch_ms(scoped_last_sync.or(legacy_last_sync).unwrap_or(0));
 
         let mut stmt = conn
             .prepare(
@@ -2461,31 +2772,52 @@ async fn state_sync(state: State<'_, AppState>) -> Result<serde_json::Value, Str
             )
             .map_err(|e| e.to_string())?;
 
-        let push_records: Vec<serde_json::Value> = stmt
+        let push_records: Vec<SyncWireRecord> = stmt
             .query_map([last_sync], |r| {
-                Ok(serde_json::json!({
-                    "id":         r.get::<_, String>(0)?,
-                    "type":       r.get::<_, String>(1)?,
-                    "body":       r.get::<_, String>(2)?,
-                    "created_at": r.get::<_, i64>(3)?,
-                    "updated_at": r.get::<_, i64>(4)?,
-                    "deleted":    false,
-                }))
+                Ok(SyncWireRecord {
+                    id: r.get::<_, String>(0)?,
+                    r#type: r.get::<_, String>(1)?,
+                    body: r.get::<_, String>(2)?,
+                    created_at: r.get::<_, i64>(3)?,
+                    updated_at: r.get::<_, i64>(4)?,
+                    deleted: false,
+                })
             })
             .map_err(|e| e.to_string())?
             .filter_map(|r| r.ok())
             .collect();
 
-        (device_id, last_sync, push_records)
+        (device_id, last_sync, normalize_and_sort_sync_records(push_records))
     }; // mutex released before await
 
     // ── 4. HTTP push + pull ───────────────────────────────────────────────
     let url = format!("{}/sync", endpoint.trim_end_matches('/'));
+    let sent_at = now_ms();
+    let nonce = uuid::Uuid::new_v4().to_string();
+
+    let string_to_sign = sync_request_string_to_sign(
+        &app_id,
+        &device_id,
+        sent_at,
+        last_sync,
+        &nonce,
+        &push_records,
+    )?;
+
+    let signature = hmac_sha256_base64url(&secret_bytes, &string_to_sign)?;
+
     let body = serde_json::json!({
-        "appId":    app_id,
+        "syncVersion": 2,
+        "appId": app_id,
         "deviceId": device_id,
+        "sentAt": sent_at,
         "lastSync": last_sync,
-        "push":     push_records,
+        "nonce": nonce,
+        "push": push_records,
+        "auth": {
+            "alg": "HS256",
+            "sig": signature,
+        },
     });
 
     let resp = reqwest::Client::new()
@@ -2496,7 +2828,21 @@ async fn state_sync(state: State<'_, AppState>) -> Result<serde_json::Value, Str
         .map_err(|e| format!("Sync request failed: {e}"))?;
 
     if !resp.status().is_success() {
-        return Err(format!("Sync server returned HTTP {}", resp.status().as_u16()));
+        let status = resp.status().as_u16();
+        let server_err: Option<serde_json::Value> = resp.json().await.ok();
+        if let Some(payload) = server_err {
+            let err_obj = payload.get("error").unwrap_or(&payload);
+            let code = err_obj
+                .get("code")
+                .and_then(|v| v.as_str())
+                .unwrap_or("sync.http_error");
+            let message = err_obj
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Sync request failed");
+            return Err(format!("Sync server returned HTTP {status} ({code}): {message}"));
+        }
+        return Err(format!("Sync server returned HTTP {status}"));
     }
 
     let result: serde_json::Value = resp
@@ -2504,23 +2850,125 @@ async fn state_sync(state: State<'_, AppState>) -> Result<serde_json::Value, Str
         .await
         .map_err(|e| format!("Invalid sync response: {e}"))?;
 
+    if result
+        .get("syncVersion")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0)
+        != 2
+    {
+        return Err("Sync server returned an unsupported response format (expected protocol v2).".into());
+    }
+
     // ── 5. Merge pulled records + persist last_sync ─────────────────────
-    let pull  = result.get("pull").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let response_nonce = result
+        .get("nonce")
+        .and_then(|v| v.as_str())
+        .ok_or("Sync response missing nonce")?;
+
+    let request_nonce = body
+        .get("nonce")
+        .and_then(|v| v.as_str())
+        .ok_or("Sync request missing nonce")?;
+
+    if response_nonce != request_nonce {
+        return Err("Sync response nonce mismatch (possible replay or stale response).".into());
+    }
+
+    let pull = result
+        .get("pull")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
     let pushed = result.get("pushed").and_then(|v| v.as_i64()).unwrap_or(0);
-    let server_time = result.get("serverTime").and_then(|v| v.as_i64()).unwrap_or_else(now_ms);
-    let pulled_count = pull.len() as i64;
+    let server_time = normalize_epoch_ms(
+        result
+            .get("serverTime")
+            .and_then(|v| v.as_i64())
+            .unwrap_or_else(now_ms),
+    );
+
+    let mut pulled_records: Vec<SyncWireRecord> = Vec::with_capacity(pull.len());
+    for record in &pull {
+        let id = record
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+
+        if id.is_empty() {
+            continue;
+        }
+
+        let rtype = record
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+
+        let body = match record.get("body") {
+            Some(v) if v.is_string() => v.as_str().unwrap_or("{}").to_string(),
+            Some(v) => serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string()),
+            None => "{}".to_string(),
+        };
+
+        pulled_records.push(SyncWireRecord {
+            id,
+            r#type: rtype,
+            body,
+            created_at: record
+                .get("created_at")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0),
+            updated_at: record
+                .get("updated_at")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0),
+            deleted: record
+                .get("deleted")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+        });
+    }
+
+    let pulled_records = normalize_and_sort_sync_records(pulled_records);
+
+    let response_sig = result
+        .get("auth")
+        .and_then(|v| v.get("sig"))
+        .and_then(|v| v.as_str())
+        .ok_or("Sync response missing auth.sig")?;
+
+    let response_string_to_sign = sync_response_string_to_sign(
+        body.get("appId")
+            .and_then(|v| v.as_str())
+            .ok_or("Sync request missing appId")?,
+        body.get("deviceId")
+            .and_then(|v| v.as_str())
+            .ok_or("Sync request missing deviceId")?,
+        server_time,
+        pushed,
+        response_nonce,
+        &pulled_records,
+    )?;
+
+    let expected_response_sig = hmac_sha256_base64url(&secret_bytes, &response_string_to_sign)?;
+    if response_sig != expected_response_sig {
+        return Err("Sync response signature verification failed (payload integrity check failed).".into());
+    }
+
+    let pulled_count = pulled_records.len() as i64;
 
     {
         let db = state.state_db.lock().unwrap();
         let conn = db.as_ref().ok_or("No app loaded")?;
 
-        for record in &pull {
-            let id         = record["id"].as_str().unwrap_or_default();
-            let rtype      = record["type"].as_str().unwrap_or_default();
-            let body       = record["body"].as_str().unwrap_or("{}");
-            let created_at = record["created_at"].as_i64().unwrap_or(0);
-            let updated_at = record["updated_at"].as_i64().unwrap_or(0);
-            let deleted    = record["deleted"].as_bool().unwrap_or(false);
+        for record in &pulled_records {
+            let id = record.id.as_str();
+            let rtype = record.r#type.as_str();
+            let body = record.body.as_str();
+            let created_at = record.created_at;
+            let updated_at = record.updated_at;
+            let deleted = record.deleted;
 
             if deleted {
                 conn.execute("DELETE FROM records WHERE id = ?1", [id])
@@ -2540,6 +2988,13 @@ async fn state_sync(state: State<'_, AppState>) -> Result<serde_json::Value, Str
         }
 
         conn.execute(
+            "INSERT INTO meta (key, value) VALUES (?1, ?2) \
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            rusqlite::params![last_sync_key, server_time.to_string()],
+        )
+        .map_err(|e| e.to_string())?;
+
+        conn.execute(
             "INSERT INTO meta (key, value) VALUES ('last_sync', ?1) \
              ON CONFLICT (key) DO UPDATE SET value = excluded.value",
             [&server_time.to_string()],
@@ -2547,7 +3002,58 @@ async fn state_sync(state: State<'_, AppState>) -> Result<serde_json::Value, Str
         .map_err(|e| e.to_string())?;
     }
 
-    Ok(serde_json::json!({ "pushed": pushed, "pulled": pulled_count }))
+    Ok(serde_json::json!({
+        "pushed": pushed,
+        "pulled": pulled_count,
+        "serverTime": server_time,
+    }))
+    }
+    .await;
+
+    match result {
+        Ok(payload) => {
+            let pushed = payload
+                .get("pushed")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let pulled = payload
+                .get("pulled")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let server_time = payload
+                .get("serverTime")
+                .and_then(|v| v.as_i64())
+                .unwrap_or_else(now_ms);
+
+            emit_desktop_event(
+                "desktop.sync.request_succeeded",
+                "info",
+                Some(observed_app_id.as_str()),
+                None,
+                Some(serde_json::json!({
+                    "durationMs": now_ms() - started_at,
+                    "pushed": pushed,
+                    "pulled": pulled,
+                    "serverTime": server_time,
+                })),
+            );
+
+            Ok(payload)
+        }
+        Err(error) => {
+            emit_desktop_event(
+                "desktop.sync.request_failed",
+                "warn",
+                Some(observed_app_id.as_str()),
+                Some(error.as_str()),
+                Some(serde_json::json!({
+                    "durationMs": now_ms() - started_at,
+                })),
+            );
+
+            Err(error)
+        }
+    }
 }
 
 /// Bridge-accessible fullscreen controls — all require the "fullscreen" permission.
@@ -2800,7 +3306,7 @@ fn db_load_all(db_path: String) -> Result<DbLoadResult, String> {
 #[tauri::command]
 fn db_update_record(db_path: String, id: String, body: String) -> Result<(), String> {
     let conn = rusqlite::Connection::open(&db_path).map_err(|e| e.to_string())?;
-    let now = now_ms() / 1000;
+    let now = now_ms();
     conn.execute(
         "UPDATE records SET body = ?1, updated_at = ?2 WHERE id = ?3",
         rusqlite::params![body, now, id],
@@ -2832,7 +3338,7 @@ fn db_insert_record(db_path: String, r#type: String, body: String) -> Result<Rec
     )
     .map_err(|e| e.to_string())?;
     let id = format!("{}:{}", r#type, gen_id());
-    let now = now_ms() / 1000;
+    let now = now_ms();
     conn.execute(
         "INSERT INTO records (id, type, body, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?4)",
         rusqlite::params![id, r#type, body, now],
@@ -3137,18 +3643,156 @@ mod tests {
     #[test]
     fn manifest_network_defaults_to_blocked() {
         let manifest = json!({});
+        let csp = csp_for_manifest(&manifest);
 
         assert!(!network_allowed(&manifest));
-        assert!(csp_for_manifest(&manifest).contains("connect-src 'self' uix:"));
-        assert!(!csp_for_manifest(&manifest).contains("connect-src 'self' uix: https:"));
+        assert!(csp.contains("connect-src 'self' uix:"));
+        assert!(!csp.contains("connect-src 'self' uix: https:"));
+        assert!(csp.contains("form-action 'none'"));
+        assert!(csp.contains("frame-ancestors 'none'"));
     }
 
     #[test]
     fn manifest_network_allowed_enables_https_connects() {
         let manifest = json!({ "network": "allowed" });
+        let csp = csp_for_manifest(&manifest);
 
         assert!(network_allowed(&manifest));
-        assert!(csp_for_manifest(&manifest).contains("connect-src 'self' uix: https: wss:"));
+        assert!(csp.contains("connect-src 'self' uix: https: wss:"));
+        assert!(csp.contains("worker-src 'self' uix: blob: https:"));
+        assert!(csp.contains("form-action 'none'"));
+        assert!(csp.contains("frame-ancestors 'none'"));
+    }
+
+    #[test]
+    fn sync_records_are_normalized_and_sorted_for_signing() {
+        let records = vec![
+            SyncWireRecord {
+                id: "b:1".to_string(),
+                r#type: "order".to_string(),
+                body: "{}".to_string(),
+                created_at: 1_760_000_000,
+                updated_at: 1_760_000_010,
+                deleted: false,
+            },
+            SyncWireRecord {
+                id: "a:1".to_string(),
+                r#type: "order".to_string(),
+                body: "{}".to_string(),
+                created_at: 1_760_000_020,
+                updated_at: 1_760_000_030,
+                deleted: false,
+            },
+        ];
+
+        let normalized = normalize_and_sort_sync_records(records);
+        assert_eq!(normalized[0].id, "a:1");
+        assert_eq!(normalized[1].id, "b:1");
+        assert_eq!(normalized[0].created_at, 1_760_000_020_000);
+        assert_eq!(normalized[1].updated_at, 1_760_000_010_000);
+    }
+
+    #[test]
+    fn sync_signature_changes_when_request_payload_changes() {
+        let secret = vec![42u8; 32];
+        let push = normalize_and_sort_sync_records(vec![SyncWireRecord {
+            id: "order:1".to_string(),
+            r#type: "order".to_string(),
+            body: r#"{"status":"open"}"#.to_string(),
+            created_at: 1_760_000_000_000,
+            updated_at: 1_760_000_000_100,
+            deleted: false,
+        }]);
+
+        let sig_a = hmac_sha256_base64url(
+            &secret,
+            &sync_request_string_to_sign(
+                "com.example.pos",
+                "device-1",
+                1_760_000_000_123,
+                1_760_000_000_000,
+                "nonce-a",
+                &push,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        let sig_b = hmac_sha256_base64url(
+            &secret,
+            &sync_request_string_to_sign(
+                "com.example.pos",
+                "device-1",
+                1_760_000_000_123,
+                1_760_000_000_000,
+                "nonce-b",
+                &push,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_ne!(sig_a, sig_b);
+    }
+
+    #[test]
+    fn sync_response_signature_detects_tampered_pull() {
+        let secret = vec![7u8; 32];
+
+        let expected_pull = normalize_and_sort_sync_records(vec![SyncWireRecord {
+            id: "order:1".to_string(),
+            r#type: "order".to_string(),
+            body: r#"{"status":"ready"}"#.to_string(),
+            created_at: 1_760_000_000_000,
+            updated_at: 1_760_000_000_200,
+            deleted: false,
+        }]);
+
+        let tampered_pull = normalize_and_sort_sync_records(vec![SyncWireRecord {
+            id: "order:1".to_string(),
+            r#type: "order".to_string(),
+            body: r#"{"status":"cancelled"}"#.to_string(),
+            created_at: 1_760_000_000_000,
+            updated_at: 1_760_000_000_200,
+            deleted: false,
+        }]);
+
+        let expected_sig = hmac_sha256_base64url(
+            &secret,
+            &sync_response_string_to_sign(
+                "com.example.pos",
+                "device-1",
+                1_760_000_000_250,
+                1,
+                "nonce-a",
+                &expected_pull,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        let tampered_sig = hmac_sha256_base64url(
+            &secret,
+            &sync_response_string_to_sign(
+                "com.example.pos",
+                "device-1",
+                1_760_000_000_250,
+                1,
+                "nonce-a",
+                &tampered_pull,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_ne!(expected_sig, tampered_sig);
+    }
+
+    #[test]
+    fn sync_last_sync_key_is_endpoint_scoped() {
+        let k1 = sync_last_sync_meta_key("com.example.pos", "http://192.168.1.10:8787");
+        let k2 = sync_last_sync_meta_key("com.example.pos", "http://192.168.1.11:8787");
+        assert_ne!(k1, k2);
     }
 
     // ── order_term ────────────────────────────────────────────────────────────

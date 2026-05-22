@@ -8,6 +8,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import DbViewer from "./components/DbViewer";
+import { emitDesktopEvent } from "./observability.js";
 
 function BrandIcon() {
   return (
@@ -176,7 +177,9 @@ function filenameFromPath(path: string): string {
 
 export default function App() {
   const [state, setState] = useState<ViewerState>({ status: "idle" });
-  const [recentFiles, setRecentFiles] = useState<string[]>(() => readRecentFiles());
+  const [recentFiles, setRecentFiles] = useState<string[]>(() =>
+    readRecentFiles(),
+  );
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
@@ -244,23 +247,87 @@ export default function App() {
   useLayoutEffect(() => {
     if (state.status !== "loaded") return;
 
+    const iframeOrigin = "uix://localhost";
+
     const handler = async (e: MessageEvent) => {
-      if (!e.data?.__dotuix) return;
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      if (e.origin !== iframeOrigin) {
+        emitDesktopEvent({
+          code: "desktop.bridge.origin_rejected",
+          severity: "warn",
+          reason: "unexpected_origin",
+          metadata: {
+            origin: e.origin,
+          },
+        });
+        return;
+      }
+
+      if (
+        typeof e.data !== "object" ||
+        e.data === null ||
+        !("__dotuix" in e.data) ||
+        (e.data as { __dotuix?: unknown }).__dotuix !== true
+      ) {
+        emitDesktopEvent({
+          code: "desktop.bridge.payload_rejected",
+          severity: "warn",
+          reason: "invalid_envelope",
+        });
+        return;
+      }
+
       const { id, cmd, payload } = e.data as {
         id: number;
         cmd: string;
-        payload: Record<string, unknown>;
+        payload?: Record<string, unknown>;
       };
+
+      if (!Number.isInteger(id) || id <= 0) {
+        emitDesktopEvent({
+          code: "desktop.bridge.payload_rejected",
+          severity: "warn",
+          reason: "invalid_id",
+        });
+        return;
+      }
+
+      if (!/^[a-z_][a-z0-9_]*$/i.test(cmd)) {
+        emitDesktopEvent({
+          code: "desktop.bridge.payload_rejected",
+          severity: "warn",
+          reason: "invalid_command",
+          metadata: {
+            cmd,
+          },
+        });
+        return;
+      }
+
+      if (
+        payload !== undefined &&
+        (typeof payload !== "object" ||
+          payload === null ||
+          Array.isArray(payload))
+      ) {
+        emitDesktopEvent({
+          code: "desktop.bridge.payload_rejected",
+          severity: "warn",
+          reason: "invalid_payload",
+        });
+        return;
+      }
+
       try {
         const result = await invoke(cmd, payload ?? {});
         iframeRef.current?.contentWindow?.postMessage(
           { __dotuix_reply: true, id, result },
-          "*",
+          iframeOrigin,
         );
       } catch (err) {
         iframeRef.current?.contentWindow?.postMessage(
           { __dotuix_reply: true, id, error: String(err) },
-          "*",
+          iframeOrigin,
         );
       }
     };
@@ -776,7 +843,9 @@ export default function App() {
             </div>
             <div className="start-brand-copy">
               <span className="start-brand-name">dotuix Viewer</span>
-              <p className="start-brand-subtitle">Desktop workspace for executable documents</p>
+              <p className="start-brand-subtitle">
+                Desktop workspace for executable documents
+              </p>
             </div>
           </div>
           <button className="start-link-btn" onClick={openInNewWindow}>
@@ -787,10 +856,13 @@ export default function App() {
         <div className="start-grid">
           <section className="start-hero">
             <p className="start-kicker">Home</p>
-            <h1 className="start-title">Open and review UIX apps with a real desktop workflow.</h1>
+            <h1 className="start-title">
+              Open and review UIX apps with a real desktop workflow.
+            </h1>
             <p className="start-description">
-              Start by opening a document, dragging one into this window, or jumping back into a recent project.
-              dotuix Viewer keeps each app isolated while giving you fast multi-window navigation.
+              Start by opening a document, dragging one into this window, or
+              jumping back into a recent project. dotuix Viewer keeps each app
+              isolated while giving you fast multi-window navigation.
             </p>
 
             <div className="start-actions">
@@ -830,7 +902,13 @@ export default function App() {
 
             {recentFiles.length === 0 ? (
               <div className="recent-empty-state">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden
+                >
                   <path
                     d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"
                     stroke="currentColor"
@@ -847,7 +925,9 @@ export default function App() {
                   />
                 </svg>
                 <p>No recent files yet.</p>
-                <span>Your recently opened UIX documents will appear here.</span>
+                <span>
+                  Your recently opened UIX documents will appear here.
+                </span>
               </div>
             ) : (
               <ul className="recent-list">
@@ -859,7 +939,9 @@ export default function App() {
                         void loadPath(path);
                       }}
                     >
-                      <span className="recent-name">{filenameFromPath(path)}</span>
+                      <span className="recent-name">
+                        {filenameFromPath(path)}
+                      </span>
                       <span className="recent-path">{path}</span>
                     </button>
                     <button

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::{Cursor, Read, Write};
+use std::path::Component;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{
@@ -51,6 +52,9 @@ struct AppState {
     /// .uix path whose load is awaiting PIN entry.
     pending_path: Mutex<Option<String>>,
 
+    /// Temporary extracted web root for iframe fallback mode.
+    temp_web_root_path: Mutex<Option<std::path::PathBuf>>,
+
     /// Cached license payload for the currently open app; None when no license block or unlicensed.
     license_info: Mutex<Option<LicensePayload>>,
 }
@@ -76,6 +80,7 @@ impl Default for AppState {
             pending_files: Mutex::new(None),
             pending_manifest: Mutex::new(None),
             pending_path: Mutex::new(None),
+            temp_web_root_path: Mutex::new(None),
             license_info: Mutex::new(None),
         }
     }
@@ -364,6 +369,69 @@ fn percent_decode_path(path: &str) -> String {
     String::from_utf8_lossy(&output).into_owned()
 }
 
+fn normalize_protocol_request_path(raw_path: &str) -> String {
+    let decoded_path = percent_decode_path(raw_path.trim_start_matches('/'));
+    let path = decoded_path
+        .trim_start_matches("./")
+        .trim_start_matches(".\\");
+
+    if path.is_empty() {
+        "index.html".to_string()
+    } else {
+        path.to_string()
+    }
+}
+
+fn archive_relative_path(raw: &str) -> Option<std::path::PathBuf> {
+    let normalized = raw.replace('\\', "/");
+    let trimmed = normalized
+        .trim_start_matches("./")
+        .trim_start_matches('/');
+
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut out = std::path::PathBuf::new();
+    for component in std::path::Path::new(trimmed).components() {
+        match component {
+            Component::Normal(segment) => out.push(segment),
+            Component::CurDir => {}
+            Component::ParentDir
+            | Component::Prefix(_)
+            | Component::RootDir => return None,
+        }
+    }
+
+    if out.as_os_str().is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+fn html_with_injected_bridge(
+    html_bytes: &[u8],
+    manifest_json: &str,
+    stored_schema_version: u32,
+) -> Vec<u8> {
+    let script = format!(
+        "{}{}",
+        diagnostics_script(),
+        bridge_script(manifest_json, stored_schema_version)
+    );
+    let html = String::from_utf8_lossy(html_bytes);
+
+    if html.contains("<head>") {
+        html.replacen("<head>", &format!("<head>{script}"), 1)
+            .into_bytes()
+    } else {
+        let mut out = script.into_bytes();
+        out.extend_from_slice(html_bytes);
+        out
+    }
+}
+
 fn network_allowed(manifest: &serde_json::Value) -> bool {
     manifest.get("network").and_then(|v| v.as_str()) == Some("allowed")
 }
@@ -420,6 +488,12 @@ fn read_uix(path: &str) -> Result<HashMap<String, Vec<u8>>, String> {
         files.insert(name, buf);
     }
     Ok(files)
+}
+
+fn clear_temp_web_root(state: &AppState) {
+    if let Some(path) = state.temp_web_root_path.lock().unwrap().take() {
+        let _ = std::fs::remove_dir_all(path);
+    }
 }
 
 fn ensure_state_schema(conn: &rusqlite::Connection, app_id: &str) -> Result<(), String> {
@@ -1030,6 +1104,8 @@ fn complete_load(
             let _ = std::fs::remove_file(format!("{prev_path}.lock"));
         }
     }
+
+    clear_temp_web_root(state);
 
     // --- Per-app data directory (created early — needed for license file lookup) ---
     let data_dir = app
@@ -1926,6 +2002,7 @@ fn close_uix(state: State<'_, AppState>) {
     *state.license_info.lock().unwrap() = None;
     *state.content_security_policy.lock().unwrap() = csp_for_network(false).to_string();
     state.files.lock().unwrap().clear();
+    clear_temp_web_root(&state);
 }
 
 /// Returns (and clears) the .uix path that was passed as a CLI argument on launch.
@@ -2001,6 +2078,86 @@ fn get_manifest(state: State<'_, AppState>) -> Result<serde_json::Value, String>
     let files = state.files.lock().unwrap();
     let bytes = files.get("manifest.json").ok_or("No app loaded")?;
     serde_json::from_slice(bytes).map_err(|e| e.to_string())
+}
+
+/// Prepare a temporary on-disk web root for iframe fallback mode and
+/// return the absolute file path to the requested entry document.
+#[tauri::command]
+fn prepare_iframe_fallback_entry(
+    entry_path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let app_id = state.app_id.lock().unwrap().clone();
+    if app_id.is_empty() {
+        return Err("No app loaded".into());
+    }
+
+    let normalized_entry = normalize_protocol_request_path(&entry_path);
+    let entry_rel = archive_relative_path(&normalized_entry)
+        .ok_or_else(|| format!("Invalid entry path: {normalized_entry}"))?;
+    let stored_schema_version = *state.stored_schema_version.lock().unwrap();
+
+    let (files, manifest_json) = {
+        let map = state.files.lock().unwrap();
+        if map.is_empty() {
+            return Err("No app files loaded".into());
+        }
+
+        let manifest_json = protocol_get_file(&map, "manifest.json")
+            .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
+            .unwrap_or_else(|| "{}".to_string());
+
+        let files = map
+            .iter()
+            .map(|(path, bytes)| (path.clone(), bytes.clone()))
+            .collect::<Vec<_>>();
+
+        (files, manifest_json)
+    };
+
+    clear_temp_web_root(&state);
+
+    let safe_app_id: String = app_id
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect();
+    let root = std::env::temp_dir().join(format!("dotuix_{safe_app_id}_web_{}", now_ms()));
+    std::fs::create_dir_all(&root)
+        .map_err(|e| format!("Cannot create fallback web root {}: {e}", root.display()))?;
+
+    for (raw_path, bytes) in files {
+        let Some(rel_path) = archive_relative_path(&raw_path) else {
+            continue;
+        };
+
+        let dest = root.join(&rel_path);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Cannot create fallback directory {}: {e}",
+                    parent.display()
+                )
+            })?;
+        }
+
+        let rel_for_mime = rel_path.to_string_lossy().replace('\\', "/");
+        let payload = if mime_for(&rel_for_mime).starts_with("text/html") {
+            html_with_injected_bridge(&bytes, &manifest_json, stored_schema_version)
+        } else {
+            bytes
+        };
+
+        std::fs::write(&dest, payload)
+            .map_err(|e| format!("Cannot write fallback file {}: {e}", dest.display()))?;
+    }
+
+    let entry_abs = root.join(entry_rel);
+    if !entry_abs.exists() {
+        return Err(format!("Entry document not found in archive: {normalized_entry}"));
+    }
+
+    *state.temp_web_root_path.lock().unwrap() = Some(root);
+    Ok(entry_abs.to_string_lossy().to_string())
 }
 
 /// Close the viewer window (kiosk exit). PIN protection is a future enhancement.
@@ -3571,6 +3728,7 @@ pub fn run() {
 
                     // Always delete the lock file, even if repack failed.
                     let _ = std::fs::remove_file(format!("{uix_path}.lock"));
+                    clear_temp_web_root(&state);
                 }
             });
 
@@ -3615,38 +3773,20 @@ pub fn run() {
                     .unwrap();
             }
 
-            let raw_path = req.uri().path().to_string();
-            let decoded_path = percent_decode_path(raw_path.trim_start_matches('/'));
-            let path = decoded_path
-                .trim_start_matches("./")
-                .trim_start_matches(".\\");
-            let path = if path.is_empty() { "index.html" } else { path };
+            let path = normalize_protocol_request_path(req.uri().path());
 
             let map = protocol_files.lock().unwrap();
 
-            match protocol_get_file(&map, path) {
+            match protocol_get_file(&map, &path) {
                 Some(data) => {
-                    let mime = mime_for(path);
+                    let mime = mime_for(&path);
                     let is_html = mime.starts_with("text/html");
                     let body = if is_html {
                         let manifest_json = protocol_get_file(&map, "manifest.json")
                             .map(|b| String::from_utf8_lossy(b).into_owned())
                             .unwrap_or_else(|| "{}".to_string());
                         let stored_v = *protocol_schema_version.lock().unwrap();
-                        let script = format!(
-                            "{}{}",
-                            diagnostics_script(),
-                            bridge_script(&manifest_json, stored_v)
-                        );
-                        let html = String::from_utf8_lossy(data);
-                        if html.contains("<head>") {
-                            html.replacen("<head>", &format!("<head>{script}"), 1)
-                                .into_bytes()
-                        } else {
-                            let mut out = script.into_bytes();
-                            out.extend_from_slice(data);
-                            out
-                        }
+                        html_with_injected_bridge(data, &manifest_json, stored_v)
                     } else {
                         data.to_vec()
                     };
@@ -3673,7 +3813,7 @@ pub fn run() {
                     .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
                     .header("Access-Control-Allow-Headers", "*")
                     .header("Cross-Origin-Resource-Policy", "cross-origin")
-                    .body(format!("Not found: {path}").into_bytes())
+                    .body(format!("Not found: {}", path).into_bytes())
                     .unwrap(),
             }
         })
@@ -3687,6 +3827,7 @@ pub fn run() {
             unlock_with_pin,
             get_initial_file,
             get_manifest,
+            prepare_iframe_fallback_entry,
             uix_exit,
             data_find,
             data_get,
@@ -3817,7 +3958,7 @@ mod tests {
         assert!(csp.contains("connect-src 'self' uix:"));
         assert!(!csp.contains("connect-src 'self' uix: https:"));
         assert!(csp.contains("form-action 'none'"));
-        assert!(csp.contains("frame-ancestors 'none'"));
+        assert!(!csp.contains("frame-ancestors"));
     }
 
     #[test]
@@ -3829,7 +3970,7 @@ mod tests {
         assert!(csp.contains("connect-src 'self' uix: https: wss:"));
         assert!(csp.contains("worker-src 'self' uix: blob: https:"));
         assert!(csp.contains("form-action 'none'"));
-        assert!(csp.contains("frame-ancestors 'none'"));
+        assert!(!csp.contains("frame-ancestors"));
     }
 
     #[test]

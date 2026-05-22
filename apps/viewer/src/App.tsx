@@ -5,7 +5,7 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import DbViewer from "./components/DbViewer";
 import { emitDesktopEvent } from "./observability.js";
@@ -136,6 +136,14 @@ function normalizeEntryPath(entry: string | undefined): string {
   return raw.replace(/\\/g, "/").replace(/^\/+/, "");
 }
 
+function encodeEntryUrlPath(entryPath: string): string {
+  return entryPath
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
 function handleLoadResult(result: LoadResult): ViewerState {
   if (result.status === "loaded") {
     const m = JSON.parse(result.manifest) as Manifest;
@@ -204,6 +212,7 @@ export default function App() {
   const [dbStatePath, setDbStatePath] = useState<string | null>(null);
   const [dbDataPath, setDbDataPath] = useState<string | null>(null);
   const [frameReloadNonce, setFrameReloadNonce] = useState(0);
+  const [frameSrcOverride, setFrameSrcOverride] = useState<string | null>(null);
   const [frameFatal, setFrameFatal] = useState<string | null>(null);
   const [frameIframeLoaded, setFrameIframeLoaded] = useState(false);
   const [frameBridgeBootstrapped, setFrameBridgeBootstrapped] = useState(false);
@@ -216,9 +225,15 @@ export default function App() {
   const stateRef = useRef(state);
   const loadedEntryPath = state.status === "loaded" ? state.entryPath : "";
   const loadedAppPath = state.status === "loaded" ? state.appPath : "";
+  const protocolFrameSrc =
+    state.status === "loaded"
+      ? `uix://localhost/${encodeEntryUrlPath(state.entryPath)}`
+      : "";
+  const activeFrameSrc =
+    state.status === "loaded" ? frameSrcOverride ?? protocolFrameSrc : "";
   const loadedFrameKey =
     state.status === "loaded"
-      ? `${loadedAppPath}|${loadedEntryPath}|${frameReloadNonce}`
+      ? `${loadedAppPath}|${loadedEntryPath}|${frameReloadNonce}|${activeFrameSrc}`
       : "";
 
   useEffect(() => {
@@ -231,8 +246,52 @@ export default function App() {
     );
   }, []);
 
+  const startTempFileFallback = useCallback(
+    (trigger: string, detail: string): boolean => {
+      if (stateRef.current.status !== "loaded") return false;
+      if (frameSrcOverride !== null) return false;
+
+      pushFrameDiagnostic("viewer.fallback_prepare", `${trigger}: ${detail}`);
+
+      void invoke<string>("prepare_iframe_fallback_entry", {
+        entryPath: loadedEntryPath,
+      })
+        .then((entryFilePath) => {
+          const fallbackSrc = convertFileSrc(entryFilePath);
+          setFrameSrcOverride(fallbackSrc);
+          setFrameFatal(null);
+          pushFrameDiagnostic(
+            "viewer.fallback_ready",
+            `Loaded temporary entry file: ${entryFilePath}`,
+          );
+        })
+        .catch((error) => {
+          const message = `Fallback preparation failed: ${String(error)}`;
+          pushFrameDiagnostic("viewer.fallback_failed", message);
+          setFrameFatal(
+            (prev) =>
+              prev ??
+              "The app page did not initialize correctly. Open diagnostics and retry.",
+          );
+          emitDesktopEvent({
+            code: "desktop.viewer.frame_init_timeout",
+            severity: "error",
+            reason: "fallback_prepare_failed",
+            metadata: {
+              entryPath: loadedEntryPath,
+              error: String(error),
+            },
+          });
+        });
+
+      return true;
+    },
+    [frameSrcOverride, loadedEntryPath, pushFrameDiagnostic],
+  );
+
   useEffect(() => {
     if (!loadedFrameKey) {
+      setFrameSrcOverride(null);
       setFrameFatal(null);
       setFrameIframeLoaded(false);
       setFrameBridgeBootstrapped(false);
@@ -248,8 +307,11 @@ export default function App() {
     setFrameDomLoaded(false);
     setFrameWindowLoaded(false);
     setFrameDiagnostics([]);
-    pushFrameDiagnostic("viewer.entry_requested", `entry=${loadedEntryPath}`);
-  }, [loadedFrameKey, loadedEntryPath, pushFrameDiagnostic]);
+    pushFrameDiagnostic(
+      "viewer.entry_requested",
+      `entry=${loadedEntryPath} src=${activeFrameSrc}`,
+    );
+  }, [loadedFrameKey, loadedEntryPath, activeFrameSrc, pushFrameDiagnostic]);
 
   useEffect(() => {
     if (!loadedFrameKey) return;
@@ -262,12 +324,17 @@ export default function App() {
       if (!frameBridgeBootstrapped) missing.push("bridge bootstrap");
 
       const detail = `Missing signals: ${missing.join(", ")}`;
+      pushFrameDiagnostic("viewer.init_timeout", detail);
+
+      if (startTempFileFallback("init_timeout", detail)) {
+        return;
+      }
+
       setFrameFatal(
         (prev) =>
           prev ??
           "The app page did not initialize correctly. Open diagnostics and retry.",
       );
-      pushFrameDiagnostic("viewer.init_timeout", detail);
       emitDesktopEvent({
         code: "desktop.viewer.frame_init_timeout",
         severity: "error",
@@ -286,6 +353,7 @@ export default function App() {
     frameBridgeBootstrapped,
     loadedEntryPath,
     pushFrameDiagnostic,
+    startTempFileFallback,
   ]);
 
   useEffect(() => {
@@ -516,7 +584,7 @@ export default function App() {
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [state.status, loadedEntryPath, pushFrameDiagnostic]);
+  }, [state.status, loadedEntryPath, activeFrameSrc, pushFrameDiagnostic]);
 
   // ── Fetch db paths when a .uix is loaded ────────────────────────────────
   useEffect(() => {
@@ -679,7 +747,11 @@ export default function App() {
   );
 
   const retryFrameLoad = useCallback(() => {
-    pushFrameDiagnostic("viewer.retry_requested", "User requested frame reload.");
+    pushFrameDiagnostic(
+      "viewer.retry_requested",
+      "User requested frame reload.",
+    );
+    setFrameSrcOverride(null);
     setFrameReloadNonce((n) => n + 1);
   }, [pushFrameDiagnostic]);
 
@@ -689,6 +761,7 @@ export default function App() {
     const lines: string[] = [
       `timestamp=${new Date().toISOString()}`,
       `entry=${loadedEntryPath}`,
+      `source=${activeFrameSrc}`,
       `appPath=${loadedAppPath}`,
       `iframeLoaded=${String(frameIframeLoaded)}`,
       `bridgeBootstrapped=${String(frameBridgeBootstrapped)}`,
@@ -717,6 +790,7 @@ export default function App() {
   }, [
     loadedFrameKey,
     loadedEntryPath,
+    activeFrameSrc,
     loadedAppPath,
     frameIframeLoaded,
     frameBridgeBootstrapped,
@@ -866,17 +940,26 @@ export default function App() {
         <iframe
           key={loadedFrameKey}
           ref={iframeRef}
-          src={`uix://localhost/${encodeURI(state.entryPath)}`}
+          src={activeFrameSrc}
           className="viewer-frame"
           title={`${state.manifestName} · ${state.appPath}`}
           onLoad={() => {
             setFrameIframeLoaded(true);
-            pushFrameDiagnostic("iframe.load", "Iframe document load event fired.");
+            pushFrameDiagnostic(
+              "iframe.load",
+              "Iframe document load event fired.",
+            );
           }}
           onError={() => {
-            const message = "The viewer iframe failed to load the entry document.";
-            setFrameFatal(message);
+            const message =
+              "The viewer iframe failed to load the entry document.";
             pushFrameDiagnostic("iframe.error", message);
+
+            if (startTempFileFallback("iframe_error", message)) {
+              return;
+            }
+
+            setFrameFatal(message);
             emitDesktopEvent({
               code: "desktop.viewer.iframe_load_failed",
               severity: "error",
@@ -895,6 +978,8 @@ export default function App() {
               <div className="viewer-diagnostics-paths">
                 <span>Entry:</span>
                 <code>{state.entryPath}</code>
+                <span>Source:</span>
+                <code>{activeFrameSrc}</code>
               </div>
               <div className="viewer-diagnostics-signals">
                 <span className={frameIframeLoaded ? "ok" : "bad"}>
@@ -911,7 +996,10 @@ export default function App() {
                 </span>
               </div>
               <div className="viewer-diagnostics-actions">
-                <button className="start-secondary-btn" onClick={retryFrameLoad}>
+                <button
+                  className="start-secondary-btn"
+                  onClick={retryFrameLoad}
+                >
                   Retry App Load
                 </button>
                 <button

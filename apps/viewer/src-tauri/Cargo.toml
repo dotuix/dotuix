@@ -1,6 +1,6 @@
 [package]
 name = "dotuix-viewer"
-version = "0.3.9"
+version = "0.3.10"
 description = "dotuix viewer — open .uix files in kiosk mode"
 authors = []
 edition = "2021"

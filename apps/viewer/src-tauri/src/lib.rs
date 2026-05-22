@@ -2987,8 +2987,7 @@ pub fn run() {
 
                     let mut response = Response::builder()
                         .status(200)
-                        .header("Content-Type", mime)
-                        .header("Access-Control-Allow-Origin", "*");
+                        .header("Content-Type", mime);
 
                     if is_html {
                         let csp = protocol_csp.lock().unwrap().clone();

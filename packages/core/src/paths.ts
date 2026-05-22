@@ -1,6 +1,6 @@
 import { isAbsolute, posix, relative, resolve } from "node:path";
 
-const WINDOWS_DRIVE_RE = /^[a-zA-Z]:[\\/]/;
+const WINDOWS_DRIVE_RE = /^[a-zA-Z]:/;
 
 export function normalizeArchivePath(path: string): string {
   const candidate = path.replace(/\\/g, "/");

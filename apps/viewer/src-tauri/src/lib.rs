@@ -3393,14 +3393,19 @@ async fn toggle_fullscreen(window: tauri::WebviewWindow) -> Result<(), String> {
             window.set_fullscreen(false).map_err(|e| e.to_string())?;
         }
         let is_maximized = window.is_maximized().map_err(|e| e.to_string())?;
-        window
-            .set_maximized(!is_maximized)
-            .map_err(|e| e.to_string())?;
+        if is_maximized {
+            window.unmaximize().map_err(|e| e.to_string())?;
+        } else {
+            window.maximize().map_err(|e| e.to_string())?;
+        }
         return Ok(());
     }
 
-    let is_full = window.is_fullscreen().map_err(|e| e.to_string())?;
-    window.set_fullscreen(!is_full).map_err(|e| e.to_string())
+    #[cfg(not(target_os = "windows"))]
+    {
+        let is_full = window.is_fullscreen().map_err(|e| e.to_string())?;
+        return window.set_fullscreen(!is_full).map_err(|e| e.to_string());
+    }
 }
 
 // ---------------------------------------------------------------------------

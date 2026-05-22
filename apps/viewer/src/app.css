@@ -642,6 +642,123 @@ body,
   background: #fff;
 }
 
+.viewer-diagnostics {
+  position: absolute;
+  inset: 52px 12px 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.viewer-diagnostics-card {
+  width: min(840px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  background: rgba(255, 252, 247, 0.97);
+  border: 1px solid rgba(149, 31, 31, 0.28);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(17, 16, 13, 0.24);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+.viewer-diagnostics-card h3 {
+  font-size: 1rem;
+  color: #991b1b;
+}
+
+.viewer-diagnostics-card p {
+  color: #5f261f;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.viewer-diagnostics-paths {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: #4c4438;
+}
+
+.viewer-diagnostics-paths code {
+  background: rgba(101, 85, 62, 0.08);
+  border: 1px solid rgba(101, 85, 62, 0.2);
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #2f281f;
+  font-family: "SF Mono", "Menlo", monospace;
+}
+
+.viewer-diagnostics-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.viewer-diagnostics-signals span {
+  font-size: 0.72rem;
+  border-radius: 999px;
+  padding: 4px 9px;
+  border: 1px solid transparent;
+}
+
+.viewer-diagnostics-signals .ok {
+  background: rgba(22, 163, 74, 0.09);
+  border-color: rgba(21, 128, 61, 0.25);
+  color: #166534;
+}
+
+.viewer-diagnostics-signals .bad {
+  background: rgba(153, 27, 27, 0.08);
+  border-color: rgba(153, 27, 27, 0.24);
+  color: #991b1b;
+}
+
+.viewer-diagnostics-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.viewer-diagnostics-log {
+  list-style: none;
+  border-top: 1px solid rgba(98, 84, 64, 0.18);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.viewer-diagnostics-log li {
+  display: grid;
+  grid-template-columns: 92px minmax(120px, 220px) 1fr;
+  gap: 10px;
+  font-size: 0.74rem;
+  color: #453f34;
+  align-items: baseline;
+}
+
+.viewer-diagnostics-log span {
+  color: #716655;
+  font-variant-numeric: tabular-nums;
+}
+
+.viewer-diagnostics-log strong {
+  color: #1f1b15;
+  font-weight: 700;
+}
+
+.viewer-diagnostics-log em {
+  color: #66594a;
+  font-style: normal;
+}
+
 /* ── DB overlay ───────────────────────────────────────────────── */
 .db-overlay {
   position: absolute;

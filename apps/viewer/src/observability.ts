@@ -8,6 +8,9 @@ export type DesktopEventCode =
   | "desktop.trust_gate.passed"
   | "desktop.bridge.origin_rejected"
   | "desktop.bridge.payload_rejected"
+  | "desktop.viewer.iframe_load_failed"
+  | "desktop.viewer.frame_init_timeout"
+  | "desktop.viewer.runtime_error"
   | "desktop.sync.request_failed"
   | "desktop.sync.request_succeeded";
 

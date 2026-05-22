@@ -1229,6 +1229,65 @@ fn repack_uix(uix_path: &str, state_db_path: &std::path::Path) -> Result<(), Str
 // postMessage relay: iframe -> parent shell -> invoke() -> Rust -> reply back.
 // ---------------------------------------------------------------------------
 
+fn diagnostics_script() -> &'static str {
+        r#"<script>
+(function () {
+    function emitStatus(type, detail, metadata) {
+        try {
+            parent.postMessage({
+                __dotuix_status: true,
+                type: type,
+                detail: detail || "",
+                metadata: metadata || {},
+                ts: Date.now()
+            }, "*");
+        } catch (_) {
+            // Best-effort diagnostics only.
+        }
+    }
+
+    emitStatus("bridge_bootstrap", "Diagnostics bridge initialized.", {
+        href: String((window.location && window.location.href) || ""),
+        readyState: String(document.readyState || "")
+    });
+
+    window.addEventListener("DOMContentLoaded", function () {
+        emitStatus("dom_content_loaded", "DOMContentLoaded fired.", {
+            readyState: String(document.readyState || "")
+        });
+    });
+
+    window.addEventListener("load", function () {
+        emitStatus("window_load", "window load fired.", {
+            readyState: String(document.readyState || "")
+        });
+    });
+
+    window.addEventListener("error", function (event) {
+        var message = event && event.message
+            ? String(event.message)
+            : "Unknown runtime error";
+        emitStatus("runtime_error", message, {
+            filename: event && event.filename ? String(event.filename) : "",
+            lineno: event && typeof event.lineno === "number" ? event.lineno : 0,
+            colno: event && typeof event.colno === "number" ? event.colno : 0
+        });
+    });
+
+    window.addEventListener("unhandledrejection", function (event) {
+        var reason = event && event.reason;
+        var message = "";
+        if (reason && typeof reason === "object" && "message" in reason) {
+            message = String(reason.message);
+        } else {
+            message = String(reason || "Unhandled promise rejection");
+        }
+        emitStatus("unhandled_rejection", message, {});
+    });
+})();
+</script>"#
+}
+
 fn bridge_script(manifest_json: &str, stored_schema_version: u32) -> String {
     let viewer_version = VIEWER_VERSION;
     format!(
@@ -3576,7 +3635,11 @@ pub fn run() {
                             .map(|b| String::from_utf8_lossy(b).into_owned())
                             .unwrap_or_else(|| "{}".to_string());
                         let stored_v = *protocol_schema_version.lock().unwrap();
-                        let script = bridge_script(&manifest_json, stored_v);
+                        let script = format!(
+                            "{}{}",
+                            diagnostics_script(),
+                            bridge_script(&manifest_json, stored_v)
+                        );
                         let html = String::from_utf8_lossy(data);
                         if html.contains("<head>") {
                             html.replacen("<head>", &format!("<head>{script}"), 1)

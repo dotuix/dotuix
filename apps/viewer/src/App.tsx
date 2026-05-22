@@ -122,6 +122,14 @@ type ViewerState =
     }
   | { status: "error"; message: string };
 
+type FrameDiagnostic = {
+  ts: number;
+  stage: string;
+  detail: string;
+};
+
+const FRAME_INIT_TIMEOUT_MS = 8000;
+
 function normalizeEntryPath(entry: string | undefined): string {
   const raw = (entry ?? "index.html").trim();
   if (!raw) return "index.html";
@@ -195,11 +203,105 @@ export default function App() {
   const [dbOpen, setDbOpen] = useState(false);
   const [dbStatePath, setDbStatePath] = useState<string | null>(null);
   const [dbDataPath, setDbDataPath] = useState<string | null>(null);
+  const [frameReloadNonce, setFrameReloadNonce] = useState(0);
+  const [frameFatal, setFrameFatal] = useState<string | null>(null);
+  const [frameIframeLoaded, setFrameIframeLoaded] = useState(false);
+  const [frameBridgeBootstrapped, setFrameBridgeBootstrapped] = useState(false);
+  const [frameDomLoaded, setFrameDomLoaded] = useState(false);
+  const [frameWindowLoaded, setFrameWindowLoaded] = useState(false);
+  const [frameDiagnostics, setFrameDiagnostics] = useState<FrameDiagnostic[]>(
+    [],
+  );
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const stateRef = useRef(state);
+  const loadedEntryPath = state.status === "loaded" ? state.entryPath : "";
+  const loadedAppPath = state.status === "loaded" ? state.appPath : "";
+  const loadedFrameKey =
+    state.status === "loaded"
+      ? `${loadedAppPath}|${loadedEntryPath}|${frameReloadNonce}`
+      : "";
+
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  const pushFrameDiagnostic = useCallback((stage: string, detail: string) => {
+    setFrameDiagnostics((prev) =>
+      [...prev, { ts: Date.now(), stage, detail }].slice(-12),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!loadedFrameKey) {
+      setFrameFatal(null);
+      setFrameIframeLoaded(false);
+      setFrameBridgeBootstrapped(false);
+      setFrameDomLoaded(false);
+      setFrameWindowLoaded(false);
+      setFrameDiagnostics([]);
+      return;
+    }
+
+    setFrameFatal(null);
+    setFrameIframeLoaded(false);
+    setFrameBridgeBootstrapped(false);
+    setFrameDomLoaded(false);
+    setFrameWindowLoaded(false);
+    setFrameDiagnostics([]);
+    pushFrameDiagnostic("viewer.entry_requested", `entry=${loadedEntryPath}`);
+  }, [loadedFrameKey, loadedEntryPath, pushFrameDiagnostic]);
+
+  useEffect(() => {
+    if (!loadedFrameKey) return;
+
+    const timer = window.setTimeout(() => {
+      if (frameIframeLoaded && frameBridgeBootstrapped) return;
+
+      const missing: string[] = [];
+      if (!frameIframeLoaded) missing.push("iframe load event");
+      if (!frameBridgeBootstrapped) missing.push("bridge bootstrap");
+
+      const detail = `Missing signals: ${missing.join(", ")}`;
+      setFrameFatal(
+        (prev) =>
+          prev ??
+          "The app page did not initialize correctly. Open diagnostics and retry.",
+      );
+      pushFrameDiagnostic("viewer.init_timeout", detail);
+      emitDesktopEvent({
+        code: "desktop.viewer.frame_init_timeout",
+        severity: "error",
+        reason: "init_timeout",
+        metadata: {
+          entryPath: loadedEntryPath,
+          missing: missing.join(", "),
+        },
+      });
+    }, FRAME_INIT_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    loadedFrameKey,
+    frameIframeLoaded,
+    frameBridgeBootstrapped,
+    loadedEntryPath,
+    pushFrameDiagnostic,
+  ]);
+
+  useEffect(() => {
+    if (frameFatal && frameIframeLoaded && frameBridgeBootstrapped) {
+      setFrameFatal(null);
+      pushFrameDiagnostic(
+        "viewer.recovered",
+        "Frame recovered after delayed initialization.",
+      );
+    }
+  }, [
+    frameFatal,
+    frameIframeLoaded,
+    frameBridgeBootstrapped,
+    pushFrameDiagnostic,
+  ]);
 
   const registerRecentFile = useCallback((path: string) => {
     const normalized = path.trim();
@@ -298,6 +400,49 @@ export default function App() {
         return;
       }
 
+      if (
+        typeof e.data === "object" &&
+        e.data !== null &&
+        "__dotuix_status" in e.data &&
+        (e.data as { __dotuix_status?: unknown }).__dotuix_status === true
+      ) {
+        const statusType =
+          typeof (e.data as { type?: unknown }).type === "string"
+            ? (e.data as { type: string }).type
+            : "unknown";
+        const statusDetail =
+          typeof (e.data as { detail?: unknown }).detail === "string"
+            ? (e.data as { detail: string }).detail
+            : "No detail";
+
+        pushFrameDiagnostic(`iframe.${statusType}`, statusDetail);
+
+        if (statusType === "bridge_bootstrap") {
+          setFrameBridgeBootstrapped(true);
+        } else if (statusType === "dom_content_loaded") {
+          setFrameDomLoaded(true);
+        } else if (statusType === "window_load") {
+          setFrameWindowLoaded(true);
+        } else if (
+          statusType === "runtime_error" ||
+          statusType === "unhandled_rejection"
+        ) {
+          const message = `App runtime error: ${statusDetail}`;
+          setFrameFatal(message);
+          emitDesktopEvent({
+            code: "desktop.viewer.runtime_error",
+            severity: "error",
+            reason: statusType,
+            metadata: {
+              detail: statusDetail,
+              entryPath: loadedEntryPath,
+            },
+          });
+        }
+
+        return;
+      }
+
       const replyTargetOrigin = isOpaqueOrigin ? "*" : rawOrigin;
 
       if (
@@ -371,7 +516,7 @@ export default function App() {
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [state.status]);
+  }, [state.status, loadedEntryPath, pushFrameDiagnostic]);
 
   // ── Fetch db paths when a .uix is loaded ────────────────────────────────
   useEffect(() => {
@@ -533,6 +678,55 @@ export default function App() {
     [],
   );
 
+  const retryFrameLoad = useCallback(() => {
+    pushFrameDiagnostic("viewer.retry_requested", "User requested frame reload.");
+    setFrameReloadNonce((n) => n + 1);
+  }, [pushFrameDiagnostic]);
+
+  const copyFrameDiagnostics = useCallback(async () => {
+    if (!loadedFrameKey) return;
+
+    const lines: string[] = [
+      `timestamp=${new Date().toISOString()}`,
+      `entry=${loadedEntryPath}`,
+      `appPath=${loadedAppPath}`,
+      `iframeLoaded=${String(frameIframeLoaded)}`,
+      `bridgeBootstrapped=${String(frameBridgeBootstrapped)}`,
+      `domContentLoaded=${String(frameDomLoaded)}`,
+      `windowLoad=${String(frameWindowLoaded)}`,
+      `fatal=${frameFatal ?? ""}`,
+      "events:",
+      ...frameDiagnostics.map(
+        (item) =>
+          `- ${new Date(item.ts).toISOString()} ${item.stage} ${item.detail}`,
+      ),
+    ];
+
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      pushFrameDiagnostic(
+        "viewer.diagnostics_copied",
+        "Copied diagnostics to clipboard.",
+      );
+    } catch (err) {
+      pushFrameDiagnostic(
+        "viewer.diagnostics_copy_failed",
+        `Copy failed: ${String(err)}`,
+      );
+    }
+  }, [
+    loadedFrameKey,
+    loadedEntryPath,
+    loadedAppPath,
+    frameIframeLoaded,
+    frameBridgeBootstrapped,
+    frameDomLoaded,
+    frameWindowLoaded,
+    frameFatal,
+    frameDiagnostics,
+    pushFrameDiagnostic,
+  ]);
+
   // ── Loaded: viewer with professional toolbar ─────────────────────────────
   if (state.status === "loaded") {
     const days = state.expires ? daysUntil(state.expires) : null;
@@ -670,11 +864,80 @@ export default function App() {
           </div>
         </div>
         <iframe
+          key={loadedFrameKey}
           ref={iframeRef}
           src={`uix://localhost/${encodeURI(state.entryPath)}`}
           className="viewer-frame"
           title={`${state.manifestName} · ${state.appPath}`}
+          onLoad={() => {
+            setFrameIframeLoaded(true);
+            pushFrameDiagnostic("iframe.load", "Iframe document load event fired.");
+          }}
+          onError={() => {
+            const message = "The viewer iframe failed to load the entry document.";
+            setFrameFatal(message);
+            pushFrameDiagnostic("iframe.error", message);
+            emitDesktopEvent({
+              code: "desktop.viewer.iframe_load_failed",
+              severity: "error",
+              reason: "iframe_load_error",
+              metadata: {
+                entryPath: state.entryPath,
+              },
+            });
+          }}
         />
+        {frameFatal && (
+          <div className="viewer-diagnostics" role="alert">
+            <div className="viewer-diagnostics-card">
+              <h3>App page did not render</h3>
+              <p>{frameFatal}</p>
+              <div className="viewer-diagnostics-paths">
+                <span>Entry:</span>
+                <code>{state.entryPath}</code>
+              </div>
+              <div className="viewer-diagnostics-signals">
+                <span className={frameIframeLoaded ? "ok" : "bad"}>
+                  iframe load: {frameIframeLoaded ? "ok" : "missing"}
+                </span>
+                <span className={frameBridgeBootstrapped ? "ok" : "bad"}>
+                  bridge bootstrap: {frameBridgeBootstrapped ? "ok" : "missing"}
+                </span>
+                <span className={frameDomLoaded ? "ok" : "bad"}>
+                  DOMContentLoaded: {frameDomLoaded ? "ok" : "missing"}
+                </span>
+                <span className={frameWindowLoaded ? "ok" : "bad"}>
+                  window load: {frameWindowLoaded ? "ok" : "missing"}
+                </span>
+              </div>
+              <div className="viewer-diagnostics-actions">
+                <button className="start-secondary-btn" onClick={retryFrameLoad}>
+                  Retry App Load
+                </button>
+                <button
+                  className="start-secondary-btn"
+                  onClick={() => {
+                    void copyFrameDiagnostics();
+                  }}
+                >
+                  Copy Diagnostics
+                </button>
+                <button className="toolbar-btn-home" onClick={closeApp}>
+                  Back Home
+                </button>
+              </div>
+              <ul className="viewer-diagnostics-log">
+                {[...frameDiagnostics].reverse().map((item, index) => (
+                  <li key={`${item.ts}-${index}`}>
+                    <span>{new Date(item.ts).toLocaleTimeString()}</span>
+                    <strong>{item.stage}</strong>
+                    <em>{item.detail}</em>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
         {dbOpen && (
           <div className="db-overlay">
             <div className="db-overlay-header">

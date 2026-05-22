@@ -297,6 +297,40 @@ fn mime_for(path: &str) -> &'static str {
     }
 }
 
+fn protocol_path_candidates(path: &str) -> Vec<String> {
+    let mut candidates = Vec::with_capacity(6);
+    let mut push_unique = |value: String| {
+        if !value.is_empty() && !candidates.iter().any(|existing| existing == &value) {
+            candidates.push(value);
+        }
+    };
+
+    push_unique(path.to_string());
+    push_unique(path.trim_start_matches("./").trim_start_matches(".\\").to_string());
+
+    let slash = path.replace('\\', "/");
+    push_unique(slash.clone());
+    push_unique(slash.trim_start_matches("./").to_string());
+
+    let backslash = slash.replace('/', "\\");
+    push_unique(backslash.clone());
+    push_unique(backslash.trim_start_matches(".\\").to_string());
+
+    candidates
+}
+
+fn protocol_get_file<'a>(
+    files: &'a HashMap<String, Vec<u8>>,
+    requested_path: &str,
+) -> Option<&'a Vec<u8>> {
+    for candidate in protocol_path_candidates(requested_path) {
+        if let Some(data) = files.get(&candidate) {
+            return Some(data);
+        }
+    }
+    None
+}
+
 fn network_allowed(manifest: &serde_json::Value) -> bool {
     manifest.get("network").and_then(|v| v.as_str()) == Some("allowed")
 }
@@ -3463,17 +3497,17 @@ pub fn run() {
         .register_uri_scheme_protocol("uix", move |_ctx, req: Request<Vec<u8>>| {
             let raw_path = req.uri().path().to_string();
             let path = raw_path.trim_start_matches('/');
+            let path = path.trim_start_matches("./").trim_start_matches(".\\");
             let path = if path.is_empty() { "index.html" } else { path };
 
             let map = protocol_files.lock().unwrap();
 
-            match map.get(path) {
+            match protocol_get_file(&map, path) {
                 Some(data) => {
                     let mime = mime_for(path);
                     let is_html = mime.starts_with("text/html");
                     let body = if is_html {
-                        let manifest_json = map
-                            .get("manifest.json")
+                        let manifest_json = protocol_get_file(&map, "manifest.json")
                             .map(|b| String::from_utf8_lossy(b).into_owned())
                             .unwrap_or_else(|| "{}".to_string());
                         let stored_v = *protocol_schema_version.lock().unwrap();

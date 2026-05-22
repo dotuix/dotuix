@@ -94,6 +94,7 @@ type LoadResult =
 
 type Manifest = {
   name?: string;
+  entry?: string;
   expires?: string | null;
   network?: "blocked" | "allowed";
   signature?: { algorithm: string };
@@ -114,11 +115,18 @@ type ViewerState =
       status: "loaded";
       manifestName: string;
       appPath: string;
+      entryPath: string;
       expires?: string;
       signed: boolean;
       networkAllowed: boolean;
     }
   | { status: "error"; message: string };
+
+function normalizeEntryPath(entry: string | undefined): string {
+  const raw = (entry ?? "index.html").trim();
+  if (!raw) return "index.html";
+  return raw.replace(/\\/g, "/").replace(/^\/+/, "");
+}
 
 function handleLoadResult(result: LoadResult): ViewerState {
   if (result.status === "loaded") {
@@ -127,6 +135,7 @@ function handleLoadResult(result: LoadResult): ViewerState {
       status: "loaded",
       manifestName: m.name ?? "UIX App",
       appPath: result.path,
+      entryPath: normalizeEntryPath(m.entry),
       expires: m.expires ?? undefined,
       signed: !!m.signature,
       networkAllowed: m.network === "allowed",
@@ -251,17 +260,21 @@ export default function App() {
 
     const handler = async (e: MessageEvent) => {
       if (e.source !== iframeRef.current?.contentWindow) return;
-      if (e.origin !== iframeOrigin) {
+      const isOpaqueOrigin = e.origin === "null";
+      if (e.origin !== iframeOrigin && !isOpaqueOrigin) {
         emitDesktopEvent({
           code: "desktop.bridge.origin_rejected",
           severity: "warn",
           reason: "unexpected_origin",
           metadata: {
             origin: e.origin,
+            expected: iframeOrigin,
           },
         });
         return;
       }
+
+      const replyTargetOrigin = isOpaqueOrigin ? "*" : iframeOrigin;
 
       if (
         typeof e.data !== "object" ||
@@ -322,12 +335,12 @@ export default function App() {
         const result = await invoke(cmd, payload ?? {});
         iframeRef.current?.contentWindow?.postMessage(
           { __dotuix_reply: true, id, result },
-          iframeOrigin,
+          replyTargetOrigin,
         );
       } catch (err) {
         iframeRef.current?.contentWindow?.postMessage(
           { __dotuix_reply: true, id, error: String(err) },
-          iframeOrigin,
+          replyTargetOrigin,
         );
       }
     };
@@ -634,7 +647,7 @@ export default function App() {
         </div>
         <iframe
           ref={iframeRef}
-          src="uix://localhost/index.html"
+          src={`uix://localhost/${encodeURI(state.entryPath)}`}
           className="viewer-frame"
           title={`${state.manifestName} · ${state.appPath}`}
         />

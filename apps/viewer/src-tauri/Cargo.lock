@@ -1001,7 +1001,7 @@ dependencies = [
 
 [[package]]
 name = "dotuix-viewer"
-version = "0.3.5"
+version = "0.3.7"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",

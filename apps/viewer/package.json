@@ -1,6 +1,6 @@
 {
   "name": "@dotuix/viewer",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Desktop viewer — Tauri (Rust + WebView)",
   "private": true,
   "type": "module",

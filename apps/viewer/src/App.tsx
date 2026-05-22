@@ -141,6 +141,11 @@ function normalizeFallbackAbsolutePath(path: string): string {
   return path.replace(/\\/g, "/");
 }
 
+function isWindowsHost(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /windows/i.test(`${navigator.userAgent} ${navigator.platform}`);
+}
+
 function encodeEntryUrlPath(entryPath: string): string {
   return entryPath
     .split("/")
@@ -218,6 +223,7 @@ export default function App() {
   const [dbDataPath, setDbDataPath] = useState<string | null>(null);
   const [frameReloadNonce, setFrameReloadNonce] = useState(0);
   const [frameSrcOverride, setFrameSrcOverride] = useState<string | null>(null);
+  const [frameFallbackPreparing, setFrameFallbackPreparing] = useState(false);
   const [frameFatal, setFrameFatal] = useState<string | null>(null);
   const [frameIframeLoaded, setFrameIframeLoaded] = useState(false);
   const [frameBridgeBootstrapped, setFrameBridgeBootstrapped] = useState(false);
@@ -230,12 +236,18 @@ export default function App() {
   const stateRef = useRef(state);
   const loadedEntryPath = state.status === "loaded" ? state.entryPath : "";
   const loadedAppPath = state.status === "loaded" ? state.appPath : "";
+  const preferTempFallbackFirst =
+    state.status === "loaded" && isWindowsHost();
   const protocolFrameSrc =
     state.status === "loaded"
       ? `uix://localhost/${encodeEntryUrlPath(state.entryPath)}`
       : "";
   const activeFrameSrc =
-    state.status === "loaded" ? frameSrcOverride ?? protocolFrameSrc : "";
+    state.status === "loaded"
+      ? frameSrcOverride ?? (preferTempFallbackFirst ? "" : protocolFrameSrc)
+      : "";
+  const waitingForFallbackSource =
+    state.status === "loaded" && preferTempFallbackFirst && !frameSrcOverride;
   const loadedFrameKey =
     state.status === "loaded"
       ? `${loadedAppPath}|${loadedEntryPath}|${frameReloadNonce}|${activeFrameSrc}`
@@ -254,8 +266,10 @@ export default function App() {
   const startTempFileFallback = useCallback(
     (trigger: string, detail: string): boolean => {
       if (stateRef.current.status !== "loaded") return false;
+      if (frameFallbackPreparing) return true;
       if (frameSrcOverride !== null) return false;
 
+      setFrameFallbackPreparing(true);
       pushFrameDiagnostic("viewer.fallback_prepare", `${trigger}: ${detail}`);
 
       void invoke<string>("prepare_iframe_fallback_entry", {
@@ -289,16 +303,25 @@ export default function App() {
               error: String(error),
             },
           });
+        })
+        .finally(() => {
+          setFrameFallbackPreparing(false);
         });
 
       return true;
     },
-    [frameSrcOverride, loadedEntryPath, pushFrameDiagnostic],
+    [
+      frameFallbackPreparing,
+      frameSrcOverride,
+      loadedEntryPath,
+      pushFrameDiagnostic,
+    ],
   );
 
   useEffect(() => {
     if (!loadedFrameKey) {
       setFrameSrcOverride(null);
+      setFrameFallbackPreparing(false);
       setFrameFatal(null);
       setFrameIframeLoaded(false);
       setFrameBridgeBootstrapped(false);
@@ -309,6 +332,7 @@ export default function App() {
     }
 
     setFrameFatal(null);
+    setFrameFallbackPreparing(false);
     setFrameIframeLoaded(false);
     setFrameBridgeBootstrapped(false);
     setFrameDomLoaded(false);
@@ -321,10 +345,35 @@ export default function App() {
   }, [loadedFrameKey, loadedEntryPath, activeFrameSrc, pushFrameDiagnostic]);
 
   useEffect(() => {
-    if (!loadedFrameKey) return;
+    if (!waitingForFallbackSource) return;
+
+    startTempFileFallback(
+      "windows_primary",
+      "Using temporary fallback source as primary mode on Windows.",
+    );
+  }, [waitingForFallbackSource, startTempFileFallback]);
+
+  useEffect(() => {
+    if (!loadedFrameKey || !activeFrameSrc) return;
 
     const timer = window.setTimeout(() => {
       if (frameIframeLoaded && frameBridgeBootstrapped) return;
+
+      if (frameIframeLoaded && !frameBridgeBootstrapped) {
+        const detail =
+          "Iframe loaded but bridge bootstrap signal is missing; keeping app visible.";
+        pushFrameDiagnostic("viewer.init_timeout_soft", detail);
+        emitDesktopEvent({
+          code: "desktop.viewer.frame_init_timeout",
+          severity: "warn",
+          reason: "bridge_bootstrap_missing_non_blocking",
+          metadata: {
+            entryPath: loadedEntryPath,
+            source: activeFrameSrc,
+          },
+        });
+        return;
+      }
 
       const missing: string[] = [];
       if (!frameIframeLoaded) missing.push("iframe load event");
@@ -356,6 +405,7 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [
     loadedFrameKey,
+    activeFrameSrc,
     frameIframeLoaded,
     frameBridgeBootstrapped,
     loadedEntryPath,
@@ -944,39 +994,46 @@ export default function App() {
             </button>
           </div>
         </div>
-        <iframe
-          key={loadedFrameKey}
-          ref={iframeRef}
-          src={activeFrameSrc}
-          className="viewer-frame"
-          title={`${state.manifestName} · ${state.appPath}`}
-          onLoad={() => {
-            setFrameIframeLoaded(true);
-            pushFrameDiagnostic(
-              "iframe.load",
-              "Iframe document load event fired.",
-            );
-          }}
-          onError={() => {
-            const message =
-              "The viewer iframe failed to load the entry document.";
-            pushFrameDiagnostic("iframe.error", message);
+        {activeFrameSrc ? (
+          <iframe
+            key={loadedFrameKey}
+            ref={iframeRef}
+            src={activeFrameSrc}
+            className="viewer-frame"
+            title={`${state.manifestName} · ${state.appPath}`}
+            onLoad={() => {
+              setFrameIframeLoaded(true);
+              pushFrameDiagnostic(
+                "iframe.load",
+                "Iframe document load event fired.",
+              );
+            }}
+            onError={() => {
+              const message =
+                "The viewer iframe failed to load the entry document.";
+              pushFrameDiagnostic("iframe.error", message);
 
-            if (startTempFileFallback("iframe_error", message)) {
-              return;
-            }
+              if (startTempFileFallback("iframe_error", message)) {
+                return;
+              }
 
-            setFrameFatal(message);
-            emitDesktopEvent({
-              code: "desktop.viewer.iframe_load_failed",
-              severity: "error",
-              reason: "iframe_load_error",
-              metadata: {
-                entryPath: state.entryPath,
-              },
-            });
-          }}
-        />
+              setFrameFatal(message);
+              emitDesktopEvent({
+                code: "desktop.viewer.iframe_load_failed",
+                severity: "error",
+                reason: "iframe_load_error",
+                metadata: {
+                  entryPath: state.entryPath,
+                },
+              });
+            }}
+          />
+        ) : (
+          <div className="viewer-frame-loading" role="status" aria-live="polite">
+            <Spinner size={18} />
+            <span>Preparing app view...</span>
+          </div>
+        )}
         {frameFatal && (
           <div className="viewer-diagnostics" role="alert">
             <div className="viewer-diagnostics-card">
@@ -986,7 +1043,7 @@ export default function App() {
                 <span>Entry:</span>
                 <code>{state.entryPath}</code>
                 <span>Source:</span>
-                <code>{activeFrameSrc}</code>
+                <code>{activeFrameSrc || "(preparing fallback source)"}</code>
               </div>
               <div className="viewer-diagnostics-signals">
                 <span className={frameIframeLoaded ? "ok" : "bad"}>

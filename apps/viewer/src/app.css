@@ -642,6 +642,21 @@ body,
   background: #fff;
 }
 
+.viewer-frame-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #625b50;
+  font-size: 0.86rem;
+  letter-spacing: 0.01em;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(17, 24, 39, 0.04), transparent 42%),
+    radial-gradient(circle at 80% 16%, rgba(8, 145, 178, 0.08), transparent 34%),
+    #f7f4ee;
+}
+
 .viewer-diagnostics {
   position: absolute;
   inset: 52px 12px 12px;

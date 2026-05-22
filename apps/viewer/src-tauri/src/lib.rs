@@ -3,7 +3,7 @@ use std::io::{Cursor, Read, Write};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{
-    http::{Request, Response},
+    http::{Method, Request, Response},
     AppHandle, Emitter, Manager, State,
 };
 
@@ -3385,6 +3385,20 @@ fn db_insert_record(db_path: String, r#type: String, body: String) -> Result<Rec
 
 #[tauri::command]
 async fn toggle_fullscreen(window: tauri::WebviewWindow) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        // On some Windows + WebView2 setups, true fullscreen can overshoot monitor
+        // bounds. Use maximize toggle as a safer kiosk-like full-view behavior.
+        if window.is_fullscreen().map_err(|e| e.to_string())? {
+            window.set_fullscreen(false).map_err(|e| e.to_string())?;
+        }
+        let is_maximized = window.is_maximized().map_err(|e| e.to_string())?;
+        window
+            .set_maximized(!is_maximized)
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
     let is_full = window.is_fullscreen().map_err(|e| e.to_string())?;
     window.set_fullscreen(!is_full).map_err(|e| e.to_string())
 }
@@ -3495,6 +3509,17 @@ pub fn run() {
             Ok(())
         })
         .register_uri_scheme_protocol("uix", move |_ctx, req: Request<Vec<u8>>| {
+            if req.method() == Method::OPTIONS {
+                return Response::builder()
+                    .status(204)
+                    .header("Access-Control-Allow-Origin", "*")
+                    .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+                    .header("Access-Control-Allow-Headers", "*")
+                    .header("Access-Control-Max-Age", "86400")
+                    .body(Vec::new())
+                    .unwrap();
+            }
+
             let raw_path = req.uri().path().to_string();
             let path = raw_path.trim_start_matches('/');
             let path = path.trim_start_matches("./").trim_start_matches(".\\");
@@ -3527,7 +3552,11 @@ pub fn run() {
 
                     let mut response = Response::builder()
                         .status(200)
-                        .header("Content-Type", mime);
+                        .header("Content-Type", mime)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+                        .header("Access-Control-Allow-Headers", "*")
+                        .header("Cross-Origin-Resource-Policy", "cross-origin");
 
                     if is_html {
                         let csp = protocol_csp.lock().unwrap().clone();
@@ -3539,6 +3568,10 @@ pub fn run() {
                 None => Response::builder()
                     .status(404)
                     .header("Content-Type", "text/plain")
+                    .header("Access-Control-Allow-Origin", "*")
+                    .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+                    .header("Access-Control-Allow-Headers", "*")
+                    .header("Cross-Origin-Resource-Policy", "cross-origin")
                     .body(format!("Not found: {path}").into_bytes())
                     .unwrap(),
             }

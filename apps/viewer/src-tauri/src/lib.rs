@@ -2209,7 +2209,7 @@ fn prepare_iframe_fallback_entry(
     }
 
     *state.temp_web_root_path.lock().unwrap() = Some(root);
-    Ok(entry_abs.to_string_lossy().to_string())
+    Ok(entry_abs.to_string_lossy().replace('\\', "/"))
 }
 
 /// Close the viewer window (kiosk exit). PIN protection is a future enhancement.

@@ -136,6 +136,11 @@ function normalizeEntryPath(entry: string | undefined): string {
   return raw.replace(/\\/g, "/").replace(/^\/+/, "");
 }
 
+function normalizeFallbackAbsolutePath(path: string): string {
+  // asset.localhost URL conversion expects slash-separated paths on Windows.
+  return path.replace(/\\/g, "/");
+}
+
 function encodeEntryUrlPath(entryPath: string): string {
   return entryPath
     .split("/")
@@ -257,7 +262,9 @@ export default function App() {
         entryPath: loadedEntryPath,
       })
         .then((entryFilePath) => {
-          const fallbackSrc = convertFileSrc(entryFilePath);
+          const fallbackSrc = convertFileSrc(
+            normalizeFallbackAbsolutePath(entryFilePath),
+          );
           setFrameSrcOverride(fallbackSrc);
           setFrameFatal(null);
           pushFrameDiagnostic(

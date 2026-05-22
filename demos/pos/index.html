@@ -1,0 +1,2590 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>dotuix POS</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #1a1a1a;
+        --surface: #242424;
+        --surface2: #2c2c2c;
+        --border: #333;
+        --accent: #c8a96e;
+        --accent2: #dfc08a;
+        --text: #e8e8e8;
+        --muted: #888;
+        --danger: #e05555;
+        --success: #55aa77;
+        --warn: #e09955;
+      }
+
+      html,
+      body {
+        height: 100%;
+        font-family: system-ui, -apple-system, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        overflow: hidden;
+      }
+
+      /* ── Login ── */
+      #login-screen {
+        position: fixed;
+        inset: 0;
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2rem;
+        z-index: 1000;
+      }
+      .login-logo {
+        font-size: 2.8rem;
+        font-weight: 800;
+        color: var(--accent);
+        letter-spacing: -0.02em;
+      }
+      .login-sub {
+        color: var(--muted);
+        margin-top: -1.5rem;
+        font-size: 0.95rem;
+      }
+      .staff-list {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .staff-btn {
+        padding: 1.4rem 2.2rem;
+        background: var(--surface);
+        border: 2px solid var(--border);
+        border-radius: 12px;
+        cursor: pointer;
+        color: var(--text);
+        font-size: 1rem;
+        text-align: center;
+        transition: border-color 0.15s, background 0.15s;
+        min-width: 140px;
+      }
+      .staff-btn .sname {
+        font-weight: 700;
+        display: block;
+        margin-bottom: 0.3rem;
+      }
+      .staff-btn .srole {
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+      .staff-btn:hover {
+        border-color: var(--accent);
+      }
+      .staff-btn.selected {
+        border-color: var(--accent);
+        background: #2a2215;
+      }
+
+      /* ── PIN pad ── */
+      #pin-screen {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.8);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1001;
+      }
+      #pin-screen.open {
+        display: flex;
+      }
+      .pin-box {
+        background: var(--surface);
+        border-radius: 16px;
+        padding: 2rem;
+        text-align: center;
+        width: 290px;
+      }
+      .pin-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--accent);
+        margin-bottom: 1rem;
+      }
+      .pin-dots {
+        font-size: 2.4rem;
+        letter-spacing: 0.6em;
+        height: 3rem;
+        line-height: 3rem;
+        border-bottom: 2px solid var(--border);
+        margin-bottom: 1.5rem;
+      }
+      .pin-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.65rem;
+      }
+      .pin-key {
+        padding: 0.9rem;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1.2rem;
+        color: var(--text);
+        transition: background 0.1s;
+        user-select: none;
+      }
+      .pin-key:hover {
+        background: var(--border);
+      }
+      .pin-key.del {
+        color: var(--warn);
+      }
+      .pin-key.cancel {
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+      .pin-key.shake {
+        animation: shake 0.35s ease;
+      }
+      .pin-error {
+        color: var(--danger);
+        font-size: 0.85rem;
+        min-height: 1.2rem;
+        margin-top: 0.75rem;
+      }
+      @keyframes shake {
+        0%,
+        100% {
+          transform: translateX(0);
+        }
+        20%,
+        60% {
+          transform: translateX(-6px);
+        }
+        40%,
+        80% {
+          transform: translateX(6px);
+        }
+      }
+
+      /* ── App shell ── */
+      #app {
+        display: none;
+        height: 100vh;
+        flex-direction: column;
+      }
+      #app.open {
+        display: flex;
+      }
+
+      header {
+        flex-shrink: 0;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        padding: 0 1.5rem;
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .hd-logo {
+        font-weight: 800;
+        font-size: 1.1rem;
+        color: var(--accent);
+      }
+      .hd-right {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+      .hd-staff {
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .hd-logout {
+        cursor: pointer;
+        transition: color 0.15s;
+      }
+      .hd-logout:hover {
+        color: var(--danger);
+      }
+
+      nav {
+        flex-shrink: 0;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+      }
+      .tab {
+        padding: 0 1.4rem;
+        height: 42px;
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 0.88rem;
+        font-weight: 500;
+        border-bottom: 3px solid transparent;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        transition: color 0.15s;
+        user-select: none;
+      }
+      .tab:hover {
+        color: var(--text);
+      }
+      .tab.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+      }
+
+      main {
+        flex: 1;
+        overflow: hidden;
+        position: relative;
+      }
+      .sec {
+        position: absolute;
+        inset: 0;
+        display: none;
+        overflow: auto;
+        padding: 1.5rem;
+      }
+      .sec.active {
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ── Checkout ── */
+      #sec-checkout {
+        padding: 0;
+        flex-direction: row !important;
+        overflow: hidden;
+      }
+
+      .products-panel {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border-right: 1px solid var(--border);
+      }
+      .cat-bar {
+        padding: 0.7rem 1rem;
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface2);
+        flex-shrink: 0;
+      }
+      .cat-chip {
+        padding: 0.35rem 0.9rem;
+        border-radius: 20px;
+        cursor: pointer;
+        font-size: 0.82rem;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--muted);
+        transition: all 0.15s;
+        user-select: none;
+      }
+      .cat-chip:hover,
+      .cat-chip.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #1a1a1a;
+        font-weight: 700;
+      }
+      .product-grid {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+        gap: 0.75rem;
+        align-content: start;
+      }
+      .pcard {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem 0.85rem;
+        cursor: pointer;
+        transition: border-color 0.15s, transform 0.1s;
+        text-align: center;
+      }
+      .pcard:hover {
+        border-color: var(--accent);
+        transform: translateY(-1px);
+      }
+      .pcard:active {
+        transform: translateY(0);
+      }
+      .pcard .pname {
+        font-size: 0.88rem;
+        font-weight: 600;
+        margin-bottom: 0.35rem;
+        line-height: 1.3;
+      }
+      .pcard .pprice {
+        color: var(--accent);
+        font-size: 1.05rem;
+        font-weight: 700;
+      }
+      .pcard .pstock {
+        color: var(--muted);
+        font-size: 0.72rem;
+        margin-top: 0.25rem;
+      }
+      .pcard.oos {
+        opacity: 0.45;
+        pointer-events: none;
+      }
+
+      .cart-panel {
+        width: 350px;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--surface);
+      }
+      .cart-hd {
+        padding: 0.85rem 1rem;
+        border-bottom: 1px solid var(--border);
+        font-weight: 700;
+        font-size: 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-shrink: 0;
+      }
+      .cart-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0.5rem;
+      }
+      .cart-empty {
+        color: var(--muted);
+        text-align: center;
+        padding: 2rem 1rem;
+        font-size: 0.9rem;
+      }
+      .ci {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.55rem 0.5rem;
+        border-bottom: 1px solid var(--border);
+      }
+      .ci-name {
+        flex: 1;
+        font-size: 0.88rem;
+      }
+      .ci-ctrl {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+      .ci-btn {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        cursor: pointer;
+        color: var(--text);
+        font-size: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        transition: border-color 0.1s;
+      }
+      .ci-btn:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .ci-qty {
+        min-width: 1.4rem;
+        text-align: center;
+        font-weight: 700;
+        font-size: 0.88rem;
+      }
+      .ci-price {
+        min-width: 60px;
+        text-align: right;
+        font-size: 0.88rem;
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      .cart-foot {
+        border-top: 1px solid var(--border);
+        padding: 0.85rem 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        flex-shrink: 0;
+      }
+      .csum-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.88rem;
+      }
+      .csum-total {
+        font-size: 1.2rem;
+        font-weight: 800;
+        color: var(--accent);
+      }
+      .pay-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 0.45rem;
+      }
+      .pay-btn {
+        padding: 0.65rem 0.4rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.82rem;
+        font-weight: 700;
+        border: 2px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
+        transition: all 0.15s;
+        text-align: center;
+        user-select: none;
+      }
+      .pay-btn:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .btn-clear {
+        width: 100%;
+        padding: 0.5rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.82rem;
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        transition: all 0.15s;
+      }
+      .btn-clear:hover {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+
+      /* ── Shared ── */
+      .sec-hdr {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        flex-shrink: 0;
+      }
+      .sec-hdr h2 {
+        font-size: 1.3rem;
+      }
+
+      .btn-primary {
+        padding: 0.55rem 1.2rem;
+        background: var(--accent);
+        color: #1a1a1a;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 700;
+        font-size: 0.88rem;
+        transition: background 0.15s;
+      }
+      .btn-primary:hover {
+        background: var(--accent2);
+      }
+      .btn-secondary {
+        padding: 0.55rem 1.2rem;
+        background: transparent;
+        color: var(--accent);
+        border: 2px solid var(--accent);
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 700;
+        font-size: 0.88rem;
+        transition: background 0.15s;
+      }
+      .btn-secondary:hover {
+        background: rgba(200, 169, 110, 0.1);
+      }
+
+      .input {
+        width: 100%;
+        padding: 0.6rem 0.9rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        font-size: 0.92rem;
+      }
+      .input:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      select.input {
+        cursor: pointer;
+      }
+
+      .tbl {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.88rem;
+      }
+      .tbl th {
+        text-align: left;
+        padding: 0.65rem 0.9rem;
+        color: var(--muted);
+        font-weight: 600;
+        border-bottom: 1px solid var(--border);
+      }
+      .tbl td {
+        padding: 0.65rem 0.9rem;
+        border-bottom: 1px solid var(--border);
+      }
+      .tbl tr:hover td {
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .txt-price {
+        color: var(--accent);
+        font-weight: 700;
+      }
+      .txt-muted {
+        color: var(--muted);
+      }
+      .txt-low {
+        color: var(--warn);
+      }
+      .txt-oos {
+        color: var(--danger);
+      }
+      .lnk {
+        color: var(--accent);
+        cursor: pointer;
+        font-size: 0.82rem;
+      }
+      .lnk:hover {
+        text-decoration: underline;
+      }
+
+      /* ── Reports ── */
+      .stat-row {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        flex-wrap: wrap;
+      }
+      .stat-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.2rem 1.5rem;
+        min-width: 180px;
+      }
+      .stat-label {
+        color: var(--muted);
+        font-size: 0.8rem;
+        margin-bottom: 0.4rem;
+      }
+      .stat-val {
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: var(--accent);
+      }
+      .stat-sub {
+        color: var(--muted);
+        font-size: 0.75rem;
+        margin-top: 0.2rem;
+      }
+
+      .bar-row {
+        margin-bottom: 0.75rem;
+      }
+      .bar-info {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.3rem;
+        font-size: 0.88rem;
+      }
+      .bar-track {
+        height: 6px;
+        background: var(--border);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .bar-fill {
+        height: 100%;
+        background: var(--accent);
+        border-radius: 3px;
+        transition: width 0.4s ease;
+      }
+
+      /* ── Settings ── */
+      #sec-settings {
+        max-width: 600px;
+      }
+      .fg {
+        margin-bottom: 1.1rem;
+      }
+      .fg label {
+        display: block;
+        margin-bottom: 0.35rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .fg-row {
+        display: flex;
+        gap: 1rem;
+      }
+      .fg-row .fg {
+        flex: 1;
+      }
+      .sec-divider {
+        border-top: 1px solid var(--border);
+        margin: 1.5rem 0;
+      }
+      .staff-table {
+        width: 100%;
+        margin-top: 0.5rem;
+      }
+      .staff-row {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.6rem 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .staff-row .sn {
+        flex: 1;
+        font-weight: 600;
+      }
+      .staff-row .sr {
+        color: var(--muted);
+        font-size: 0.85rem;
+        min-width: 80px;
+      }
+      .staff-row .sp {
+        font-family: monospace;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+      .badge {
+        display: inline-block;
+        padding: 0.2rem 0.6rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+      .badge-green {
+        background: rgba(85, 170, 119, 0.15);
+        color: var(--success);
+      }
+      .badge-muted {
+        background: rgba(136, 136, 136, 0.15);
+        color: var(--muted);
+      }
+
+      /* ── Data Transfer ── */
+      #sec-data {
+        max-width: 600px;
+      }
+      .dt-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.3rem 1.5rem;
+        margin-bottom: 1rem;
+      }
+      .dt-card h3 {
+        margin-bottom: 0.4rem;
+      }
+      .dt-card p {
+        color: var(--muted);
+        font-size: 0.88rem;
+        margin-bottom: 1rem;
+        line-height: 1.5;
+      }
+      .dt-btns {
+        display: flex;
+        gap: 0.75rem;
+      }
+
+      /* ── Modal ── */
+      .modal-bg {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 500;
+      }
+      .modal-bg.open {
+        display: flex;
+      }
+      .modal {
+        background: var(--surface);
+        border-radius: 16px;
+        padding: 1.75rem;
+        width: 460px;
+        max-width: 95vw;
+        max-height: 85vh;
+        overflow-y: auto;
+      }
+      .modal h3 {
+        margin-bottom: 1.25rem;
+        color: var(--accent);
+      }
+      .modal-acts {
+        display: flex;
+        gap: 0.65rem;
+        justify-content: flex-end;
+        margin-top: 1.25rem;
+      }
+
+      /* ── Receipt ── */
+      #receipt-modal .modal {
+        background: white;
+        color: #222;
+        max-width: 300px;
+      }
+      #receipt-modal .modal h3 {
+        color: #222;
+        text-align: center;
+        font-size: 1rem;
+      }
+      .rct-line {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.25rem 0;
+        font-size: 0.88rem;
+      }
+      .rct-div {
+        border-top: 1px dashed #ccc;
+        margin: 0.65rem 0;
+      }
+      .rct-total {
+        font-weight: 800;
+        font-size: 1rem;
+      }
+      .rct-footer {
+        text-align: center;
+        color: #999;
+        font-size: 0.78rem;
+        margin-top: 0.75rem;
+      }
+      .rct-actions {
+        display: flex;
+        gap: 0.65rem;
+        border-top: 1px solid #eee;
+        padding-top: 1rem;
+        margin-top: 0.5rem;
+      }
+      .rct-actions button {
+        flex: 1;
+        padding: 0.6rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.88rem;
+        font-weight: 600;
+      }
+      .rct-print {
+        background: #222;
+        color: white;
+        border: none;
+      }
+      .rct-close {
+        background: #f5f5f5;
+        color: #222;
+        border: 1px solid #ddd;
+      }
+
+      /* ── Toast ── */
+      #toast {
+        position: fixed;
+        bottom: 1.5rem;
+        right: 1.5rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 0.75rem 1.25rem;
+        font-size: 0.88rem;
+        z-index: 9999;
+        transform: translateY(80px);
+        opacity: 0;
+        transition: all 0.3s;
+        pointer-events: none;
+        max-width: 320px;
+      }
+      #toast.show {
+        transform: translateY(0);
+        opacity: 1;
+      }
+      #toast.t-success {
+        border-color: var(--success);
+        color: var(--success);
+      }
+      #toast.t-error {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+      #toast.t-warn {
+        border-color: var(--warn);
+        color: var(--warn);
+      }
+
+      /* ── Scrollbar ── */
+      ::-webkit-scrollbar {
+        width: 5px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--muted);
+      }
+
+      @media print {
+        body > *:not(#receipt-modal) {
+          display: none !important;
+        }
+        #receipt-modal .modal {
+          box-shadow: none;
+          border: none;
+        }
+        .rct-actions {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ─── LOGIN ─── -->
+    <div id="login-screen">
+      <div class="login-logo">dotuix POS</div>
+      <div class="login-sub">Select your name to begin</div>
+      <div class="staff-list" id="staff-list">
+        <div style="color: var(--muted)">Loading…</div>
+      </div>
+    </div>
+
+    <!-- ─── PIN ─── -->
+    <div id="pin-screen">
+      <div class="pin-box">
+        <div class="pin-title" id="pin-title">Enter PIN</div>
+        <div class="pin-dots" id="pin-dots"></div>
+        <div class="pin-grid">
+          <button class="pin-key" data-k="1">1</button>
+          <button class="pin-key" data-k="2">2</button>
+          <button class="pin-key" data-k="3">3</button>
+          <button class="pin-key" data-k="4">4</button>
+          <button class="pin-key" data-k="5">5</button>
+          <button class="pin-key" data-k="6">6</button>
+          <button class="pin-key" data-k="7">7</button>
+          <button class="pin-key" data-k="8">8</button>
+          <button class="pin-key" data-k="9">9</button>
+          <button class="pin-key del" data-k="del">⌫</button>
+          <button class="pin-key" data-k="0">0</button>
+          <button class="pin-key cancel" data-k="cancel">Cancel</button>
+        </div>
+        <div class="pin-error" id="pin-error"></div>
+      </div>
+    </div>
+
+    <!-- ─── APP ─── -->
+    <div id="app">
+      <header>
+        <div class="hd-logo">dotuix POS</div>
+        <div class="hd-right">
+          <span id="hd-time"></span>
+          <span>Staff: <span class="hd-staff" id="hd-staff">—</span></span>
+          <span class="hd-logout" onclick="logout()">Log out</span>
+        </div>
+      </header>
+      <nav>
+        <div
+          class="tab active"
+          data-tab="checkout"
+          onclick="showTab('checkout')"
+        >
+          🛒 Checkout
+        </div>
+        <div class="tab" data-tab="catalog" onclick="showTab('catalog')">
+          📦 Catalog
+        </div>
+        <div class="tab" data-tab="history" onclick="showTab('history')">
+          🧾 History
+        </div>
+        <div class="tab" data-tab="reports" onclick="showTab('reports')">
+          📊 Reports
+        </div>
+        <div class="tab" data-tab="settings" onclick="showTab('settings')">
+          ⚙ Settings
+        </div>
+        <div class="tab" data-tab="data" onclick="showTab('data')">⇅ Data</div>
+      </nav>
+      <main>
+        <!-- CHECKOUT -->
+        <section
+          class="sec active"
+          id="sec-checkout"
+          style="padding: 0; overflow: hidden"
+        >
+          <div class="products-panel">
+            <div class="cat-bar" id="cat-bar">
+              <span
+                class="cat-chip active"
+                data-cid=""
+                onclick="filterCat(this,'')"
+                >All</span
+              >
+            </div>
+            <div class="product-grid" id="product-grid"></div>
+          </div>
+          <div class="cart-panel">
+            <div class="cart-hd">
+              <span>Cart</span>
+              <span
+                id="cart-count"
+                style="color: var(--muted); font-size: 0.8rem; font-weight: 400"
+              ></span>
+            </div>
+            <div class="cart-body" id="cart-body">
+              <div class="cart-empty">Cart is empty</div>
+            </div>
+            <div class="cart-foot">
+              <div class="csum-row">
+                <span>Subtotal</span><span id="cs-sub">—</span>
+              </div>
+              <div class="csum-row">
+                <span id="cs-tax-lbl">Tax</span><span id="cs-tax">—</span>
+              </div>
+              <div class="csum-row csum-total">
+                <span>Total</span><span id="cs-total">—</span>
+              </div>
+              <button class="btn-clear" onclick="clearCart()">
+                Clear cart
+              </button>
+              <div class="pay-grid">
+                <div class="pay-btn" onclick="pay('Cash')">💵 Cash</div>
+                <div class="pay-btn" onclick="pay('Card')">💳 Card</div>
+                <div class="pay-btn" onclick="pay('Split')">✂ Split</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- CATALOG -->
+        <section class="sec" id="sec-catalog">
+          <div class="sec-hdr">
+            <h2>Catalog</h2>
+            <button class="btn-primary" onclick="openProdModal()">
+              + Add Product
+            </button>
+          </div>
+          <input
+            class="input"
+            id="cat-search"
+            type="text"
+            placeholder="Search by name or SKU…"
+            oninput="renderCatalogTable()"
+            style="margin-bottom: 1rem"
+          />
+          <div id="catalog-tbl" style="overflow-x: auto"></div>
+        </section>
+
+        <!-- HISTORY -->
+        <section class="sec" id="sec-history">
+          <div class="sec-hdr"><h2>Sales History</h2></div>
+          <div id="history-tbl" style="overflow-x: auto"></div>
+        </section>
+
+        <!-- REPORTS -->
+        <section class="sec" id="sec-reports">
+          <div class="sec-hdr">
+            <h2>Reports</h2>
+            <button class="btn-secondary" onclick="exportCSV()">
+              Export CSV
+            </button>
+          </div>
+          <div class="stat-row" id="stat-row"></div>
+          <h3
+            style="
+              font-size: 0.95rem;
+              color: var(--muted);
+              margin-bottom: 1rem;
+              text-transform: uppercase;
+              letter-spacing: 0.06em;
+            "
+          >
+            Top Products
+          </h3>
+          <div id="top-products" style="max-width: 520px"></div>
+        </section>
+
+        <!-- SETTINGS -->
+        <section class="sec" id="sec-settings">
+          <div class="sec-hdr"><h2>Settings</h2></div>
+          <form id="settings-form" onsubmit="saveSettings(event)">
+            <div class="fg">
+              <label>Store Name</label>
+              <input
+                class="input"
+                id="set-name"
+                type="text"
+                placeholder="My Store"
+              />
+            </div>
+            <div class="fg-row">
+              <div class="fg">
+                <label>Currency Symbol</label>
+                <input
+                  class="input"
+                  id="set-cur"
+                  type="text"
+                  maxlength="4"
+                  placeholder="$"
+                />
+              </div>
+              <div class="fg">
+                <label>Tax Rate (%)</label>
+                <input
+                  class="input"
+                  id="set-tax"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  placeholder="10"
+                />
+              </div>
+            </div>
+            <div class="fg">
+              <label>Receipt Footer</label>
+              <input
+                class="input"
+                id="set-footer"
+                type="text"
+                placeholder="Thank you for your visit!"
+              />
+            </div>
+            <button type="submit" class="btn-primary">Save Settings</button>
+          </form>
+          <div class="sec-divider"></div>
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 1rem;
+            "
+          >
+            <h3>Staff</h3>
+            <button class="btn-primary" onclick="openStaffModal()">
+              + Add Staff
+            </button>
+          </div>
+          <div id="staff-mgmt-list"></div>
+        </section>
+
+        <!-- DATA TRANSFER -->
+        <section class="sec" id="sec-data">
+          <div class="sec-hdr"><h2>Data Transfer</h2></div>
+          <div class="dt-card">
+            <h3>Export Bundle</h3>
+            <p>
+              Save all catalog, sales, and customer data to a
+              <code>.uixdata</code> bundle for backup or migration to another
+              device.
+            </p>
+            <div class="dt-btns">
+              <button class="btn-primary" onclick="exportAll()">
+                Export All…
+              </button>
+              <button class="btn-secondary" onclick="exportSales()">
+                Sales Only…
+              </button>
+            </div>
+          </div>
+          <div class="dt-card">
+            <h3>Import Bundle</h3>
+            <p>
+              Restore records from a <code>.uixdata</code> file.
+              <strong>Replace</strong> overwrites existing records of the same
+              types. <strong>Merge</strong> keeps existing records and only adds
+              new ones.
+            </p>
+            <div class="dt-btns">
+              <button class="btn-primary" onclick="importBundle(false)">
+                Replace Import…
+              </button>
+              <button class="btn-secondary" onclick="importBundle(true)">
+                Merge Import…
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- PRODUCT MODAL -->
+    <div class="modal-bg" id="prod-modal">
+      <div class="modal">
+        <h3 id="pm-title">Add Product</h3>
+        <div class="fg">
+          <label>Name *</label>
+          <input class="input" id="pm-name" type="text" required />
+        </div>
+        <div class="fg-row">
+          <div class="fg">
+            <label>Price *</label>
+            <input
+              class="input"
+              id="pm-price"
+              type="number"
+              min="0"
+              step="0.01"
+              required
+            />
+          </div>
+          <div class="fg">
+            <label>Cost</label>
+            <input
+              class="input"
+              id="pm-cost"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+            />
+          </div>
+        </div>
+        <div class="fg">
+          <label>Category</label>
+          <select class="input" id="pm-cat"></select>
+        </div>
+        <div class="fg-row">
+          <div class="fg">
+            <label>SKU</label>
+            <input class="input" id="pm-sku" type="text" />
+          </div>
+          <div class="fg">
+            <label>Tax Rate (%)</label>
+            <input
+              class="input"
+              id="pm-tax"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+            />
+          </div>
+        </div>
+        <div class="fg">
+          <label>Stock Qty</label>
+          <input class="input" id="pm-stock" type="number" min="0" value="0" />
+        </div>
+        <div class="modal-acts">
+          <button class="btn-secondary" onclick="closeProdModal()">
+            Cancel
+          </button>
+          <button class="btn-primary" onclick="saveProd()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STAFF MODAL -->
+    <div class="modal-bg" id="staff-modal">
+      <div class="modal">
+        <h3 id="sm-title">Add Staff</h3>
+        <div class="fg">
+          <label>Name *</label>
+          <input class="input" id="sm-name" type="text" required />
+        </div>
+        <div class="fg-row">
+          <div class="fg">
+            <label>PIN (4–6 digits) *</label>
+            <input
+              class="input"
+              id="sm-pin"
+              type="password"
+              pattern="[0-9]{4,6}"
+              placeholder="e.g. 1234"
+            />
+          </div>
+          <div class="fg">
+            <label>Role</label>
+            <select class="input" id="sm-role">
+              <option>Cashier</option>
+              <option>Manager</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-acts">
+          <button class="btn-secondary" onclick="closeStaffModal()">
+            Cancel
+          </button>
+          <button class="btn-primary" onclick="saveStaff()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RECEIPT MODAL -->
+    <div class="modal-bg" id="receipt-modal">
+      <div class="modal">
+        <div id="receipt-content"></div>
+        <div class="rct-actions">
+          <button class="rct-print" onclick="window.print()">🖨 Print</button>
+          <button class="rct-close" onclick="closeReceipt()">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+      // ─── Seed data ───────────────────────────────────────────────────────────────
+      const SEED = [
+        // Categories
+        {
+          id: "cat:bev",
+          type: "category",
+          body: { name: "Beverages", color: "#4a9cc7" },
+        },
+        {
+          id: "cat:food",
+          type: "category",
+          body: { name: "Food", color: "#7cb87a" },
+        },
+        {
+          id: "cat:snk",
+          type: "category",
+          body: { name: "Snacks", color: "#e0a050" },
+        },
+        {
+          id: "cat:dai",
+          type: "category",
+          body: { name: "Dairy", color: "#c8a96e" },
+        },
+        {
+          id: "cat:oth",
+          type: "category",
+          body: { name: "Other", color: "#8888aa" },
+        },
+        // Products – Beverages
+        {
+          id: "prod:001",
+          type: "product",
+          body: {
+            name: "Espresso",
+            sku: "BEV001",
+            price: 3.5,
+            cost: 0.5,
+            categoryId: "cat:bev",
+            taxRate: 10,
+          },
+        },
+        {
+          id: "prod:002",
+          type: "product",
+          body: {
+            name: "Cappuccino",
+            sku: "BEV002",
+            price: 5.0,
+            cost: 0.8,
+            categoryId: "cat:bev",
+            taxRate: 10,
+          },
+        },
+        {
+          id: "prod:003",
+          type: "product",
+          body: {
+            name: "Latte",
+            sku: "BEV003",
+            price: 5.5,
+            cost: 0.9,
+            categoryId: "cat:bev",
+            taxRate: 10,
+          },
+        },
+        {
+          id: "prod:004",
+          type: "product",
+          body: {
+            name: "Green Tea",
+            sku: "BEV004",
+            price: 3.0,
+            cost: 0.3,
+            categoryId: "cat:bev",
+            taxRate: 10,
+          },
+        },
+        // Products – Food
+        {
+          id: "prod:005",
+          type: "product",
+          body: {
+            name: "Club Sandwich",
+            sku: "FOOD001",
+            price: 12.5,
+            cost: 4.0,
+            categoryId: "cat:food",
+            taxRate: 10,
+          },
+        },
+        {
+          id: "prod:006",
+          type: "product",
+          body: {
+            name: "Caesar Salad",
+            sku: "FOOD002",
+            price: 10.0,
+            cost: 3.0,
+            categoryId: "cat:food",
+            taxRate: 10,
+          },
+        },
+        {
+          id: "prod:007",
+          type: "product",
+          body: {
+            name: "Grilled Salmon",
+            sku: "FOOD003",
+            price: 18.0,
+            cost: 7.0,
+            categoryId: "cat:food",
+            taxRate: 10,
+          },
+        },
+        {
+          id: "prod:008",
+          type: "product",
+          body: {
+            name: "Pasta Arrabbiata",
+            sku: "FOOD004",
+            price: 14.0,
+            cost: 4.5,
+            categoryId: "cat:food",
+            taxRate: 10,
+          },
+        },
+        // Products – Snacks
+        {
+          id: "prod:009",
+          type: "product",
+          body: {
+            name: "Granola Bar",
+            sku: "SNK001",
+            price: 2.5,
+            cost: 0.8,
+            categoryId: "cat:snk",
+            taxRate: 10,
+          },
+        },
+        {
+          id: "prod:010",
+          type: "product",
+          body: {
+            name: "Mixed Nuts",
+            sku: "SNK002",
+            price: 4.0,
+            cost: 1.2,
+            categoryId: "cat:snk",
+            taxRate: 10,
+          },
+        },
+        {
+          id: "prod:011",
+          type: "product",
+          body: {
+            name: "Dark Chocolate",
+            sku: "SNK003",
+            price: 3.5,
+            cost: 1.0,
+            categoryId: "cat:snk",
+            taxRate: 10,
+          },
+        },
+        {
+          id: "prod:012",
+          type: "product",
+          body: {
+            name: "Banana Chips",
+            sku: "SNK004",
+            price: 2.0,
+            cost: 0.6,
+            categoryId: "cat:snk",
+            taxRate: 10,
+          },
+        },
+        // Products – Dairy
+        {
+          id: "prod:013",
+          type: "product",
+          body: {
+            name: "Greek Yogurt",
+            sku: "DAI001",
+            price: 4.5,
+            cost: 1.5,
+            categoryId: "cat:dai",
+            taxRate: 10,
+          },
+        },
+        {
+          id: "prod:014",
+          type: "product",
+          body: {
+            name: "Cheese Board",
+            sku: "DAI002",
+            price: 16.0,
+            cost: 6.0,
+            categoryId: "cat:dai",
+            taxRate: 10,
+          },
+        },
+        {
+          id: "prod:015",
+          type: "product",
+          body: {
+            name: "Butter 200g",
+            sku: "DAI003",
+            price: 3.0,
+            cost: 1.0,
+            categoryId: "cat:dai",
+            taxRate: 10,
+          },
+        },
+        {
+          id: "prod:016",
+          type: "product",
+          body: {
+            name: "Milk 500ml",
+            sku: "DAI004",
+            price: 2.5,
+            cost: 0.8,
+            categoryId: "cat:dai",
+            taxRate: 10,
+          },
+        },
+        // Products – Other
+        {
+          id: "prod:017",
+          type: "product",
+          body: {
+            name: "Mineral Water",
+            sku: "OTH001",
+            price: 2.0,
+            cost: 0.4,
+            categoryId: "cat:oth",
+            taxRate: 0,
+          },
+        },
+        {
+          id: "prod:018",
+          type: "product",
+          body: {
+            name: "Orange Juice",
+            sku: "OTH002",
+            price: 4.5,
+            cost: 1.2,
+            categoryId: "cat:oth",
+            taxRate: 10,
+          },
+        },
+        {
+          id: "prod:019",
+          type: "product",
+          body: {
+            name: "Tote Bag",
+            sku: "OTH003",
+            price: 8.0,
+            cost: 2.0,
+            categoryId: "cat:oth",
+            taxRate: 0,
+          },
+        },
+        {
+          id: "prod:020",
+          type: "product",
+          body: {
+            name: "Gift Card $25",
+            sku: "OTH004",
+            price: 25.0,
+            cost: 25.0,
+            categoryId: "cat:oth",
+            taxRate: 0,
+          },
+        },
+        // Stock
+        {
+          id: "stk:001",
+          type: "stock",
+          body: { productId: "prod:001", qty: 999, reorderAt: 10 },
+        },
+        {
+          id: "stk:002",
+          type: "stock",
+          body: { productId: "prod:002", qty: 999, reorderAt: 10 },
+        },
+        {
+          id: "stk:003",
+          type: "stock",
+          body: { productId: "prod:003", qty: 999, reorderAt: 10 },
+        },
+        {
+          id: "stk:004",
+          type: "stock",
+          body: { productId: "prod:004", qty: 999, reorderAt: 10 },
+        },
+        {
+          id: "stk:005",
+          type: "stock",
+          body: { productId: "prod:005", qty: 50, reorderAt: 5 },
+        },
+        {
+          id: "stk:006",
+          type: "stock",
+          body: { productId: "prod:006", qty: 50, reorderAt: 5 },
+        },
+        {
+          id: "stk:007",
+          type: "stock",
+          body: { productId: "prod:007", qty: 30, reorderAt: 5 },
+        },
+        {
+          id: "stk:008",
+          type: "stock",
+          body: { productId: "prod:008", qty: 40, reorderAt: 5 },
+        },
+        {
+          id: "stk:009",
+          type: "stock",
+          body: { productId: "prod:009", qty: 100, reorderAt: 20 },
+        },
+        {
+          id: "stk:010",
+          type: "stock",
+          body: { productId: "prod:010", qty: 80, reorderAt: 15 },
+        },
+        {
+          id: "stk:011",
+          type: "stock",
+          body: { productId: "prod:011", qty: 60, reorderAt: 10 },
+        },
+        {
+          id: "stk:012",
+          type: "stock",
+          body: { productId: "prod:012", qty: 90, reorderAt: 20 },
+        },
+        {
+          id: "stk:013",
+          type: "stock",
+          body: { productId: "prod:013", qty: 40, reorderAt: 10 },
+        },
+        {
+          id: "stk:014",
+          type: "stock",
+          body: { productId: "prod:014", qty: 20, reorderAt: 5 },
+        },
+        {
+          id: "stk:015",
+          type: "stock",
+          body: { productId: "prod:015", qty: 50, reorderAt: 10 },
+        },
+        {
+          id: "stk:016",
+          type: "stock",
+          body: { productId: "prod:016", qty: 60, reorderAt: 15 },
+        },
+        {
+          id: "stk:017",
+          type: "stock",
+          body: { productId: "prod:017", qty: 200, reorderAt: 30 },
+        },
+        {
+          id: "stk:018",
+          type: "stock",
+          body: { productId: "prod:018", qty: 80, reorderAt: 15 },
+        },
+        {
+          id: "stk:019",
+          type: "stock",
+          body: { productId: "prod:019", qty: 30, reorderAt: 5 },
+        },
+        {
+          id: "stk:020",
+          type: "stock",
+          body: { productId: "prod:020", qty: 50, reorderAt: 10 },
+        },
+        // Staff  (PINs stored plain-text for demo purposes)
+        {
+          id: "staff:alice",
+          type: "staff",
+          body: { name: "Alice", pin: "1234", role: "Manager", active: true },
+        },
+        {
+          id: "staff:bob",
+          type: "staff",
+          body: { name: "Bob", pin: "5678", role: "Cashier", active: true },
+        },
+        {
+          id: "staff:carol",
+          type: "staff",
+          body: { name: "Carol", pin: "9012", role: "Cashier", active: true },
+        },
+        // Settings
+        {
+          id: "settings:app",
+          type: "settings",
+          body: {
+            storeName: "Demo Café",
+            currency: "$",
+            taxRate: 10,
+            receiptFooter: "Thank you for your visit!",
+          },
+        },
+      ];
+
+      // ─── App state ───────────────────────────────────────────────────────────────
+      let S = {}; // settings
+      let staff = []; // [{ id, name, pin, role, active }]
+      let products = []; // [{ id, name, price, cost, sku, categoryId, taxRate }]
+      let cats = []; // [{ id, name, color }]
+      let stockMap = {}; // productId → { id, qty }
+      let cart = []; // [{ product, qty }]
+      let me = null; // { id, name, role }
+      let pinBuf = "";
+      let pinSubject = null; // staff record while awaiting PIN
+
+      // ─── Init ────────────────────────────────────────────────────────────────────
+      async function init() {
+        // First-run detection: if settings:app is absent the DB is empty → seed it.
+        // We use insertMany (one atomic transaction, no onUpgrade context) so there
+        // is no nested-BEGIN conflict with schema_upgrade_begin.
+        try {
+          const existing = await uix.state.get("settings:app");
+          if (!existing) {
+            await uix.state.insertMany(
+              SEED.map((r) => ({
+                id: r.id,
+                type: r.type,
+                body: JSON.stringify(r.body),
+              })),
+            );
+          }
+        } catch (seedErr) {
+          // insertMany fails if any ID already exists (partial prior seed).
+          // Fall back to individual upserts which use INSERT OR REPLACE.
+          console.warn(
+            "[POS] insertMany seed failed, falling back to upserts:",
+            seedErr,
+          );
+          for (const r of SEED) {
+            await uix.state.upsert({
+              id: r.id,
+              type: r.type,
+              body: JSON.stringify(r.body),
+            });
+          }
+        }
+
+        await reloadData();
+        renderStaffLogin();
+        tick();
+        setInterval(tick, 1000);
+      }
+
+      function tick() {
+        const el = document.getElementById("hd-time");
+        if (el)
+          el.textContent = new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+      }
+
+      async function reloadData() {
+        // Settings
+        const srec = await uix.state.get("settings:app");
+        S = srec
+          ? JSON.parse(srec.body)
+          : {
+              storeName: "My Store",
+              currency: "$",
+              taxRate: 10,
+              receiptFooter: "",
+            };
+
+        // Staff
+        const srecs = await uix.state.find({ type: "staff" });
+        staff = srecs.map((r) => ({ id: r.id, ...JSON.parse(r.body) }));
+
+        // Categories
+        const crecs = await uix.state.find({ type: "category" });
+        cats = crecs.map((r) => ({ id: r.id, ...JSON.parse(r.body) }));
+
+        // Products
+        const precs = await uix.state.find({ type: "product" });
+        products = precs.map((r) => ({ id: r.id, ...JSON.parse(r.body) }));
+
+        // Stock index
+        const strecs = await uix.state.find({ type: "stock" });
+        stockMap = {};
+        strecs.forEach((r) => {
+          const b = JSON.parse(r.body);
+          stockMap[b.productId] = {
+            id: r.id,
+            qty: b.qty,
+            reorderAt: b.reorderAt,
+          };
+        });
+      }
+
+      // ─── Auth ────────────────────────────────────────────────────────────────────
+      function renderStaffLogin() {
+        const active = staff.filter((s) => s.active !== false);
+        document.getElementById("staff-list").innerHTML = active.length
+          ? active
+              .map(
+                (s) => `
+        <div class="staff-btn" data-id="${s.id}" onclick="selectStaff('${
+                  s.id
+                }')">
+          <span class="sname">${esc(s.name)}</span>
+          <span class="srole">${esc(s.role || "Staff")}</span>
+        </div>`,
+              )
+              .join("")
+          : '<div style="color:var(--muted)">No active staff. Please configure staff in Settings.</div>';
+      }
+
+      function selectStaff(id) {
+        document
+          .querySelectorAll(".staff-btn")
+          .forEach((b) => b.classList.toggle("selected", b.dataset.id === id));
+        pinSubject = staff.find((s) => s.id === id);
+        if (!pinSubject) return;
+        pinBuf = "";
+        document.getElementById(
+          "pin-title",
+        ).textContent = `PIN for ${pinSubject.name}`;
+        document.getElementById("pin-dots").textContent = "";
+        document.getElementById("pin-error").textContent = "";
+        document.getElementById("pin-screen").classList.add("open");
+      }
+
+      // PIN keypad
+      document.querySelectorAll(".pin-key").forEach((btn) => {
+        btn.addEventListener("click", () => handlePinKey(btn.dataset.k));
+      });
+
+      function handlePinKey(k) {
+        if (k === "cancel") {
+          closePinScreen();
+          return;
+        }
+        if (k === "del") {
+          pinBuf = pinBuf.slice(0, -1);
+        } else if (pinBuf.length < 6) {
+          pinBuf += k;
+        }
+        document.getElementById("pin-dots").textContent = "●".repeat(
+          pinBuf.length,
+        );
+        if (pinBuf.length >= (pinSubject?.pin?.length || 4)) {
+          setTimeout(verifyPin, 120);
+        }
+      }
+
+      function closePinScreen() {
+        document.getElementById("pin-screen").classList.remove("open");
+        pinBuf = "";
+        pinSubject = null;
+      }
+
+      function verifyPin() {
+        if (!pinSubject) return;
+        if (pinBuf === pinSubject.pin) {
+          me = {
+            id: pinSubject.id,
+            name: pinSubject.name,
+            role: pinSubject.role,
+          };
+          closePinScreen();
+          document.getElementById("login-screen").style.display = "none";
+          document.getElementById("hd-staff").textContent = me.name;
+          document.getElementById("app").classList.add("open");
+          renderCheckout();
+        } else {
+          pinBuf = "";
+          document.getElementById("pin-dots").textContent = "";
+          document.getElementById("pin-error").textContent =
+            "Incorrect PIN — try again";
+          document.querySelectorAll(".pin-key").forEach((k) => {
+            k.classList.add("shake");
+            k.addEventListener(
+              "animationend",
+              () => k.classList.remove("shake"),
+              { once: true },
+            );
+          });
+        }
+      }
+
+      function logout() {
+        me = null;
+        cart = [];
+        document.getElementById("app").classList.remove("open");
+        document.getElementById("login-screen").style.display = "";
+        showTab("checkout");
+      }
+
+      // ─── Navigation ──────────────────────────────────────────────────────────────
+      function showTab(id) {
+        document
+          .querySelectorAll(".tab")
+          .forEach((t) => t.classList.toggle("active", t.dataset.tab === id));
+        document
+          .querySelectorAll(".sec")
+          .forEach((s) => s.classList.toggle("active", s.id === "sec-" + id));
+        if (id === "catalog") renderCatalogTable();
+        if (id === "history") renderHistory();
+        if (id === "reports") renderReports();
+        if (id === "settings") renderSettingsForm();
+        if (id === "settings") renderStaffMgmt();
+      }
+
+      // ─── Checkout ────────────────────────────────────────────────────────────────
+      function renderCheckout() {
+        // Category chips
+        const bar = document.getElementById("cat-bar");
+        bar.innerHTML =
+          `<span class="cat-chip active" data-cid="" onclick="filterCat(this,'')">All</span>` +
+          cats
+            .map(
+              (c) =>
+                `<span class="cat-chip" data-cid="${
+                  c.id
+                }" onclick="filterCat(this,'${c.id}')">${esc(c.name)}</span>`,
+            )
+            .join("");
+        renderProductGrid("");
+        renderCart();
+      }
+
+      function filterCat(el, cid) {
+        document
+          .querySelectorAll(".cat-chip")
+          .forEach((c) => c.classList.toggle("active", c.dataset.cid === cid));
+        renderProductGrid(cid);
+      }
+
+      function renderProductGrid(cid) {
+        const list = cid
+          ? products.filter((p) => p.categoryId === cid)
+          : products;
+        document.getElementById("product-grid").innerHTML = list
+          .map((p) => {
+            const s = stockMap[p.id];
+            const qty = s ? s.qty : 0;
+            const oos = qty <= 0;
+            return `<div class="pcard${
+              oos ? " oos" : ""
+            }" onclick="addToCart('${p.id}')">
+      <div class="pname">${esc(p.name)}</div>
+      <div class="pprice">${fmt(p.price)}</div>
+      <div class="pstock">${oos ? "✕ Out of stock" : "Stock: " + qty}</div>
+    </div>`;
+          })
+          .join("");
+      }
+
+      function addToCart(pid) {
+        const p = products.find((x) => x.id === pid);
+        if (!p) return;
+        const ex = cart.find((i) => i.product.id === pid);
+        ex ? ex.qty++ : cart.push({ product: p, qty: 1 });
+        renderCart();
+      }
+
+      function changeQty(i, d) {
+        cart[i].qty += d;
+        if (cart[i].qty <= 0) cart.splice(i, 1);
+        renderCart();
+      }
+
+      function clearCart() {
+        cart = [];
+        renderCart();
+      }
+
+      function renderCart() {
+        const body = document.getElementById("cart-body");
+        const count = cart.reduce((s, i) => s + i.qty, 0);
+        document.getElementById("cart-count").textContent = count
+          ? `(${count} item${count !== 1 ? "s" : ""})`
+          : "";
+
+        if (!cart.length) {
+          body.innerHTML = '<div class="cart-empty">Cart is empty</div>';
+        } else {
+          body.innerHTML = cart
+            .map(
+              (item, i) => `
+      <div class="ci">
+        <span class="ci-name">${esc(item.product.name)}</span>
+        <span class="ci-ctrl">
+          <span class="ci-btn" onclick="changeQty(${i},-1)">−</span>
+          <span class="ci-qty">${item.qty}</span>
+          <span class="ci-btn" onclick="changeQty(${i},1)">+</span>
+        </span>
+        <span class="ci-price">${fmt(item.product.price * item.qty)}</span>
+      </div>`,
+            )
+            .join("");
+        }
+        updateTotals();
+      }
+
+      function updateTotals() {
+        const sub = cart.reduce((s, i) => s + i.product.price * i.qty, 0);
+        const tax = cart.reduce((s, i) => {
+          const r =
+            (typeof i.product.taxRate === "number"
+              ? i.product.taxRate
+              : S.taxRate || 10) / 100;
+          return s + i.product.price * i.qty * r;
+        }, 0);
+        document.getElementById("cs-sub").textContent = fmt(sub);
+        document.getElementById("cs-tax").textContent = fmt(tax);
+        document.getElementById("cs-total").textContent = fmt(sub + tax);
+        document.getElementById("cs-tax-lbl").textContent = `Tax (${
+          S.taxRate || 10
+        }%)`;
+      }
+
+      async function pay(method) {
+        if (!cart.length) {
+          toast("Cart is empty", "warn");
+          return;
+        }
+        const sub = cart.reduce((s, i) => s + i.product.price * i.qty, 0);
+        const tax = cart.reduce((s, i) => {
+          const r =
+            (typeof i.product.taxRate === "number"
+              ? i.product.taxRate
+              : S.taxRate || 10) / 100;
+          return s + i.product.price * i.qty * r;
+        }, 0);
+        const total = sub + tax;
+        const ts = Date.now();
+        const saleId = "sale:" + ts;
+
+        // Build transaction ops for sale + sale_items
+        const ops = [
+          {
+            op: "insert",
+            id: saleId,
+            type: "sale",
+            body: JSON.stringify({
+              staffId: me.id,
+              staffName: me.name,
+              subtotal: sub,
+              tax,
+              total,
+              discount: 0,
+              paymentMethod: method,
+              status: "completed",
+              closedAt: new Date().toISOString(),
+              itemCount: cart.reduce((s, i) => s + i.qty, 0),
+            }),
+          },
+          ...cart.map((item, idx) => ({
+            op: "insert",
+            id: `sitem:${ts}:${idx}`,
+            type: "sale_item",
+            body: JSON.stringify({
+              saleId,
+              productId: item.product.id,
+              productName: item.product.name,
+              qty: item.qty,
+              unitPrice: item.product.price,
+              lineTotal: item.product.price * item.qty,
+            }),
+          })),
+        ];
+
+        await uix.state.transaction(ops);
+
+        // Decrement stock
+        for (const item of cart) {
+          const s = stockMap[item.product.id];
+          if (s) {
+            const rec = await uix.state.get(s.id);
+            if (rec) {
+              const b = JSON.parse(rec.body);
+              b.qty = Math.max(0, b.qty - item.qty);
+              await uix.state.update(s.id, JSON.stringify(b));
+              s.qty = b.qty;
+            }
+          }
+        }
+
+        // Show receipt and reset
+        const cartSnap = [...cart];
+        showReceipt({ saleId, sub, tax, total, method, items: cartSnap });
+        cart = [];
+        renderCart();
+        renderProductGrid(
+          document.querySelector(".cat-chip.active")?.dataset.cid || "",
+        );
+      }
+
+      // ─── Receipt ─────────────────────────────────────────────────────────────────
+      function showReceipt({ sub, tax, total, method, items }) {
+        const cur = S.currency || "$";
+        document.getElementById("receipt-content").innerHTML = `
+    <h3 style="text-align:center;margin-bottom:0.25rem">${esc(
+      S.storeName || "Store",
+    )}</h3>
+    <div style="text-align:center;color:#999;font-size:0.78rem;margin-bottom:0.75rem">${new Date().toLocaleString()}</div>
+    <div class="rct-div"></div>
+    ${items
+      .map(
+        (i) =>
+          `<div class="rct-line"><span>${esc(i.product.name)} × ${
+            i.qty
+          }</span><span>${cur}${(i.product.price * i.qty).toFixed(
+            2,
+          )}</span></div>`,
+      )
+      .join("")}
+    <div class="rct-div"></div>
+    <div class="rct-line"><span>Subtotal</span><span>${cur}${sub.toFixed(
+          2,
+        )}</span></div>
+    <div class="rct-line"><span>Tax (${
+      S.taxRate || 10
+    }%)</span><span>${cur}${tax.toFixed(2)}</span></div>
+    <div class="rct-line rct-total"><span>TOTAL</span><span>${cur}${total.toFixed(
+          2,
+        )}</span></div>
+    <div class="rct-div"></div>
+    <div class="rct-line"><span>Payment</span><span>${method}</span></div>
+    <div class="rct-footer">${esc(S.receiptFooter || "")}</div>`;
+        document.getElementById("receipt-modal").classList.add("open");
+      }
+      function closeReceipt() {
+        document.getElementById("receipt-modal").classList.remove("open");
+      }
+
+      // ─── Catalog ─────────────────────────────────────────────────────────────────
+      function renderCatalogTable() {
+        const q = (
+          document.getElementById("cat-search")?.value || ""
+        ).toLowerCase();
+        const catIdx = Object.fromEntries(cats.map((c) => [c.id, c.name]));
+        const rows = products.filter(
+          (p) =>
+            p.name.toLowerCase().includes(q) ||
+            (p.sku || "").toLowerCase().includes(q),
+        );
+
+        if (!rows.length) {
+          document.getElementById("catalog-tbl").innerHTML =
+            '<div style="color:var(--muted);padding:2rem;text-align:center">No products found</div>';
+          return;
+        }
+        document.getElementById("catalog-tbl").innerHTML = `<table class="tbl">
+    <thead><tr><th>Name</th><th>SKU</th><th>Category</th><th>Price</th><th>Cost</th><th>Tax%</th><th>Stock</th><th></th></tr></thead>
+    <tbody>${rows
+      .map((p) => {
+        const s = stockMap[p.id];
+        const qty = s ? s.qty : 0;
+        const cls =
+          qty <= 0
+            ? "txt-oos"
+            : qty <= (s?.reorderAt || 5)
+            ? "txt-low"
+            : "txt-muted";
+        return `<tr>
+        <td style="font-weight:600">${esc(p.name)}</td>
+        <td class="txt-muted">${p.sku || "—"}</td>
+        <td class="txt-muted">${catIdx[p.categoryId] || "—"}</td>
+        <td class="txt-price">${fmt(p.price)}</td>
+        <td class="txt-muted">${fmt(p.cost || 0)}</td>
+        <td class="txt-muted">${p.taxRate ?? "—"}%</td>
+        <td class="${cls}">${qty <= 0 ? "⚠ Out" : qty}</td>
+        <td><span class="lnk" onclick="openProdModal('${
+          p.id
+        }')">Edit</span></td>
+      </tr>`;
+      })
+      .join("")}</tbody></table>`;
+      }
+
+      let editProdId = null;
+
+      function openProdModal(id) {
+        editProdId = id || null;
+        document.getElementById("pm-title").textContent = id
+          ? "Edit Product"
+          : "Add Product";
+        const catSel = document.getElementById("pm-cat");
+        catSel.innerHTML = cats
+          .map((c) => `<option value="${c.id}">${esc(c.name)}</option>`)
+          .join("");
+        if (id) {
+          const p = products.find((x) => x.id === id);
+          if (p) {
+            document.getElementById("pm-name").value = p.name;
+            document.getElementById("pm-price").value = p.price;
+            document.getElementById("pm-cost").value = p.cost || "";
+            document.getElementById("pm-sku").value = p.sku || "";
+            document.getElementById("pm-tax").value = p.taxRate ?? "";
+            document.getElementById("pm-cat").value = p.categoryId || "";
+            const s = stockMap[id];
+            document.getElementById("pm-stock").value = s ? s.qty : 0;
+          }
+        } else {
+          ["pm-name", "pm-price", "pm-cost", "pm-sku"].forEach(
+            (id) => (document.getElementById(id).value = ""),
+          );
+          document.getElementById("pm-tax").value = S.taxRate || 10;
+          document.getElementById("pm-stock").value = 0;
+        }
+        document.getElementById("prod-modal").classList.add("open");
+      }
+      function closeProdModal() {
+        document.getElementById("prod-modal").classList.remove("open");
+        editProdId = null;
+      }
+
+      async function saveProd() {
+        const name = document.getElementById("pm-name").value.trim();
+        const price = parseFloat(document.getElementById("pm-price").value);
+        const cost = parseFloat(document.getElementById("pm-cost").value) || 0;
+        const sku = document.getElementById("pm-sku").value.trim();
+        const taxR = parseFloat(document.getElementById("pm-tax").value) || 0;
+        const catId = document.getElementById("pm-cat").value;
+        const stock = parseInt(document.getElementById("pm-stock").value) || 0;
+        if (!name || isNaN(price)) {
+          toast("Name and price are required", "error");
+          return;
+        }
+
+        const body = JSON.stringify({
+          name,
+          price,
+          cost,
+          sku,
+          taxRate: taxR,
+          categoryId: catId,
+        });
+
+        if (editProdId) {
+          await uix.state.update(editProdId, body);
+          const idx = products.findIndex((p) => p.id === editProdId);
+          if (idx >= 0)
+            products[idx] = {
+              id: editProdId,
+              name,
+              price,
+              cost,
+              sku,
+              taxRate: taxR,
+              categoryId: catId,
+            };
+          const sm = stockMap[editProdId];
+          if (sm) {
+            const sr = await uix.state.get(sm.id);
+            if (sr) {
+              const sb = JSON.parse(sr.body);
+              sb.qty = stock;
+              await uix.state.update(sm.id, JSON.stringify(sb));
+              sm.qty = stock;
+            }
+          }
+          toast("Product updated");
+        } else {
+          const rec = await uix.state.insert({ type: "product", body });
+          products.push({
+            id: rec.id,
+            name,
+            price,
+            cost,
+            sku,
+            taxRate: taxR,
+            categoryId: catId,
+          });
+          const sr = await uix.state.insert({
+            type: "stock",
+            body: JSON.stringify({
+              productId: rec.id,
+              qty: stock,
+              reorderAt: 5,
+            }),
+          });
+          stockMap[rec.id] = { id: sr.id, qty: stock, reorderAt: 5 };
+          toast("Product added");
+        }
+        closeProdModal();
+        renderCatalogTable();
+      }
+
+      // ─── History ─────────────────────────────────────────────────────────────────
+      async function renderHistory() {
+        const recs = await uix.state.find({
+          type: "sale",
+          orderBy: { field: "created_at", direction: "desc" },
+          limit: 100,
+        });
+        const cur = S.currency || "$";
+        if (!recs.length) {
+          document.getElementById("history-tbl").innerHTML =
+            '<div style="color:var(--muted);padding:2rem;text-align:center">No sales yet</div>';
+          return;
+        }
+        document.getElementById("history-tbl").innerHTML = `<table class="tbl">
+    <thead><tr><th>Date</th><th>Staff</th><th>Items</th><th>Subtotal</th><th>Tax</th><th>Total</th><th>Method</th></tr></thead>
+    <tbody>${recs
+      .map((r) => {
+        const b = JSON.parse(r.body);
+        return `<tr>
+        <td class="txt-muted" style="font-size:0.82rem;white-space:nowrap">${new Date(
+          b.closedAt || r.created_at * 1000,
+        ).toLocaleString()}</td>
+        <td>${esc(b.staffName || b.staffId || "—")}</td>
+        <td class="txt-muted">${b.itemCount ?? "?"}</td>
+        <td>${cur}${(b.subtotal || 0).toFixed(2)}</td>
+        <td class="txt-muted">${cur}${(b.tax || 0).toFixed(2)}</td>
+        <td class="txt-price">${cur}${(b.total || 0).toFixed(2)}</td>
+        <td class="txt-muted">${b.paymentMethod || "—"}</td>
+      </tr>`;
+      })
+      .join("")}</tbody></table>`;
+      }
+
+      // ─── Reports ─────────────────────────────────────────────────────────────────
+      async function renderReports() {
+        const [saleRecs, itemRecs] = await Promise.all([
+          uix.state.find({ type: "sale" }),
+          uix.state.find({ type: "sale_item" }),
+        ]);
+        const cur = S.currency || "$";
+
+        const now = Date.now();
+        const dof = (d) => new Date(d).setHours(0, 0, 0, 0);
+        const today = dof(now);
+        const wk = new Date(now - 6 * 864e5);
+        wk.setHours(0, 0, 0, 0);
+        const mo = new Date(now - 29 * 864e5);
+        mo.setHours(0, 0, 0, 0);
+
+        const parse = (recs) =>
+          recs.map((r) => ({ ...JSON.parse(r.body), _at: r.created_at }));
+        const sales = parse(saleRecs);
+        const sum = (arr) => arr.reduce((s, b) => s + (b.total || 0), 0);
+
+        const today_s = sales.filter(
+          (b) => dof(b.closedAt || b._at * 1000) >= today,
+        );
+        const wk_s = sales.filter(
+          (b) => new Date(b.closedAt || b._at * 1000) >= wk,
+        );
+        const mo_s = sales.filter(
+          (b) => new Date(b.closedAt || b._at * 1000) >= mo,
+        );
+
+        document.getElementById("stat-row").innerHTML = [
+          {
+            label: "Today's Revenue",
+            val: sum(today_s),
+            sub: `${today_s.length} sale${today_s.length !== 1 ? "s" : ""}`,
+          },
+          { label: "Last 7 Days", val: sum(wk_s), sub: `${wk_s.length} sales` },
+          {
+            label: "Last 30 Days",
+            val: sum(mo_s),
+            sub: `${mo_s.length} sales`,
+          },
+          { label: "All Time", val: sum(sales), sub: `${sales.length} sales` },
+        ]
+          .map(
+            (c) => `<div class="stat-card">
+    <div class="stat-label">${c.label}</div>
+    <div class="stat-val">${cur}${c.val.toFixed(2)}</div>
+    <div class="stat-sub">${c.sub}</div>
+  </div>`,
+          )
+          .join("");
+
+        // Top products
+        const byProd = {};
+        itemRecs.forEach((r) => {
+          const b = JSON.parse(r.body);
+          const k = b.productId;
+          byProd[k] = byProd[k] || { name: b.productName || k, rev: 0, qty: 0 };
+          byProd[k].rev += b.lineTotal || 0;
+          byProd[k].qty += b.qty || 0;
+        });
+        const top = Object.values(byProd)
+          .sort((a, b) => b.rev - a.rev)
+          .slice(0, 8);
+        const maxRev = top[0]?.rev || 1;
+        document.getElementById("top-products").innerHTML = top.length
+          ? top
+              .map(
+                (t, i) => `<div class="bar-row">
+        <div class="bar-info">
+          <span>${i + 1}. ${esc(t.name)}</span>
+          <span style="color:var(--accent)">${cur}${t.rev.toFixed(
+                  2,
+                )} <span class="txt-muted">(${t.qty} sold)</span></span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${(
+          (t.rev / maxRev) *
+          100
+        ).toFixed(1)}%"></div></div>
+      </div>`,
+              )
+              .join("")
+          : '<div class="txt-muted">No sales data yet</div>';
+      }
+
+      async function exportCSV() {
+        const recs = await uix.state.find({
+          type: "sale",
+          orderBy: { field: "created_at", direction: "desc" },
+        });
+        const cur = S.currency || "$";
+        const rows = [
+          ["Date", "Staff", "Method", "Subtotal", "Tax", "Total", "Items"],
+        ];
+        recs.forEach((r) => {
+          const b = JSON.parse(r.body);
+          rows.push([
+            b.closedAt || new Date(r.created_at * 1000).toISOString(),
+            b.staffName || b.staffId,
+            b.paymentMethod,
+            b.subtotal?.toFixed(2) || "0.00",
+            b.tax?.toFixed(2) || "0.00",
+            b.total?.toFixed(2) || "0.00",
+            b.itemCount ?? "",
+          ]);
+        });
+        const csv = rows
+          .map((r) =>
+            r.map((v) => `"${String(v || "").replace(/"/g, '""')}"`).join(","),
+          )
+          .join("\n");
+        const name = `sales-${new Date().toISOString().slice(0, 10)}.csv`;
+        await uix.file.save(name, csv, "text/csv");
+        toast("Exported " + name);
+      }
+
+      // ─── Settings ────────────────────────────────────────────────────────────────
+      function renderSettingsForm() {
+        document.getElementById("set-name").value = S.storeName || "";
+        document.getElementById("set-cur").value = S.currency || "$";
+        document.getElementById("set-tax").value = S.taxRate ?? 10;
+        document.getElementById("set-footer").value = S.receiptFooter || "";
+      }
+
+      async function saveSettings(e) {
+        e.preventDefault();
+        S.storeName = document.getElementById("set-name").value.trim();
+        S.currency = document.getElementById("set-cur").value.trim() || "$";
+        S.taxRate = parseFloat(document.getElementById("set-tax").value) || 10;
+        S.receiptFooter = document.getElementById("set-footer").value.trim();
+        await uix.state.upsert({
+          id: "settings:app",
+          type: "settings",
+          body: JSON.stringify(S),
+        });
+        updateTotals();
+        toast("Settings saved");
+      }
+
+      function renderStaffMgmt() {
+        document.getElementById("staff-mgmt-list").innerHTML = staff.length
+          ? `<div class="staff-table">${staff
+              .map(
+                (s) => `
+        <div class="staff-row">
+          <span class="sn">${esc(s.name)}</span>
+          <span class="sr">${esc(s.role || "Staff")}</span>
+          <span class="sp">PIN: ${"•".repeat((s.pin || "").length)}</span>
+          <span class="badge ${
+            s.active !== false ? "badge-green" : "badge-muted"
+          }">${s.active !== false ? "Active" : "Inactive"}</span>
+          <span class="lnk" onclick="openStaffModal('${s.id}')">Edit</span>
+        </div>`,
+              )
+              .join("")}</div>`
+          : '<div class="txt-muted">No staff configured</div>';
+      }
+
+      let editStaffId = null;
+      function openStaffModal(id) {
+        editStaffId = id || null;
+        document.getElementById("sm-title").textContent = id
+          ? "Edit Staff"
+          : "Add Staff";
+        if (id) {
+          const s = staff.find((x) => x.id === id);
+          if (s) {
+            document.getElementById("sm-name").value = s.name;
+            document.getElementById("sm-pin").value = "";
+            document.getElementById("sm-role").value = s.role || "Cashier";
+          }
+        } else {
+          document.getElementById("sm-name").value = "";
+          document.getElementById("sm-pin").value = "";
+          document.getElementById("sm-role").value = "Cashier";
+        }
+        document.getElementById("staff-modal").classList.add("open");
+      }
+      function closeStaffModal() {
+        document.getElementById("staff-modal").classList.remove("open");
+        editStaffId = null;
+      }
+
+      async function saveStaff() {
+        const name = document.getElementById("sm-name").value.trim();
+        const pin = document.getElementById("sm-pin").value.trim();
+        const role = document.getElementById("sm-role").value;
+        if (!name) {
+          toast("Name is required", "error");
+          return;
+        }
+        if (!editStaffId && (!pin || !/^\d{4,6}$/.test(pin))) {
+          toast("PIN must be 4–6 digits", "error");
+          return;
+        }
+
+        if (editStaffId) {
+          const s = staff.find((x) => x.id === editStaffId);
+          if (s) {
+            const body = JSON.stringify({
+              ...s,
+              name,
+              role,
+              pin: pin || s.pin,
+              id: undefined,
+            });
+            await uix.state.update(editStaffId, body);
+            Object.assign(s, { name, role, pin: pin || s.pin });
+          }
+          toast("Staff updated");
+        } else {
+          const body = JSON.stringify({ name, pin, role, active: true });
+          const rec = await uix.state.insert({ type: "staff", body });
+          staff.push({ id: rec.id, name, pin, role, active: true });
+          toast("Staff added");
+        }
+        closeStaffModal();
+        renderStaffMgmt();
+        renderStaffLogin();
+      }
+
+      // ─── Data Transfer ────────────────────────────────────────────────────────────
+      async function exportAll() {
+        const json = await uix.state.exportBundle();
+        const name = `pos-backup-${ts()}.uixdata`;
+        await uix.file.save(name, json, "application/json");
+        toast("Exported " + name);
+      }
+
+      async function exportSales() {
+        const json = await uix.state.exportBundle({
+          types: ["sale", "sale_item"],
+        });
+        const name = `pos-sales-${ts()}.uixdata`;
+        await uix.file.save(name, json, "application/json");
+        toast("Exported " + name);
+      }
+
+      async function importBundle(merge) {
+        const result = await uix.file.open({ filter: ".uixdata" });
+        if (!result) return;
+        const text =
+          typeof result === "string"
+            ? result
+            : result.content
+            ? new TextDecoder().decode(result.content)
+            : null;
+        if (!text) {
+          toast("Could not read file", "error");
+          return;
+        }
+        const { imported, skipped } = await uix.state.importBundle(text, {
+          merge,
+        });
+        await reloadData();
+        renderCheckout();
+        toast(
+          `Imported ${imported} record${imported !== 1 ? "s" : ""}${
+            skipped ? `, ${skipped} skipped` : ""
+          }`,
+        );
+      }
+
+      // ─── Utilities ───────────────────────────────────────────────────────────────
+      function fmt(n) {
+        return (S.currency || "$") + Number(n || 0).toFixed(2);
+      }
+      function ts() {
+        return new Date().toISOString().slice(0, 10);
+      }
+      function esc(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      let _tt;
+      function toast(msg, type = "success") {
+        const el = document.getElementById("toast");
+        el.textContent = msg;
+        el.className = `show t-${type}`;
+        clearTimeout(_tt);
+        _tt = setTimeout(() => {
+          el.className = "";
+        }, 3200);
+      }
+
+      // ─── Boot ────────────────────────────────────────────────────────────────────
+      document.addEventListener("DOMContentLoaded", init);
+    </script>
+  </body>
+</html>

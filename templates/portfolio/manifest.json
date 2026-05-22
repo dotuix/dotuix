@@ -1,0 +1,14 @@
+{
+  "uix": "1.0",
+  "id": "com.dotuix.template.portfolio",
+  "name": "My Portfolio",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "mode": "window",
+  "permissions": [],
+  "network": "blocked",
+  "theme": {
+    "color": "#0f172a",
+    "background": "#0f172a"
+  }
+}

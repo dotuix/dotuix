@@ -1,0 +1,49 @@
+{
+  "name": "@dotuix/cli",
+  "version": "0.1.6",
+  "description": "CLI for packing, unpacking, and validating .uix files",
+  "keywords": [
+    "uix",
+    "dotuix",
+    "cli",
+    "offline",
+    "kiosk",
+    "portable"
+  ],
+  "homepage": "https://github.com/dotuix/dotuix#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dotuix/dotuix.git",
+    "directory": "packages/cli"
+  },
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "dotuix": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@dotuix/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "name": "@dotuix/ai",
+  "version": "0.1.3",
+  "description": "One-function SDK for creating .uix files from AI-generated code",
+  "keywords": [
+    "uix",
+    "dotuix",
+    "ai",
+    "llm",
+    "code-generation",
+    "portable",
+    "offline"
+  ],
+  "homepage": "https://github.com/dotuix/dotuix#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dotuix/dotuix.git",
+    "directory": "packages/ai"
+  },
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dotuix/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,0 +1,74 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #1a1a1a;
+  color: #e8e8e8;
+  min-height: 100dvh;
+}
+
+.container {
+  padding: 2rem;
+  max-width: 640px;
+}
+
+h1 {
+  color: #42b883;
+  margin-bottom: 1.5rem;
+}
+
+p.muted {
+  color: #666;
+  margin-top: 1rem;
+}
+
+button {
+  background: #42b883;
+  color: #1a1a1a;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:hover {
+  opacity: 0.85;
+}
+
+.item-list {
+  list-style: none;
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.item-card {
+  background: #262626;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  color: #ccc;
+}
+
+.delete-btn {
+  background: transparent;
+  color: #888;
+  font-size: 1.2rem;
+  padding: 0 0.25rem;
+  line-height: 1;
+}
+.delete-btn:hover {
+  color: #e05;
+  opacity: 1;
+}

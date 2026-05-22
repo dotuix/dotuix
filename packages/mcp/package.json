@@ -1,0 +1,50 @@
+{
+  "name": "@dotuix/mcp",
+  "version": "0.2.4",
+  "description": "MCP server for dotuix — lets AI agents generate, pack, and validate .uix files",
+  "keywords": [
+    "uix",
+    "dotuix",
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "claude",
+    "cursor"
+  ],
+  "homepage": "https://github.com/dotuix/dotuix#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dotuix/dotuix.git",
+    "directory": "packages/mcp"
+  },
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "dotuix-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@dotuix/cli": "workspace:*",
+    "@dotuix/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3"
+  }
+}

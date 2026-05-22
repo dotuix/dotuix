@@ -1,0 +1,55 @@
+node_modules/
+dist/
+*.vsix
+*.iconset_tmp/
+.turbo/
+*.tsbuildinfo
+
+# Rust build artifacts
+target/
+apps/viewer/src-tauri/target/
+
+# Expo / React Native
+.expo/
+apps/mobile/.expo/
+apps/mobile/android/
+apps/mobile/ios/
+
+# dotuix runtime artefacts
+*.uix.lock
+~*.uix
+*.uix.tmp
+*.uix.bak
+~/.dotuix/
+
+# Project-local files
+packages/vscode-extension/.vscode/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+apps/editor/dist-electron/
+*.priv
+dotuix-key.*
+gov-key.*
+*.pub
+
+# Generated / deployment — not needed in public repo
+.dockerignore
+llms.txt
+
+# Private — not open-sourced (live in dotuix-internal)
+apps/mobile/
+apps/mcp-server/
+apps/website/
+packages/vscode-extension/
+packages/sync-server/
+docs/
+scripts/
+captain-definition
+vercel.json

@@ -46,9 +46,9 @@ Any interactive experience that benefits from portability, offline operation, or
 
 ## Try it now
 
-Drag any `.uix` file onto [dotuix.uts.qa](https://dotuix.uts.qa) — it renders instantly in your browser.
+Download a pre-built demo from [dotuix.uts.qa](https://dotuix.uts.qa), then open it in the desktop viewer.
 
-Download the desktop viewer at [dotuix.uts.qa](https://dotuix.uts.qa) for full kiosk mode, PIN auth, and signature verification.
+Download the latest desktop viewer binaries from [GitHub Releases](https://github.com/dotuix/dotuix/releases/latest).
 
 ---
 
@@ -95,12 +95,12 @@ The viewer injects `window.__uix` (aliased as `window.uix`) into the running app
 | `mode`          | Yes      | `"kiosk"` (locked UI, no address bar) or `"window"` (developer toolbar).                                                                                                 |
 | `network`       | No       | `"blocked"` (default) or `"allowed"`.                                                                                                                                    |
 | `permissions`   | No       | `["local-storage"]`, `["print"]`, `["raw-sql"]`, `["file-save"]`, `["file-open"]`, `["open-url"]`, `["notifications"]`, `["local-sync"]`                                 |
-| `sync.endpoint` | No       | HTTPS URL of a dotuix sync server. Required when `"local-sync"` permission is declared.                                                                                  |
-| `sync.secret`   | No       | Base64-encoded shared secret for the sync server.                                                                                                                        |
+| `sync.endpoint` | No       | HTTPS URL of Sync Hub (`sync-desktop`). Required when `"local-sync"` permission is declared.                                                                             |
+| `sync.secret`   | No       | Base64-encoded shared secret for Sync Hub (`sync-desktop`).                                                                                                              |
 | `minViewer`     | No       | Minimum viewer version required.                                                                                                                                         |
 | `expires`       | No       | ISO 8601 date — viewer refuses expired files before unpacking.                                                                                                           |
 | `state.seed`    | No       | `true` = copy `state.db` from archive as initial user state on first open.                                                                                               |
-| `state.mode`    | No       | `"device"` (default) — state stored by viewer per app-id; archive never modified. `"file"` — state written back into archive on close; sharing the file shares all data. |
+| `state.mode`    | No       | `"file"` (default) — state written back into archive on close; sharing the file shares all data. `"device"` — state stored by viewer per app-id; archive never modified. |
 | `schemaVersion` | No       | Integer, incremented when `state.db` schema changes. Triggers `uix.schema.onUpgrade()` before first render if stored version differs. Default `1`.                       |
 | `license`       | No       | `{ required: true, publisherKey: "ed25519:..." }` — require a signed `.uixlicense` token to open. Verified offline via Ed25519.                                          |
 | `security`      | No       | PIN auth + AES-256-GCM encryption block.                                                                                                                                 |
@@ -152,6 +152,7 @@ const stats = await uix.state.vacuum(); // { before, after }
 const json = await uix.state.export({ type: "order" }); // JSON string
 
 // Sync (push local changes + pull remote changes) — needs "local-sync"
+// Viewer also runs periodic background sync while the app is open.
 const { pushed, pulled } = await uix.state.sync();
 
 // ── OS bridge ────────────────────────────────────────────────────────────────
@@ -231,29 +232,31 @@ Regular apps omit the `security` field entirely. For classified or access-contro
 
 ## Packages
 
-| Package                                                  | What it does                                                                                                                                                                 | Status                                                                                          |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [`packages/core`](packages/core)                         | Core library — `pack`, `unpack`, `validate`, `sign`, `createDataDb`. Used by all other packages.                                                                             | ✅ [`@dotuix/core`](https://www.npmjs.com/package/@dotuix/core)                                 |
-| [`packages/cli`](packages/cli)                           | `dotuix` CLI — `pack`, `unpack`, `validate`, `sign`, `keygen`, `encrypt`, `init`, `seed`, `export`, `import`, `build`, `dev`, `create`, `spec`, `issue-license`, `device-id` | ✅ [`@dotuix/cli`](https://www.npmjs.com/package/@dotuix/cli)                                   |
-| [`packages/types`](packages/types)                       | TypeScript declarations for the `window.uix` bridge — `@dotuix/types` for Vite projects. `defineConfig()` helper and full bridge IntelliSense                                | ✅ [`@dotuix/types`](https://www.npmjs.com/package/@dotuix/types)                               |
-| [`packages/mcp`](packages/mcp)                           | Local stdio MCP server — Claude Desktop, Cursor, VS Code Copilot; `create` tool seeds `data.db`                                                                              | ✅ [`@dotuix/mcp`](https://www.npmjs.com/package/@dotuix/mcp)                                   |
-| [`packages/ai`](packages/ai)                             | `createUIX({ manifest, files })` — one-function SDK; auto-stamps `ai` provenance block                                                                                       | ✅ [`@dotuix/ai`](https://www.npmjs.com/package/@dotuix/ai)                                     |
-| [`packages/vite-plugin`](packages/vite-plugin)           | Vite plugin — compile React/Vue/Svelte/TS, inject mock bridge in dev, output `.uix` on build                                                                                 | ✅ [`@dotuix/vite-plugin`](https://www.npmjs.com/package/@dotuix/vite-plugin)                   |
-| [`packages/vscode-extension`](packages/vscode-extension) | VS Code extension — manifest IntelliSense, pack/validate/init commands, `@dotuix` chat participant                                                                           | ✅ [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix) |
-| [`apps/viewer`](apps/viewer)                             | Desktop viewer — Tauri + Rust, full bridge, signature verification, PIN decryption                                                                                           | ✅ Stable                                                                                       |
-| [`apps/mcp-server`](apps/mcp-server)                     | Remote HTTP MCP server at `mcp.dotuix.uts.qa` — `get_spec`, `create`, `validate` + REST API                                                                                  | ✅ Live                                                                                         |
-| [`apps/website`](apps/website)                           | Public website at [dotuix.uts.qa](https://dotuix.uts.qa)                                                                                                                     | ✅ Live                                                                                         |
+| Package                                        | What it does                                                                                                                                                                 | Status                                                                                          |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [`packages/core`](packages/core)               | Core library — `pack`, `unpack`, `validate`, `sign`, `createDataDb`. Used by all other packages.                                                                             | ✅ [`@dotuix/core`](https://www.npmjs.com/package/@dotuix/core)                                 |
+| [`packages/cli`](packages/cli)                 | `dotuix` CLI — `pack`, `unpack`, `validate`, `sign`, `keygen`, `encrypt`, `init`, `seed`, `export`, `import`, `build`, `dev`, `create`, `spec`, `issue-license`, `device-id` | ✅ [`@dotuix/cli`](https://www.npmjs.com/package/@dotuix/cli)                                   |
+| [`packages/types`](packages/types)             | TypeScript declarations for the `window.uix` bridge — `@dotuix/types` for Vite projects. `defineConfig()` helper and full bridge IntelliSense                                | ✅ [`@dotuix/types`](https://www.npmjs.com/package/@dotuix/types)                               |
+| [`packages/mcp`](packages/mcp)                 | Local stdio MCP server — Claude Desktop, Cursor, VS Code Copilot; `create` tool seeds `data.db`                                                                              | ✅ [`@dotuix/mcp`](https://www.npmjs.com/package/@dotuix/mcp)                                   |
+| [`packages/ai`](packages/ai)                   | `createUIX({ manifest, files })` — one-function SDK; auto-stamps `ai` provenance block                                                                                       | ✅ [`@dotuix/ai`](https://www.npmjs.com/package/@dotuix/ai)                                     |
+| [`packages/vite-plugin`](packages/vite-plugin) | Vite plugin — compile React/Vue/Svelte/TS, inject mock bridge in dev, output `.uix` on build                                                                                 | ✅ [`@dotuix/vite-plugin`](https://www.npmjs.com/package/@dotuix/vite-plugin)                   |
+| VS Code extension                              | VS Code extension — manifest IntelliSense, pack/validate/init commands, `@dotuix` chat participant                                                                           | ✅ [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix) |
+| [`apps/viewer`](apps/viewer)                   | Desktop viewer — Tauri + Rust, full bridge, signature verification, PIN decryption                                                                                           | ✅ Stable                                                                                       |
+| Hosted MCP server                              | Remote HTTP MCP server at `mcp.dotuix.uts.qa` — `get_spec`, `create`, `validate` + REST API (operated from private internal repo)                                            | ✅ Live                                                                                         |
+| Public website                                 | Public website at [dotuix.uts.qa](https://dotuix.uts.qa) (code hosted in private internal repo)                                                                              | ✅ Live                                                                                         |
+| Sync Server desktop app                        | Local sync endpoint app for manifests using `"local-sync"` (distributed as private binaries; source remains in private internal repo)                                        | Private                                                                                         |
 
 ---
 
 ## Create with AI
 
-The full format spec lives at `mcp.dotuix.uts.qa/api/spec` — any LLM can read it and generate a complete `.uix` from a single prompt.
+The canonical format spec lives at `https://dotuix.uts.qa/llms.txt`.
+The MCP server mirrors it at `https://mcp.dotuix.uts.qa/api/spec` for API-only clients.
 
 ### Any AI (ChatGPT, Gemini, Claude)
 
 1. Open ChatGPT, Gemini, or Claude
-2. Say: _"Read https://mcp.dotuix.uts.qa/api/spec then build me a [describe your app]. Give me the download link."_
+2. Say: _"Read https://dotuix.uts.qa/llms.txt then build me a [describe your app]. Give me the download link."_
 3. The AI reads the spec, calls `POST /api/create`, returns a download URL (30-min TTL)
 4. Download and open in the viewer
 
@@ -276,7 +279,8 @@ The full format spec lives at `mcp.dotuix.uts.qa/api/spec` — any LLM can read 
 
 ### REST API
 
-- `GET  https://mcp.dotuix.uts.qa/api/spec` — format spec
+- `GET  https://dotuix.uts.qa/llms.txt` — canonical format spec
+- `GET  https://mcp.dotuix.uts.qa/api/spec` — mirrored format spec for API clients
 - `POST https://mcp.dotuix.uts.qa/api/create` — build `.uix`, returns download URL
 - `GET  https://mcp.dotuix.uts.qa/openapi.json` — OpenAPI 3.0 (import into Custom GPT Actions)
 

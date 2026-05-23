@@ -1,0 +1,894 @@
+# dotuix
+
+> dotuix is an open-source ecosystem for the `.uix` executable document format.
+> A `.uix` file is an interactive, offline-first, tamper-evident application
+> distributed as a single portable file — like PDF, but it runs.
+
+## What is .uix?
+
+`.uix` is the **executable document format**. It is a standard ZIP archive
+containing a self-contained HTML/JS/CSS application, optional assets, and
+optional SQLite databases. The viewer opens it fully offline with no install,
+no URL, and no server.
+
+Mental model:
+- PDF = printable document
+- EPUB = readable document
+- `.uix` = **executable document**
+
+Use cases: classified government briefings, legal reference systems, offline
+healthcare databases, audit reports, education simulations, restaurant kiosks,
+sales proposals — any interactive experience that must be self-contained,
+offline, and distributable as a single file.
+
+---
+
+## Archive structure
+
+```
+myapp.uix  (ZIP — standard ZIP format)
+├── manifest.json       ← REQUIRED. Describes the app.
+├── index.html          ← Entry point declared in manifest.entry
+├── app.js
+├── style.css
+├── assets/             ← Convention: images, video, audio, fonts
+├── files/              ← Convention: PDFs, CSVs, JSON data
+├── data.db             ← Optional: read-only SQLite (creator data)
+└── state.db            ← Optional: read-write SQLite (user state / seed)
+```
+
+Compression rules:
+- HTML, CSS, JS, JSON → DEFLATE
+- PNG, JPG, WEBP, GIF, data.db, state.db → STORE (already compressed or binary)
+
+`assets/` and `files/` are conventions, not enforced. Files can live anywhere
+and are referenced by relative path from the entry HTML.
+
+---
+
+## manifest.json — complete field reference
+
+```json
+{
+  "uix": "1.0",
+  "id": "com.almadina.menu",
+  "name": "Al Madina Restaurant Menu",
+  "version": "1.0.0",
+  "minViewer": "1.0.0",
+  "entry": "index.html",
+  "mode": "kiosk",
+  "permissions": ["local-storage", "print"],
+  "network": "blocked",
+  "theme": {
+    "color": "#1a1a2e",
+    "background": "#ffffff"
+  },
+  "author": "author@example.com",
+  "expires": null,
+  "state": {
+    "seed": false
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `uix` | string | Yes | Format version. Always `"1.0"` for current format. |
+| `id` | string | Yes | Stable reverse-domain id. e.g. `"com.almadina.menu"`. No DNS enforcement — convention only. Used for state isolation, caching, and signatures. |
+| `name` | string | Yes | Human-readable app name shown in viewer chrome. |
+| `version` | string | Yes | SemVer app version. e.g. `"1.0.0"`. |
+| `minViewer` | string | No | Minimum viewer version required. Viewer refuses with a clear message if below. |
+| `entry` | string | Yes | Path to entry HTML file inside archive. e.g. `"index.html"`. |
+| `mode` | string | Yes | `"kiosk"` — locked UI, no address bar, no right-click. `"window"` — developer preview with toolbar. |
+| `permissions` | string[] | No | Capabilities the app is allowed to use (see list below). |
+| `network` | string | No | `"blocked"` (default) or `"allowed"`. Blocked = viewer's CSP blocks all external requests. |
+| `theme` | object | No | Viewer chrome colors: `color` (hex) and `background` (hex). |
+| `author` | string | No | Creator email or identifier. |
+| `expires` | string\|null | No | ISO 8601 date string or `null`. Viewer checks expiry **before extraction** — expired files never unpack. |
+| `state.seed` | boolean | No | `true` = copy `state.db` from archive as starting user state on first open. Default `false`. |
+| `state.mode` | string | No | `"file"` (default) — state written back into archive on close; sharing the `.uix` shares all accumulated data. `"device"` — state stored in viewer's app directory, keyed by app id; archive never modified. |
+| `schemaVersion` | integer | No | Monotonically increasing integer. Increment when the structure of records in `state.db` changes. Triggers `uix.schema.onUpgrade()` before first render if stored version differs. Default `1`. |
+| `license.required` | boolean | No | `true` — viewer requires a valid `.uixlicense` token before opening. `false` (default) — no license required. |
+| `license.publisherKey` | string | No | Ed25519 public key (base64url). Used to verify `.uixlicense` tokens offline without a server call. |
+| `sync.endpoint` | string | No | HTTPS URL of Sync Hub (`sync-desktop`). Required when `"local-sync"` is declared. |
+| `sync.secret` | string | No | Base64-encoded shared secret used to authenticate with Sync Hub (`sync-desktop`). |
+| `security` | object | No | Optional PIN auth + encryption. Omit entirely for regular apps. |
+| `signature` | object | No | Optional Ed25519 signature. Written by `dotuix sign`. |
+| `ai` | object | No | Optional AI provenance block. Omit for non-AI-generated files. |
+
+### Allowed permissions values
+
+- `"local-storage"` — browser localStorage access
+- `"print"` — system print dialog
+- `"clipboard-write"` — write to clipboard via `uix.clipboard.write()`
+- `"fullscreen"` — `uix.fullscreen.enter/exit/toggle()`
+- `"raw-sql"` — `uix.data.raw()` and `uix.state.raw()` — arbitrary SQL
+- `"file-save"` — save a file to the user's disk via `uix.file.save()`
+- `"file-open"` — open a file from the user's disk via `uix.file.open()`
+- `"open-url"` — open a URL in the system browser via `uix.browser.open()`
+- `"notifications"` — OS-level notifications via `uix.notify()`
+- `"local-sync"` — sync `state.db` records with an external server via `uix.state.sync()`
+
+### Security block (optional — omit entirely for regular apps)
+
+```json
+{
+  "security": {
+    "auth": "pin",
+    "encryptedPaths": ["data.db", "files/annex.pdf"],
+    "kdf": "PBKDF2-SHA256",
+    "kdfIterations": 200000,
+    "keySalt": "base64url-random-salt-here",
+    "maxOpens": 3,
+    "screenshot": false
+  },
+  "signature": {
+    "algorithm": "Ed25519",
+    "publicKey": "base64url-public-key",
+    "value": "base64url-signature",
+    "signedAt": "2026-05-19T10:00:00Z"
+  }
+}
+```
+
+| security field | Default | Description |
+|---|---|---|
+| `auth` | `"none"` | `"pin"` = viewer prompts for PIN before opening. |
+| `encryptedPaths` | `[]` | Paths inside archive encrypted with AES-256-GCM. Decrypted in memory after auth. |
+| `kdf` | `"PBKDF2-SHA256"` | Key derivation function. |
+| `kdfIterations` | 200000 | PBKDF2 iteration count. |
+| `keySalt` | — | Base64url random salt (stored in manifest, safe to store publicly). |
+| `maxOpens` | unlimited | Max times this file may be opened. Tracked by viewer locally. |
+| `screenshot` | `false` | `true` = viewer blocks OS screenshot while file is open (desktop only). |
+
+### AI provenance block (optional)
+
+When a `.uix` file is generated by an AI model or tool, include the `ai` block
+in `manifest.json` to declare provenance. This block is informational and has
+no effect on the viewer — it does not gate loading or change behaviour.
+
+```json
+{
+  "ai": {
+    "generatedBy": "claude-opus-4",
+    "generatedAt": "2026-05-19T12:00:00Z",
+    "capabilities": ["search", "chat"],
+    "promptHash": "sha256-hex-of-prompt"
+  }
+}
+```
+
+| ai field | Type | Description |
+|---|---|---|
+| `generatedBy` | string | Model or tool that created this file, e.g. `"claude-opus-4"`, `"@dotuix/ai"`, `"@dotuix/mcp"`. |
+| `generatedAt` | string | ISO-8601 timestamp of generation. |
+| `capabilities` | string[] | Semantic capabilities this app exposes, e.g. `["search", "chat", "form"]`. |
+| `promptHash` | string | SHA-256 hex digest of the generation prompt (for reproducibility). |
+
+---
+
+## Data architecture
+
+Always follow this split — it is the core pattern of every .uix app:
+
+| What | Where | How |
+|---|---|---|
+| Content (menu items, products, articles, catalog) | `data.db` | creator populates before packing; app reads via `uix.data.find()` |
+| User state (cart, settings, session, orders) | `state.db` | app reads/writes via `uix.state.*` at runtime |
+| UI logic, rendering, event handlers | `app.js` | plain JavaScript — no data hardcoded here |
+
+**Do not hardcode content in `app.js`.** If you have menu items, products, or
+any creator-defined data, put them in `data.db` as records and load them with
+`uix.data.find({ type: "product" })`. Hardcoded JS arrays cannot be updated
+without repacking the entire file.
+
+---
+
+## The window.__uix bridge API
+
+The viewer injects `window.__uix` (also aliased as `window.uix`) into the
+running app. All methods return Promises. The app has no access to the host
+filesystem — only through this bridge.
+
+### App metadata
+
+```javascript
+const manifest = await uix.manifest();
+// Returns the full manifest.json as a plain object
+```
+
+### Data database — read-only (creator data shipped in the .uix)
+
+```javascript
+// Returns ALL records of a type — no extra argument needed
+const products = await uix.data.find({ type: "product" });
+
+// Filtered, sorted, paginated
+const burgers = await uix.data.find({
+  type: "product",
+  where: {
+    category: "burgers",          // scalar shorthand = equality
+    price: { gte: 10 },           // operator object: key is the operator, value is the operand
+    tags: { in: ["beef", "chicken"] },  // supported: eq neq gt gte lt lte like in is_null
+    archived: { is_null: true },  // is_null: true → IS NULL, false → IS NOT NULL
+  },
+  orderBy: [                      // multi-field sort (array form)
+    { field: "category", direction: "asc" },
+    { field: "sort", direction: "asc" },
+  ],
+  // orderBy: { field: "sort", direction: "asc" }  ← single-field object form also works
+  // orderBy: "sort"                               ← string shorthand (asc, single field)
+  limit: 20,
+  offset: 0,                      // for pagination (skip N records)
+});
+
+// Count records without fetching them
+const total = await uix.data.count({ type: "product" });
+const burgerCount = await uix.data.count({ type: "product", where: { category: "burgers" } });
+
+// Get a single record by id
+const product = await uix.data.get("product:001");
+
+// Raw SQL — requires "raw-sql" in manifest permissions
+const results = await uix.data.raw(
+  "SELECT body FROM records WHERE type = ? ORDER BY json_extract(body, '$.sort') ASC",
+  ["product"]
+);
+```
+
+### State database — read-write (user data, persisted across opens)
+
+```javascript
+// Insert a new record
+const record = await uix.state.insert({
+  type: "cart_item",
+  body: { productId: "product:001", qty: 2, price: 35.0 },
+});
+// Returns full record: { id, type, body, created_at, updated_at }
+// id is auto-generated as "cart_item:<uuid>"
+
+// Upsert — insert if not found, replace body if found (match by id)
+await uix.state.upsert({ id: "settings:main", type: "settings", body: { theme: "dark" } });
+
+// Insert many in one call (atomic, same transaction)
+await uix.state.insertMany([
+  { type: "order_line", body: { product: "product:001", qty: 1 } },
+  { type: "order_line", body: { product: "product:002", qty: 2 } },
+]);
+
+// Atomic transaction — array of operations, executed in one SQLite transaction
+const results = await uix.state.transaction([
+  { op: "insert", type: "order", body: { total: 120, placedAt: new Date().toISOString() } },
+  { op: "delete", id: "cart_item:abc" },
+  { op: "update", id: "cart_item:xyz", body: { qty: 3 } },
+  // Supported ops: "insert", "upsert", "update", "delete"
+]);
+// returns array of (Record | null) in same order as ops
+
+// Find records (same signature as uix.data.find, with offset + extended where)
+const cartItems = await uix.state.find({ type: "cart_item" });
+const recent = await uix.state.find({
+  type: "session_log",
+  where: { score: { gt: 50 } },
+  orderBy: [{ field: "created_at", direction: "desc" }],
+  limit: 10,
+  offset: 0,
+});
+
+// Count records
+const total = await uix.state.count({ type: "cart_item" });
+
+// Get single record by id
+const item = await uix.state.get("cart_item:uuid");
+
+// Update — second argument is the new body object (replaces the existing body)
+const updated = await uix.state.update("cart_item:uuid", { qty: 3, price: 35.0 });
+
+// Delete
+await uix.state.delete("cart_item:uuid");
+
+// Purge records older than a duration (units: s, m, h, d, y); returns deleted count
+const n = await uix.state.purge({ type: "session_log", olderThan: "24h" });
+
+// Clear all records of a type (or ALL records if type omitted); returns deleted count
+const cleared = await uix.state.clear({ type: "cart_item" });
+await uix.state.clear(); // clears everything
+
+// Reset — wipe state and restore to seed (or empty) as if first open
+await uix.state.reset();
+
+// Size — current state.db size on disk
+const info = await uix.state.size();
+// { bytes: 204800, records: 42, types: { cart_item: 10, order: 32 } }
+
+// Vacuum — reclaim space after bulk deletes; returns before/after sizes
+const stats = await uix.state.vacuum();
+// { before: 204800, after: 98304 }
+
+// Export — snapshot records to a JSON string (for sending to a server, etc.)
+const json = await uix.state.export({ type: "order" }); // one type
+const all = await uix.state.export(); // all types, all records
+const recent = await uix.state.export({ type: "order", before: new Date().toISOString() });
+
+// Sync — push local changes and pull remote changes in one round-trip
+// Requires "local-sync" in manifest.permissions and sync.endpoint + sync.secret in manifest
+const syncResult = await uix.state.sync();
+// { pushed: number, pulled: number }
+// The viewer diffs state.db since the last sync, pushes changed records, and merges returned records.
+// The viewer also performs periodic background sync while the app stays open.
+// Conflict resolution: last-write-wins on updated_at.
+
+// Raw SQL — requires "raw-sql" permission
+await uix.state.raw("DELETE FROM records WHERE type = ?", ["session_log"]);
+```
+
+### Record shape (both databases)
+
+```typescript
+interface Record {
+  id: string;          // e.g. "product:001", "cart_item:a1b2c3"
+  type: string;        // e.g. "product", "cart_item"
+  body: string;        // JSON string — always JSON.parse(record.body) to read fields
+  created_at: number;  // Unix timestamp — set on insert, never changed
+  updated_at: number;  // Unix timestamp — updated on every update call
+}
+```
+
+The `body` field is stored as a JSON string in SQLite.
+- **Writing** (`insert`, `update`): pass a plain object — the bridge JSON-stringifies it automatically.
+- **Reading** (`find`, `get`): `body` comes back as a string — always call `JSON.parse(record.body)` before accessing fields.
+
+### Utilities and OS bridge
+
+```javascript
+// ── App ──────────────────────────────────────────────────────────────────────
+const manifest = await uix.manifest();     // full manifest.json as a plain object
+const version  = uix.viewer.version();     // current viewer version string (synchronous)
+uix.print();                               // system print dialog — needs "print" permission
+await uix.exit();                          // close app and return to viewer home
+
+// ── Window ───────────────────────────────────────────────────────────────────
+await uix.window.setTitle("Order #1042");  // set the window/tab title dynamically
+
+// ── Clipboard ────────────────────────────────────────────────────────────────
+// Requires "clipboard-write" permission in manifest.permissions
+await uix.clipboard.write("Hello, world!");
+
+// ── Fullscreen ───────────────────────────────────────────────────────────────
+// Requires "fullscreen" permission in manifest.permissions
+await uix.fullscreen.enter();
+await uix.fullscreen.exit();
+await uix.fullscreen.toggle();
+
+// ── File I/O ─────────────────────────────────────────────────────────────────
+// Save a file to disk — requires "file-save" permission
+// content can be a string (text) or ArrayBuffer (binary)
+const saved = await uix.file.save("orders.json", JSON.stringify(orders), "application/json");
+// Returns true on success, false if the user cancelled
+
+// Open a file from disk — requires "file-open" permission
+const result = await uix.file.open({
+  accept: ".csv,.json",   // optional file-type filter
+  multiple: false,
+});
+if (result) {
+  const text = new TextDecoder().decode(result.content);  // content is ArrayBuffer
+  console.log(result.name, text);
+}
+// Returns { name: string, content: ArrayBuffer } or null if user cancelled
+
+// ── Browser ──────────────────────────────────────────────────────────────────
+// Open a URL in the user's default system browser — requires "open-url" permission
+await uix.browser.open("https://example.com");
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+// Requires "notifications" permission in manifest.permissions
+await uix.notify("Order ready", "Your order #1042 is ready for pickup.");
+await uix.notify("Alert", "Low stock warning.", { icon: "warning" });
+```
+
+---
+
+## SQLite schema (identical in both databases)
+
+```sql
+CREATE TABLE records (
+  id         TEXT    PRIMARY KEY,
+  type       TEXT    NOT NULL,
+  body       TEXT    NOT NULL,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX idx_type       ON records (type);
+CREATE INDEX idx_created_at ON records (created_at);
+
+-- meta table (state.db only — created by viewer on first open)
+CREATE TABLE meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT
+);
+```
+
+---
+
+## Example: Minimal working .uix project
+
+To generate a valid `.uix`, create a folder with these files and run
+`dotuix pack ./my-app`:
+
+**manifest.json**
+```json
+{
+  "uix": "1.0",
+  "id": "com.example.myapp",
+  "name": "My App",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "mode": "kiosk",
+  "network": "blocked"
+}
+```
+
+**index.html**
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My App</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Hello from .uix</h1>
+  <div id="app"></div>
+  <script src="app.js"></script>
+</body>
+</html>
+```
+
+**app.js**
+```javascript
+(async () => {
+  const manifest = await uix.manifest();
+  document.querySelector('h1').textContent = manifest.name;
+
+  // Load creator data — body is a JSON string, always JSON.parse before reading fields
+  const products = await uix.data.find({ type: "product" });
+  const app = document.getElementById('app');
+  app.innerHTML = products.map(p => {
+    const b = JSON.parse(p.body);
+    return `<div class="product">${b.name} — ${b.price}</div>`;
+  }).join('');
+})();
+```
+
+---
+
+## Example: Restaurant kiosk with SQLite
+
+**manifest.json**
+```json
+{
+  "uix": "1.0",
+  "id": "com.almadina.menu",
+  "name": "Al Madina Restaurant",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "mode": "kiosk",
+  "permissions": ["local-storage"],
+  "network": "blocked"
+}
+```
+
+**data.db** — SQLite with records table populated by creator:
+```sql
+-- Populate with the creator's menu items
+INSERT INTO records (id, type, body) VALUES
+  ('product:001', 'product', '{"name":"مشاوي مشكلة","nameEn":"Mixed Grill","price":85,"currency":"QAR","category":"grills"}'),
+  ('product:002', 'product', '{"name":"حمص","nameEn":"Hummus","price":18,"currency":"QAR","category":"appetizers"}'),
+  ('category:grills', 'category', '{"name":"مشويات","nameEn":"Grills","sort":1}');
+```
+
+**app.js**
+```javascript
+(async () => {
+  // Load menu from data.db (read-only, creator data)
+  const categories = await uix.data.find({ type: "category", orderBy: { field: "sort", direction: "asc" } });
+  const products = await uix.data.find({ type: "product" });
+
+  // Add to cart (persisted in state.db)
+  async function addToCart(productId, qty, price) {
+    const existing = await uix.state.find({ type: "cart_item", where: { productId } });
+    if (existing.length > 0) {
+      const b = JSON.parse(existing[0].body); // body is always a JSON string
+      await uix.state.update(existing[0].id, { ...b, qty: b.qty + qty });
+    } else {
+      await uix.state.insert({ type: "cart_item", body: { productId, qty, price } });
+    }
+  }
+
+  // Get cart total — parse body before reading fields
+  const cartItems = await uix.state.find({ type: "cart_item" });
+  const total = cartItems.reduce((sum, item) => {
+    const b = JSON.parse(item.body);
+    return sum + b.qty * b.price;
+  }, 0);
+})();
+```
+
+---
+
+## Schema upgrades — `uix.schema.onUpgrade()`
+
+Register a handler that runs once before first render when the viewer detects that stored state was written with an older `schemaVersion`.
+
+```javascript
+uix.schema.onUpgrade(async ({ from, to, state }) => {
+  // from — schemaVersion the user's state.db was written with
+  // to   — schemaVersion declared in manifest.json
+  if (from < 2) {
+    const orders = await state.find({ type: "order" });
+    for (const o of orders) {
+      const b = JSON.parse(o.body);
+      await state.update(o.id, { ...b, taxRate: 0.05 }); // add new field
+    }
+  }
+  // Resolves → viewer writes new schemaVersion → renders app
+});
+```
+
+---
+
+## Portable data bundles — `uix.state.exportBundle()` / `uix.state.importBundle()`
+
+Transfer all user state to a new version of the same app — no CLI required.
+
+```javascript
+// Export — "Back up my data" button
+const json = await uix.state.exportBundle({ types: ["order", "customer"] });
+// Omit `types` to export all. Returns a JSON string in .uixdata format.
+
+// Import — "Restore data" button
+const result = await uix.state.importBundle(jsonString, { merge: false });
+// merge: false = replace existing records (default)
+// merge: true  = skip ids that already exist
+// Returns: { imported: number, skipped: number }
+```
+
+.uixdata bundle format:
+```json
+{
+  "format": "uixdata/1.0",
+  "appId": "com.example.pos",
+  "schemaVersion": 2,
+  "exportedAt": "2026-05-21T09:00:00Z",
+  "types": ["order", "customer"],
+  "records": [{ "id": "order:001", "type": "order", "body": "...", "created_at": 0, "updated_at": 0 }]
+}
+```
+
+CLI equivalent: `dotuix export my-app.uix --type order -o backup.uixdata`
+
+---
+
+## License tokens — `uix.license.*`
+
+```javascript
+const license = await uix.license.get();
+// Returns: { issuedTo, issuedAt, expiresAt, features, valid } | null
+
+const hasReports = await uix.license.hasFeature("reports");
+// true/false — gate features behind license tiers
+
+// manifest.json — require a signed license to open:
+// "license": { "required": true, "publisherKey": "ed25519:BASE64...", "appId": "com.example.pos" }
+```
+
+Issue a license token from the CLI:
+```bash
+dotuix keygen publisher-key
+dotuix issue-license --from my-app.uix --issued-to "Sunrise Café" \
+  --expires 2027-05-21 --features reports,multi-staff --key publisher-key.priv
+dotuix device-id   # print this device's viewer fingerprint
+```
+
+---
+
+## Vite-based projects — `uix.config.ts`
+
+```bash
+dotuix create my-pos     -t react-ts    # React 19 + TypeScript, state.mode:"device"
+dotuix create my-invoice -t form        # Vanilla TS, state.mode:"file" (document mode)
+dotuix create my-report  -t report      # React 19, state.mode:"file" (read-only)
+dotuix create my-app     -t vue-ts      # Vue 3 + TypeScript
+```
+
+`uix.config.ts` replaces `manifest.json` in Vite projects:
+
+```typescript
+import { defineConfig } from "@dotuix/types";
+export default defineConfig({
+  id: "com.example.pos",
+  name: "My POS",
+  version: "1.0.0",
+  schemaVersion: 1,
+  mode: "kiosk",
+  state: { mode: "device" },
+  permissions: ["print", "notifications", "fullscreen"],
+  theme: { color: "#c8a96e", background: "#1a1a2e" },
+});
+```
+
+```bash
+pnpm dev    # hot-reload, window.uix is an IndexedDB mock
+pnpm build  # vite build → generates manifest.json → packs → my-pos.uix
+```
+
+AI spec workflow:
+```bash
+dotuix spec init                    # create starter app.spec.md
+dotuix spec validate app.spec.md    # validate before handing to AI
+dotuix spec scaffold app.spec.md    # preview generated config + file list
+```
+
+---
+
+## CLI reference
+
+```bash
+# Install globally
+npm install -g @dotuix/cli
+
+# Scaffold Vite-based projects (React / Vue / TypeScript)
+dotuix create my-pos     -t react-ts   # React 19 + TypeScript, state.mode:"device"
+dotuix create my-invoice -t form       # Vanilla TS, state.mode:"file" (document)
+dotuix create my-report  -t report     # React 19, state.mode:"file" (read-only)
+dotuix create my-app     -t vue-ts     # Vue 3 + TypeScript
+
+# AI spec workflow
+dotuix spec init                       # create starter app.spec.md
+dotuix spec validate app.spec.md       # validate spec before handing to AI
+dotuix spec scaffold app.spec.md       # preview template + generated uix.config.ts
+
+# Vite dev / build
+dotuix dev   [project-dir]             # hot-reload dev server with bridge mock
+dotuix build [project-dir]             # vite build → generates manifest.json → .uix
+
+# Legacy: HTML/JS templates
+dotuix init my-app                    # blank starter
+dotuix init my-app -t restaurant      # Gulf restaurant kiosk template
+dotuix init my-app -t catalog         # product catalog template
+dotuix init my-app -t portfolio       # portfolio/showcase template
+
+# Pack a directory into .uix
+dotuix pack ./my-app                  # → my-app.uix in current dir
+dotuix pack ./my-app -o dist/         # → dist/my-app.uix
+
+# Validate
+dotuix validate my-app.uix
+
+# Inspect
+dotuix info my-app.uix                # prints manifest
+
+# Sign (requires keygen first)
+dotuix keygen my-key                  # generates my-key.priv + my-key.pub
+dotuix sign my-app.uix --key my-key.priv
+dotuix verify my-app.uix
+
+# Encrypt selected paths
+dotuix encrypt my-app.uix --paths data.db --pin-prompt
+
+# License tokens
+dotuix issue-license --from my-app.uix --issued-to "Customer" \
+  --expires 2027-05-21 --key my-key.priv
+dotuix device-id                      # print this device's viewer ID
+
+# Export / import state data
+dotuix export my-app.uix --type order --format csv --output orders.csv
+dotuix export my-app.uix --type order --format json --output orders.json
+dotuix import my-app.uix --data backup.uixdata
+dotuix import my-app.uix --data backup.uixdata --merge
+```
+
+---
+
+## Node.js / TypeScript API
+
+```typescript
+import { UIX } from "@dotuix/core";
+
+// Pack a directory into .uix
+await UIX.pack("./my-app", "./dist/my-app.uix");
+
+// Unpack .uix to directory
+await UIX.unpack("./my-app.uix", "./extracted/");
+
+// Validate — returns { valid: boolean, errors: string[], warnings: string[] }
+const result = await UIX.validate("./my-app.uix");
+
+// Read manifest without unpacking
+const manifest = await UIX.manifest("./my-app.uix");
+
+// Open data.db for reading
+const db = await UIX.openData("./my-app.uix");
+```
+
+---
+
+## Generating a .uix file
+
+Do NOT construct a ZIP archive manually and do NOT create a `data.db` SQLite file by hand.
+Use the API or MCP tool — it generates `data.db` from `dataRecords`, packs the archive
+with correct compression, and returns the file path or a download URL.
+
+**Remote MCP (no install):**
+Connect any MCP-capable client to `https://mcp.dotuix.uts.qa/mcp`. The server exposes
+`get_spec`, `create`, and `validate` tools. For REST-only clients, use `POST /api/create`
+(see below). OpenAPI spec: `https://mcp.dotuix.uts.qa/openapi.json`.
+
+```json
+{
+  "mcpServers": {
+    "dotuix": { "url": "https://mcp.dotuix.uts.qa/mcp" }
+  }
+}
+```
+
+**Local MCP (stdio):**
+Install `@dotuix/mcp`. The agent calls `get_spec` to read this spec, then `create`
+to generate and pack a complete `.uix` in a single step.
+
+```json
+{
+  "mcpServers": {
+    "dotuix": {
+      "command": "npx",
+      "args": ["-y", "@dotuix/mcp"]
+    }
+  }
+}
+```
+
+Pass `dataRecords` to seed `data.db` — never hardcode content in `app.js`:
+
+```json
+{
+  "tool": "create",
+  "name": "my-restaurant",
+  "manifest": { "uix": "1.0", "id": "com.almadina.menu", "name": "Al Madina", "version": "1.0.0", "entry": "index.html", "mode": "kiosk" },
+  "files": [
+    { "path": "index.html", "content": "<html>...</html>" },
+    { "path": "app.js", "content": "(async () => { const products = await uix.data.find({ type: 'product' }); /* render */ })();" },
+    { "path": "style.css", "content": "..." }
+  ],
+  "dataRecords": [
+    { "id": "product:001", "type": "product", "body": { "name": "Mixed Grill", "price": 85, "currency": "QAR", "category": "grills" } },
+    { "id": "product:002", "type": "product", "body": { "name": "Hummus",      "price": 18, "currency": "QAR", "category": "appetizers" } },
+    { "id": "category:grills",      "type": "category", "body": { "name": "Grills",      "sort": 1 } },
+    { "id": "category:appetizers",  "type": "category", "body": { "name": "Appetizers",  "sort": 2 } }
+  ]
+}
+```
+
+The MCP server creates `data.db`, seeds it with your records, and packs
+everything. `ai.generatedBy` and `ai.generatedAt` are stamped automatically.
+The returned `path` is the absolute path to the ready `.uix` file on disk.
+
+**`@dotuix/ai` SDK (Node.js):**
+Use `@dotuix/ai` — a one-function SDK that handles temp dirs, manifest stamping,
+and packing:
+
+```typescript
+import { createUIX } from "@dotuix/ai";
+
+const path = await createUIX({
+  manifest: {
+    uix: "1.0",
+    id: "com.example.myapp",
+    name: "My App",
+    version: "1.0.0",
+    entry: "index.html",
+    mode: "window",
+  },
+  files: {
+    "index.html": "<html><body><h1>Hello</h1></body></html>",
+    "app.js": "console.log('ready');",
+  },
+});
+console.log(path); // absolute path to the packed .uix file
+```
+
+**REST API:**
+
+`GET https://dotuix.uts.qa/llms.txt` — canonical full spec.
+`GET https://mcp.dotuix.uts.qa/api/spec` — API mirror of the full spec.
+`POST https://mcp.dotuix.uts.qa/api/create` — build `.uix`, returns download URL.
+
+Request body (JSON):
+```json
+{
+  "name": "AlMadinaKiosk",
+  "manifest": {
+    "uix": "1.0",
+    "id": "com.almadina.kiosk",
+    "name": "Al Madina Restaurant",
+    "version": "1.0.0",
+    "entry": "index.html",
+    "mode": "kiosk",
+    "network": "blocked"
+  },
+  "files": [
+    { "path": "index.html", "content": "<!DOCTYPE html><html><head><link rel=\"stylesheet\" href=\"style.css\"></head><body><div id=\"app\"></div><script src=\"app.js\"></script></body></html>" },
+    { "path": "app.js",     "content": "/* see correct app.js pattern below */" },
+    { "path": "style.css",  "content": "body { font-family: sans-serif; }" }
+  ],
+  "dataRecords": [
+    { "id": "category:grills",      "type": "category", "body": { "nameEn": "Grills",      "nameAr": "مشويات",   "sort": 1 } },
+    { "id": "category:appetizers",  "type": "category", "body": { "nameEn": "Appetizers",  "nameAr": "مقبلات",   "sort": 2 } },
+    { "id": "menuItem:grill-001",   "type": "menuItem", "body": { "nameEn": "Mixed Grill", "nameAr": "مشاوي مشكلة", "price": 85, "currency": "QAR", "category": "grills",      "emoji": "🍖" } },
+    { "id": "menuItem:app-001",     "type": "menuItem", "body": { "nameEn": "Hummus",      "nameAr": "حمص",         "price": 18, "currency": "QAR", "category": "appetizers",  "emoji": "🥣" } },
+    { "id": "i18n:en", "type": "i18n", "body": { "lang": "en", "restaurant": "Al Madina", "yourOrder": "Your Order", "total": "Total", "placeOrder": "Place Order", "emptyCart": "Cart is empty", "add": "Add", "langBtn": "العربية" } },
+    { "id": "i18n:ar", "type": "i18n", "body": { "lang": "ar", "restaurant": "مطعم المدينة", "yourOrder": "طلبك", "total": "المجموع", "placeOrder": "تأكيد الطلب", "emptyCart": "السلة فارغة", "add": "أضف", "langBtn": "English" } }
+  ]
+}
+```
+
+Response:
+```json
+{ "downloadUrl": "https://mcp.dotuix.uts.qa/download/<id>", "filename": "AlMadinaKiosk.uix", "expiresIn": "30 minutes" }
+```
+
+**Critical rules for `POST /api/create`:**
+- `files` is an array of `{ "path": string, "content": string }` — source files only
+- **DO NOT put data inside `files`** (e.g. no `dataRecords.json` file) — data goes in `dataRecords`
+- `dataRecords` is a separate top-level field — an array of `{ id, type, body }` records
+- The server converts `dataRecords` → `data.db` (SQLite) automatically
+- `body` in `dataRecords` is a **plain object** — the server stringifies it; do NOT pre-stringify
+- `manifest.json` is NOT included in `files` — it is the separate `manifest` field
+
+**`app.js` pattern:**
+```javascript
+// uix is a global — window.__uix === window.uix === uix
+async function init() {
+  // Load creator data from data.db (read-only)
+  // body is always a JSON string — JSON.parse(r.body) before reading fields
+  const catRecords  = await uix.data.find({ type: "category" });
+  const itemRecords = await uix.data.find({ type: "menuItem" });
+
+  const categories = catRecords.map(r => JSON.parse(r.body)).sort((a, b) => a.sort - b.sort);
+  const menuItems  = itemRecords.map(r => JSON.parse(r.body));
+
+  // Restore user state from state.db on every startup
+  const savedCart = await uix.state.find({ type: "cart_item" });
+  const cart = savedCart.map(r => JSON.parse(r.body));
+
+  render(categories, menuItems, cart);
+}
+
+init().catch(err => {
+  document.getElementById("app").innerHTML = `<p style="color:red">Error: ${err.message}</p>`;
+});
+```
+
+---
+
+## Packages and tools
+
+| Package | Install | Description |
+|---|---|---|
+| `@dotuix/core` | `npm install @dotuix/core` | Core library: pack, unpack, validate, sign, read SQLite |
+| `@dotuix/cli` | `npm install -g @dotuix/cli` | CLI: dotuix pack / validate / init / sign / encrypt / export |
+| `@dotuix/mcp` | `npm install @dotuix/mcp` | Local MCP server: `get_spec`, `create`, `validate` tools for building .uix files |
+| `@dotuix/ai` | `npm install @dotuix/ai` | One-function SDK: `createUIX({ manifest, files })` → `.uix` path |
+| `@dotuix/vite-plugin` | `npm install @dotuix/vite-plugin` | Vite plugin: build React/Vue/Svelte/TS apps → .uix |
+| VS Code extension | `intenttext.dotuix` | Manifest IntelliSense, .uix file icon, pack/validate commands |
+
+## Links
+
+- Website: https://dotuix.uts.qa
+- GitHub: https://github.com/dotuix/dotuix
+- npm (@dotuix/core): https://www.npmjs.com/package/@dotuix/core
+- npm (@dotuix/cli): https://www.npmjs.com/package/@dotuix/cli
+- VS Code Extension: https://marketplace.visualstudio.com/items?itemName=intenttext.dotuix
+- Format spec (this file): https://dotuix.uts.qa/llms.txt

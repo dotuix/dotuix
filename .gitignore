@@ -41,7 +41,6 @@ gov-key.*
 
 # Generated / deployment — not needed in public repo
 .dockerignore
-llms.txt
 
 # Private — not open-sourced (live in dotuix-internal)
 apps/mobile/

@@ -639,8 +639,9 @@ local record MUST be overwritten.
 uix.state.sync() → Promise<{ pushed: number, pulled: number }>
 ```
 
-The viewer MAY call `uix.state.sync()` automatically on app open and on close when
-the permission is granted. Applications MAY also call it manually at any time.
+The viewer MAY call `uix.state.sync()` automatically on app open, periodically
+while the app remains open, and on close when the permission is granted.
+Applications MAY also call it manually at any time.
 
 ---
 

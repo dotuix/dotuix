@@ -97,6 +97,11 @@ type Manifest = {
   entry?: string;
   expires?: string | null;
   network?: "blocked" | "allowed";
+  permissions?: string[];
+  sync?: {
+    endpoint?: string;
+    secret?: string;
+  };
   signature?: { algorithm: string };
 };
 
@@ -119,6 +124,7 @@ type ViewerState =
       expires?: string;
       signed: boolean;
       networkAllowed: boolean;
+      autoSyncEnabled: boolean;
     }
   | { status: "error"; message: string };
 
@@ -129,6 +135,7 @@ type FrameDiagnostic = {
 };
 
 const FRAME_INIT_TIMEOUT_MS = 8000;
+const AUTO_SYNC_INTERVAL_MS = 15_000;
 
 function normalizeEntryPath(entry: string | undefined): string {
   const raw = (entry ?? "index.html").trim();
@@ -167,6 +174,14 @@ function encodeEntryUrlPath(entryPath: string): string {
 function handleLoadResult(result: LoadResult): ViewerState {
   if (result.status === "loaded") {
     const m = JSON.parse(result.manifest) as Manifest;
+    const permissions = m.permissions ?? [];
+    const autoSyncEnabled =
+      permissions.includes("local-sync") &&
+      typeof m.sync?.endpoint === "string" &&
+      m.sync.endpoint.trim().length > 0 &&
+      typeof m.sync?.secret === "string" &&
+      m.sync.secret.trim().length > 0;
+
     return {
       status: "loaded",
       manifestName: m.name ?? "UIX App",
@@ -175,6 +190,7 @@ function handleLoadResult(result: LoadResult): ViewerState {
       expires: m.expires ?? undefined,
       signed: !!m.signature,
       networkAllowed: m.network === "allowed",
+      autoSyncEnabled,
     };
   }
   if (result.status === "license_required") {
@@ -244,10 +260,10 @@ export default function App() {
   );
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const stateRef = useRef(state);
+  const autoSyncLastErrorAtRef = useRef(0);
   const loadedEntryPath = state.status === "loaded" ? state.entryPath : "";
   const loadedAppPath = state.status === "loaded" ? state.appPath : "";
-  const preferTempFallbackFirst =
-    state.status === "loaded" && isWindowsHost();
+  const preferTempFallbackFirst = state.status === "loaded" && isWindowsHost();
   const protocolFrameSrc =
     state.status === "loaded"
       ? `uix://localhost/${encodeEntryUrlPath(state.entryPath)}`
@@ -673,6 +689,46 @@ export default function App() {
     }
   }, [state.status]);
 
+  // ── Automatic local-sync heartbeat for Sync Hub presence ────────────────
+  useEffect(() => {
+    if (state.status !== "loaded" || !state.autoSyncEnabled) return;
+
+    let cancelled = false;
+    let inFlight = false;
+
+    const runSync = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+
+      try {
+        await invoke("state_sync");
+      } catch (error) {
+        // Keep logs useful by rate-limiting repeated offline/unreachable errors.
+        const now = Date.now();
+        if (now - autoSyncLastErrorAtRef.current > 60_000) {
+          console.warn("Background sync failed:", error);
+          autoSyncLastErrorAtRef.current = now;
+        }
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void runSync();
+    const intervalId = window.setInterval(() => {
+      void runSync();
+    }, AUTO_SYNC_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [
+    state.status,
+    state.status === "loaded" ? state.appPath : "",
+    state.status === "loaded" ? state.autoSyncEnabled : false,
+  ]);
+
   // ── File association: check if launched with a .uix path ─────────────────
   useEffect(() => {
     invoke<string | null>("get_initial_file").then((path) => {
@@ -932,6 +988,14 @@ export default function App() {
             >
               {state.networkAllowed ? "Network On" : "Network Off"}
             </span>
+            {state.autoSyncEnabled && (
+              <span
+                className="badge badge--signed"
+                title="Local sync heartbeat is running automatically."
+              >
+                Auto Sync
+              </span>
+            )}
             {days !== null && (
               <span
                 className={`badge ${
@@ -1050,7 +1114,11 @@ export default function App() {
             }}
           />
         ) : (
-          <div className="viewer-frame-loading" role="status" aria-live="polite">
+          <div
+            className="viewer-frame-loading"
+            role="status"
+            aria-live="polite"
+          >
             <Spinner size={18} />
             <span>Preparing app view...</span>
           </div>

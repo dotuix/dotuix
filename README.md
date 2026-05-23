@@ -95,8 +95,8 @@ The viewer injects `window.__uix` (aliased as `window.uix`) into the running app
 | `mode`          | Yes      | `"kiosk"` (locked UI, no address bar) or `"window"` (developer toolbar).                                                                                                 |
 | `network`       | No       | `"blocked"` (default) or `"allowed"`.                                                                                                                                    |
 | `permissions`   | No       | `["local-storage"]`, `["print"]`, `["raw-sql"]`, `["file-save"]`, `["file-open"]`, `["open-url"]`, `["notifications"]`, `["local-sync"]`                                 |
-| `sync.endpoint` | No       | HTTPS URL of Sync Hub (`sync-desktop`). Required when `"local-sync"` permission is declared.                                                                             |
-| `sync.secret`   | No       | Base64-encoded shared secret for Sync Hub (`sync-desktop`).                                                                                                              |
+| `sync.endpoint` | No       | HTTP(S) URL of Sync Hub (`sync-desktop`). Optional for `"local-sync"`: when omitted, the viewer attempts LAN auto-discovery on port `3131`.                              |
+| `sync.secret`   | No       | Base64-encoded shared secret for Sync Hub (`sync-desktop`). Required when `"local-sync"` is declared.                                                                    |
 | `minViewer`     | No       | Minimum viewer version required.                                                                                                                                         |
 | `expires`       | No       | ISO 8601 date — viewer refuses expired files before unpacking.                                                                                                           |
 | `state.seed`    | No       | `true` = copy `state.db` from archive as initial user state on first open.                                                                                               |
@@ -152,7 +152,7 @@ const stats = await uix.state.vacuum(); // { before, after }
 const json = await uix.state.export({ type: "order" }); // JSON string
 
 // Sync (push local changes + pull remote changes) — needs "local-sync"
-// Viewer also runs periodic background sync while the app is open.
+// Viewer also runs periodic background sync while the app is open (~10s cadence).
 const { pushed, pulled } = await uix.state.sync();
 
 // ── OS bridge ────────────────────────────────────────────────────────────────

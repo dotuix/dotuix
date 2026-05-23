@@ -90,8 +90,8 @@ and are referenced by relative path from the entry HTML.
 | `schemaVersion` | integer | No | Monotonically increasing integer. Increment when the structure of records in `state.db` changes. Triggers `uix.schema.onUpgrade()` before first render if stored version differs. Default `1`. |
 | `license.required` | boolean | No | `true` — viewer requires a valid `.uixlicense` token before opening. `false` (default) — no license required. |
 | `license.publisherKey` | string | No | Ed25519 public key (base64url). Used to verify `.uixlicense` tokens offline without a server call. |
-| `sync.endpoint` | string | No | HTTPS URL of Sync Hub (`sync-desktop`). Required when `"local-sync"` is declared. |
-| `sync.secret` | string | No | Base64-encoded shared secret used to authenticate with Sync Hub (`sync-desktop`). |
+| `sync.endpoint` | string | No | HTTP(S) URL of Sync Hub (`sync-desktop`). Optional with `"local-sync"`; if omitted, the viewer attempts LAN auto-discovery on port `3131`. |
+| `sync.secret` | string | No | Base64-encoded shared secret used to authenticate with Sync Hub (`sync-desktop`). Required when `"local-sync"` is declared. |
 | `security` | object | No | Optional PIN auth + encryption. Omit entirely for regular apps. |
 | `signature` | object | No | Optional Ed25519 signature. Written by `dotuix sign`. |
 | `ai` | object | No | Optional AI provenance block. Omit for non-AI-generated files. |
@@ -311,11 +311,12 @@ const all = await uix.state.export(); // all types, all records
 const recent = await uix.state.export({ type: "order", before: new Date().toISOString() });
 
 // Sync — push local changes and pull remote changes in one round-trip
-// Requires "local-sync" in manifest.permissions and sync.endpoint + sync.secret in manifest
+// Requires "local-sync" in manifest.permissions and sync.secret in manifest
+// (sync.endpoint is optional when LAN auto-discovery is available)
 const syncResult = await uix.state.sync();
 // { pushed: number, pulled: number }
 // The viewer diffs state.db since the last sync, pushes changed records, and merges returned records.
-// The viewer also performs periodic background sync while the app stays open.
+// The viewer also performs periodic background sync while the app stays open (~10s cadence).
 // Conflict resolution: last-write-wins on updated_at.
 
 // Raw SQL — requires "raw-sql" permission

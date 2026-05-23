@@ -135,7 +135,7 @@ type FrameDiagnostic = {
 };
 
 const FRAME_INIT_TIMEOUT_MS = 8000;
-const AUTO_SYNC_INTERVAL_MS = 15_000;
+const AUTO_SYNC_INTERVAL_MS = 10_000;
 
 function normalizeEntryPath(entry: string | undefined): string {
   const raw = (entry ?? "index.html").trim();
@@ -177,8 +177,6 @@ function handleLoadResult(result: LoadResult): ViewerState {
     const permissions = m.permissions ?? [];
     const autoSyncEnabled =
       permissions.includes("local-sync") &&
-      typeof m.sync?.endpoint === "string" &&
-      m.sync.endpoint.trim().length > 0 &&
       typeof m.sync?.secret === "string" &&
       m.sync.secret.trim().length > 0;
 

@@ -121,7 +121,7 @@ It MUST be valid JSON encoded as UTF-8.
 | `state.mode`    | string       | `"file"`    | `"file"` — the viewer MUST write the updated `state.db` back into the archive on close (see §3.4). The archive carries user state and MAY be forwarded as a self-contained document. `"device"` — state is stored exclusively in the viewer's application-data directory, keyed by `manifest.id`. The viewer MUST NOT write `state.db` back into the archive. The archive remains byte-for-byte identical after any number of opens and is safe to distribute without leaking user data. |
 | `state.seed`    | boolean      | false       | If `true`, the `state.db` file in the archive is a creator-provided seed. On the first open of a new installation, the viewer MUST copy the archive's `state.db` to the user's state store as the initial state. On subsequent opens the user's persisted state is used, not the archive copy.                                                                                                                                                                                           |
 | `schemaVersion` | integer      | `1`         | Data schema version. Increment this integer whenever the structure of records stored in `state.db` changes. On every open the viewer compares this value to the version stored in the user's `state.db`. If they differ the upgrade context is made available via `uix.schema.onUpgrade()`. See §4.18.                                                                                                                                                                                   |
-| `sync`          | object       | none        | Sync configuration. `sync.endpoint` (string, HTTPS URL) and `sync.secret` (string, base64 shared secret). Both MUST be present together. Required when `"local-sync"` permission is declared.                                                                                                                                                                                                                                                                                            |
+| `sync`          | object       | none        | Sync configuration. `sync.secret` (string, base64 shared secret) is REQUIRED when `"local-sync"` is declared. `sync.endpoint` (string, HTTP(S) URL) is OPTIONAL; when omitted, the viewer MAY auto-discover a LAN Sync Hub host (typically port `3131`).                                                                                                                                                                                                                                 |
 | `security`      | object       | none        | Optional PIN authentication and encryption. See §6.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `signature`     | object       | none        | Optional Ed25519 integrity signature. See §7.                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `ai`            | object       | none        | Optional AI provenance metadata. See §8.                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -131,18 +131,18 @@ It MUST be valid JSON encoded as UTF-8.
 An application MUST declare a permission in `manifest.permissions` before the viewer
 exposes the corresponding capability. Undeclared capabilities MUST be silently blocked.
 
-| Permission value    | Capability granted                                                                                                                  |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `"local-storage"`   | Browser `localStorage` read/write access                                                                                            |
-| `"print"`           | System print dialog via `uix.print()`                                                                                               |
-| `"clipboard-write"` | Clipboard write access via `uix.clipboard.write()`                                                                                  |
-| `"fullscreen"`      | Fullscreen API via `uix.fullscreen.enter/exit/toggle()`                                                                             |
-| `"raw-sql"`         | `uix.data.raw()` and `uix.state.raw()` — arbitrary SQL                                                                              |
-| `"file-save"`       | Save files to the user's disk via `uix.file.save()`                                                                                 |
-| `"file-open"`       | Open files from the user's disk via `uix.file.open()`                                                                               |
-| `"open-url"`        | Open a URL in the system browser via `uix.browser.open()`                                                                           |
-| `"notifications"`   | OS-level notifications via `uix.notify()`                                                                                           |
-| `"local-sync"`      | Sync `state.db` records with an external server via `uix.state.sync()`. Requires `sync.endpoint` and `sync.secret` in the manifest. |
+| Permission value    | Capability granted                                                                                                                                             |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"local-storage"`   | Browser `localStorage` read/write access                                                                                                                       |
+| `"print"`           | System print dialog via `uix.print()`                                                                                                                          |
+| `"clipboard-write"` | Clipboard write access via `uix.clipboard.write()`                                                                                                             |
+| `"fullscreen"`      | Fullscreen API via `uix.fullscreen.enter/exit/toggle()`                                                                                                        |
+| `"raw-sql"`         | `uix.data.raw()` and `uix.state.raw()` — arbitrary SQL                                                                                                         |
+| `"file-save"`       | Save files to the user's disk via `uix.file.save()`                                                                                                            |
+| `"file-open"`       | Open files from the user's disk via `uix.file.open()`                                                                                                          |
+| `"open-url"`        | Open a URL in the system browser via `uix.browser.open()`                                                                                                      |
+| `"notifications"`   | OS-level notifications via `uix.notify()`                                                                                                                      |
+| `"local-sync"`      | Sync `state.db` records with an external server via `uix.state.sync()`. Requires `sync.secret` and either `sync.endpoint` or a discoverable LAN Sync Hub host. |
 
 ---
 
@@ -628,8 +628,9 @@ uix.notify(
 
 Pushes locally-changed `state.db` records to a remote sync server and merges returned
 records back into local state. REQUIRES `"local-sync"` in `manifest.permissions`.
-The viewer MUST also read `manifest.sync.endpoint` and `manifest.sync.secret`; if
-either is absent the call MUST reject with a clear error message.
+The viewer MUST read `manifest.sync.secret`; if absent the call MUST reject with a
+clear error message. If `manifest.sync.endpoint` is absent, the viewer MAY attempt
+LAN auto-discovery of a Sync Hub host before rejecting.
 
 Conflict resolution: last-write-wins on `updated_at`. If the server holds a record
 with a higher `updated_at` than the local copy, the server’s version wins and the

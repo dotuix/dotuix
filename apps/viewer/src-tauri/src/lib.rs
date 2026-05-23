@@ -1,8 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read, Write};
+use std::net::IpAddr;
 use std::path::Component;
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use futures::{stream, StreamExt};
 use tauri::{
     http::{Method, Request, Response},
     AppHandle, Emitter, Manager, State,
@@ -41,7 +43,7 @@ struct AppState {
     stored_schema_version: Arc<Mutex<u32>>,
     /// Content-Security-Policy served with uix:// HTML responses for the current app.
     content_security_policy: Arc<Mutex<String>>,
-    /// manifest.sync.endpoint — HTTPS URL of the sync server (None if not configured).
+    /// manifest.sync.endpoint — HTTP(S) URL of Sync Hub (None if not configured; may be auto-discovered).
     sync_endpoint: Mutex<Option<String>>,
     /// manifest.sync.secret — base64 shared secret for the sync server.
     sync_secret: Mutex<Option<String>>,
@@ -795,6 +797,243 @@ fn hmac_sha256_base64url(secret: &[u8], payload: &str) -> Result<String, String>
 
     use base64::Engine;
     Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(out))
+}
+
+const SYNC_DISCOVERY_DEFAULT_PORT: u16 = 3131;
+const SYNC_DISCOVERY_TIMEOUT_MS: u64 = 220;
+const SYNC_DISCOVERY_CONCURRENCY: usize = 48;
+
+fn sync_discovery_meta_key(app_id: &str) -> String {
+    format!("auto_sync_endpoint::{app_id}")
+}
+
+fn normalize_sync_base_url(value: &str) -> Option<String> {
+    let trimmed = value.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
+        return None;
+    }
+
+    Some(trimmed.strip_suffix("/sync").unwrap_or(trimmed).to_string())
+}
+
+fn endpoint_from_sync_base(base: &str) -> String {
+    format!("{}/sync", base.trim_end_matches('/'))
+}
+
+fn normalize_sync_endpoint(value: &str) -> Option<String> {
+    normalize_sync_base_url(value).map(|base| endpoint_from_sync_base(&base))
+}
+
+fn read_auto_discovery_endpoint(state: &AppState, app_id: &str) -> Option<String> {
+    let db = state.state_db.lock().unwrap();
+    let conn = db.as_ref()?;
+    let key = sync_discovery_meta_key(app_id);
+
+    conn.query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| {
+        r.get::<_, String>(0)
+    })
+    .ok()
+}
+
+fn upsert_auto_discovery_endpoint(state: &AppState, app_id: &str, endpoint: &str) {
+    let db = state.state_db.lock().unwrap();
+    let Some(conn) = db.as_ref() else {
+        return;
+    };
+
+    let key = sync_discovery_meta_key(app_id);
+    let _ = conn.execute(
+        "INSERT INTO meta (key, value) VALUES (?1, ?2) \
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![key, endpoint],
+    );
+}
+
+fn push_sync_candidate(candidates: &mut Vec<String>, seen: &mut HashSet<String>, raw: &str) {
+    if let Some(base) = normalize_sync_base_url(raw) {
+        if seen.insert(base.clone()) {
+            candidates.push(base);
+        }
+    }
+}
+
+fn build_sync_discovery_candidates() -> Vec<String> {
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::<String>::new();
+
+    if let Ok(value) = std::env::var("DOTUIX_SYNC_ENDPOINT") {
+        push_sync_candidate(&mut candidates, &mut seen, &value);
+    }
+
+    push_sync_candidate(
+        &mut candidates,
+        &mut seen,
+        &format!("http://127.0.0.1:{SYNC_DISCOVERY_DEFAULT_PORT}"),
+    );
+    push_sync_candidate(
+        &mut candidates,
+        &mut seen,
+        &format!("http://sync-hub.local:{SYNC_DISCOVERY_DEFAULT_PORT}"),
+    );
+    push_sync_candidate(
+        &mut candidates,
+        &mut seen,
+        &format!("http://dotuix-sync.local:{SYNC_DISCOVERY_DEFAULT_PORT}"),
+    );
+
+    if let Ok(interfaces) = if_addrs::get_if_addrs() {
+        let mut seen_subnets = HashSet::<(u8, u8, u8)>::new();
+
+        for interface in interfaces {
+            if interface.is_loopback() {
+                continue;
+            }
+
+            let IpAddr::V4(v4) = interface.ip() else {
+                continue;
+            };
+
+            let octets = v4.octets();
+            let subnet = (octets[0], octets[1], octets[2]);
+            if !seen_subnets.insert(subnet) {
+                continue;
+            }
+
+            for host in 1u16..=254 {
+                let host_octet = host as u8;
+                if host_octet == octets[3] {
+                    continue;
+                }
+
+                push_sync_candidate(
+                    &mut candidates,
+                    &mut seen,
+                    &format!(
+                        "http://{}.{}.{}.{}:{}",
+                        subnet.0,
+                        subnet.1,
+                        subnet.2,
+                        host_octet,
+                        SYNC_DISCOVERY_DEFAULT_PORT
+                    ),
+                );
+            }
+        }
+    }
+
+    candidates
+}
+
+async fn probe_sync_hub(base: &str, client: &reqwest::Client) -> bool {
+    let well_known_url = format!("{base}/.well-known/dotuix-sync");
+    if let Ok(response) = client.get(&well_known_url).send().await {
+        if response.status().is_success() {
+            if let Ok(payload) = response.json::<serde_json::Value>().await {
+                if payload
+                    .get("service")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v == "dotuix-sync-hub")
+                    .unwrap_or(false)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
+    let health_url = format!("{base}/health");
+    if let Ok(response) = client.get(&health_url).send().await {
+        if response.status().is_success() {
+            if let Ok(payload) = response.json::<serde_json::Value>().await {
+                return payload
+                    .get("ok")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+            }
+        }
+    }
+
+    false
+}
+
+async fn discover_sync_base_url_with_client(client: &reqwest::Client) -> Option<String> {
+    let candidates = build_sync_discovery_candidates();
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let mut probes = stream::iter(candidates.into_iter().map(|base| {
+        let client = client.clone();
+        async move {
+            if probe_sync_hub(&base, &client).await {
+                Some(base)
+            } else {
+                None
+            }
+        }
+    }))
+    .buffer_unordered(SYNC_DISCOVERY_CONCURRENCY);
+
+    while let Some(found) = probes.next().await {
+        if let Some(base) = found {
+            return Some(base);
+        }
+    }
+
+    None
+}
+
+async fn resolve_sync_endpoint(
+    state: &AppState,
+    app_id: &str,
+    configured_endpoint: Option<String>,
+) -> Result<String, String> {
+    if let Some(endpoint) = configured_endpoint
+        .as_deref()
+        .and_then(normalize_sync_endpoint)
+    {
+        return Ok(endpoint);
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(SYNC_DISCOVERY_TIMEOUT_MS))
+        .build()
+        .map_err(|e| format!("Cannot build Sync Hub discovery client: {e}"))?;
+
+    if let Some(cached) = read_auto_discovery_endpoint(state, app_id).and_then(|v| normalize_sync_endpoint(&v)) {
+        if let Some(cached_base) = normalize_sync_base_url(&cached) {
+            if probe_sync_hub(&cached_base, &client).await {
+                return Ok(cached);
+            }
+        }
+    }
+
+    if let Some(base) = discover_sync_base_url_with_client(&client).await {
+        let endpoint = endpoint_from_sync_base(&base);
+        *state.sync_endpoint.lock().unwrap() = Some(endpoint.clone());
+        upsert_auto_discovery_endpoint(state, app_id, &endpoint);
+
+        emit_desktop_event(
+            "desktop.sync.endpoint_auto_discovered",
+            "info",
+            Some(app_id),
+            None,
+            Some(serde_json::json!({
+                "endpoint": endpoint,
+            })),
+        );
+
+        return Ok(endpoint);
+    }
+
+    Err(
+        "Sync not configured: 'sync.endpoint' is missing and no Sync Hub (sync-desktop) host was discovered on this LAN. Start Sync Hub and keep port 3131 reachable, or set manifest.sync.endpoint."
+            .to_string(),
+    )
 }
 
 fn ensure_sync_clock_ms(conn: &rusqlite::Connection) -> Result<(), String> {
@@ -3061,7 +3300,8 @@ fn state_import_bundle(
 }
 
 /// Sync state.db records with a remote sync server (push local changes, pull remote changes).
-/// Requires the "local-sync" permission and `sync.endpoint` + `sync.secret` in the manifest.
+/// Requires the "local-sync" permission and `sync.secret` in the manifest.
+/// If `sync.endpoint` is absent, the viewer attempts LAN auto-discovery of Sync Hub.
 /// Conflict resolution: last-write-wins on `updated_at`.
 #[tauri::command]
 async fn state_sync(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
@@ -3079,13 +3319,12 @@ async fn state_sync(state: State<'_, AppState>) -> Result<serde_json::Value, Str
         }
     }
 
-    // ── 2. Read sync config ────────────────────────────────────────────
-    let endpoint = state
-        .sync_endpoint
-        .lock()
-        .unwrap()
-        .clone()
-        .ok_or("Sync not configured: 'sync.endpoint' missing from manifest.")?;
+    // ── 2. Read sync config / auto-discover endpoint ───────────────────
+    let app_id = state.app_id.lock().unwrap().clone();
+    let configured_endpoint = state.sync_endpoint.lock().unwrap().clone();
+
+    let endpoint = resolve_sync_endpoint(state.inner(), &app_id, configured_endpoint).await?;
+
     let sync_secret = state
         .sync_secret
         .lock()
@@ -3098,7 +3337,6 @@ async fn state_sync(state: State<'_, AppState>) -> Result<serde_json::Value, Str
         return Err("Sync not configured securely: 'sync.secret' must decode to at least 32 bytes.".into());
     }
 
-    let app_id = state.app_id.lock().unwrap().clone();
     let last_sync_key = sync_last_sync_meta_key(&app_id, &endpoint);
 
     // ── 3. Collect push payload (lock held, no await) ────────────────────
@@ -3158,7 +3396,7 @@ async fn state_sync(state: State<'_, AppState>) -> Result<serde_json::Value, Str
     }; // mutex released before await
 
     // ── 4. HTTP push + pull ───────────────────────────────────────────────
-    let url = format!("{}/sync", endpoint.trim_end_matches('/'));
+    let url = endpoint.clone();
     let sent_at = now_ms();
     let nonce = uuid::Uuid::new_v4().to_string();
 
@@ -4219,6 +4457,23 @@ mod tests {
         let k1 = sync_last_sync_meta_key("com.example.pos", "http://192.168.1.10:8787");
         let k2 = sync_last_sync_meta_key("com.example.pos", "http://192.168.1.11:8787");
         assert_ne!(k1, k2);
+    }
+
+    #[test]
+    fn sync_endpoint_normalization_accepts_base_or_full_sync_path() {
+        assert_eq!(
+            normalize_sync_endpoint("http://192.168.1.20:3131"),
+            Some("http://192.168.1.20:3131/sync".to_string())
+        );
+        assert_eq!(
+            normalize_sync_endpoint("http://192.168.1.20:3131/sync"),
+            Some("http://192.168.1.20:3131/sync".to_string())
+        );
+        assert_eq!(
+            normalize_sync_endpoint("http://192.168.1.20:3131/sync/"),
+            Some("http://192.168.1.20:3131/sync".to_string())
+        );
+        assert_eq!(normalize_sync_endpoint("192.168.1.20:3131"), None);
     }
 
     // ── order_term ────────────────────────────────────────────────────────────

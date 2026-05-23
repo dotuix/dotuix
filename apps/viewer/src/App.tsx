@@ -141,6 +141,16 @@ function normalizeFallbackAbsolutePath(path: string): string {
   return path.replace(/\\/g, "/");
 }
 
+function toAssetLocalhostUrl(path: string): string {
+  const normalized = normalizeFallbackAbsolutePath(path).replace(/^\/+/, "");
+  const encodedPath = normalized
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `http://asset.localhost/${encodedPath}`;
+}
+
 function isWindowsHost(): boolean {
   if (typeof navigator === "undefined") return false;
   return /windows/i.test(`${navigator.userAgent} ${navigator.platform}`);
@@ -276,9 +286,11 @@ export default function App() {
         entryPath: loadedEntryPath,
       })
         .then((entryFilePath) => {
-          const fallbackSrc = convertFileSrc(
-            normalizeFallbackAbsolutePath(entryFilePath),
-          );
+          const normalizedEntryFilePath =
+            normalizeFallbackAbsolutePath(entryFilePath);
+          const fallbackSrc = isWindowsHost()
+            ? toAssetLocalhostUrl(normalizedEntryFilePath)
+            : convertFileSrc(normalizedEntryFilePath);
           setFrameSrcOverride(fallbackSrc);
           setFrameFatal(null);
           pushFrameDiagnostic(

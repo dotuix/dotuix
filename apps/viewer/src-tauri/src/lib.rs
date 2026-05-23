@@ -3838,6 +3838,7 @@ pub fn run() {
             use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
             let open_m  = MenuItemBuilder::with_id("open_file", "Open\u{2026}").accelerator("CmdOrCtrl+O").build(app)?;
             let close_m = MenuItemBuilder::with_id("close_app", "Close File").accelerator("CmdOrCtrl+W").build(app)?;
+            let about_m = MenuItemBuilder::with_id("about_viewer", "About dotuix Viewer").build(app)?;
             let undo_m  = MenuItemBuilder::with_id("undo", "Undo").accelerator("CmdOrCtrl+Z").build(app)?;
             let redo_m  = MenuItemBuilder::with_id("redo", "Redo").accelerator("CmdOrCtrl+Shift+Z").build(app)?;
             let cut_m   = MenuItemBuilder::with_id("cut", "Cut").accelerator("CmdOrCtrl+X").build(app)?;
@@ -3850,13 +3851,27 @@ pub fn run() {
                 .item(&undo_m).item(&redo_m).separator()
                 .item(&cut_m).item(&copy_m).item(&paste_m).separator()
                 .item(&selall_m).build()?;
-            let menu = MenuBuilder::new(app).item(&file_menu).item(&edit_menu).build()?;
+            let help_menu = SubmenuBuilder::new(app, "Help").item(&about_m).build()?;
+            let menu = MenuBuilder::new(app)
+                .item(&file_menu)
+                .item(&edit_menu)
+                .item(&help_menu)
+                .build()?;
             app.set_menu(menu)?;
+
+            let viewer_version = app.package_info().version.to_string();
 
             app.on_menu_event(move |_app, event| {
                 match event.id().as_ref() {
                     "open_file"         => { win_for_menu.emit("menu-open-file", ()).ok(); }
                     "close_app"         => { win_for_menu.emit("menu-close-app", ()).ok(); }
+                    "about_viewer"      => {
+                        let payload = serde_json::json!({
+                            "name": "dotuix Viewer",
+                            "version": viewer_version.clone(),
+                        });
+                        win_for_menu.emit("menu-about-viewer", payload).ok();
+                    }
                     _ => {}
                 }
             });

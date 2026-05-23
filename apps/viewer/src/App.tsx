@@ -722,6 +722,15 @@ export default function App() {
       }
     }).then((u) => unsubs.push(u));
 
+    listen<{ name?: string; version?: string }>(
+      "menu-about-viewer",
+      (event) => {
+        const name = event.payload?.name ?? "dotuix Viewer";
+        const version = event.payload?.version ?? "unknown";
+        window.alert(`${name}\nVersion ${version}`);
+      },
+    ).then((u) => unsubs.push(u));
+
     // Native file drag-drop (Tauri emits these automatically)
     listen<{ paths?: string[] }>("tauri://drag-drop", (event) => {
       const path = (event.payload.paths ?? []).find((p) => p.endsWith(".uix"));

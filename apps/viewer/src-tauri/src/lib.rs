@@ -253,7 +253,15 @@ fn canonical_uix_path(path: &str) -> String {
 
 fn running_lock_owner(path: &str) -> Option<u32> {
     let lock_path = format!("{path}.lock");
-    lock_file_pid(&lock_path).filter(|pid| pid_is_running(*pid))
+    match lock_file_pid(&lock_path) {
+        Some(pid) if pid_is_running(pid) => Some(pid),
+        Some(_) => {
+            // Remove stale lock files left by crashed/force-closed processes.
+            let _ = std::fs::remove_file(&lock_path);
+            None
+        }
+        None => None,
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -526,6 +534,12 @@ fn read_uix(path: &str) -> Result<HashMap<String, Vec<u8>>, String> {
 fn clear_temp_web_root(state: &AppState) {
     if let Some(path) = state.temp_web_root_path.lock().unwrap().take() {
         let _ = std::fs::remove_dir_all(path);
+    }
+}
+
+fn clear_temp_data_db(state: &AppState) {
+    if let Some(path) = state.data_db_path.lock().unwrap().take() {
+        let _ = std::fs::remove_file(path);
     }
 }
 
@@ -1129,6 +1143,7 @@ fn complete_load(
             let prev_mode = state.state_mode.lock().unwrap().clone();
             { let _ = state.state_db.lock().unwrap().take(); }
             { let _ = state.data_db.lock().unwrap().take(); }
+            clear_temp_data_db(state);
             if prev_mode != "device" {
                 if let Some(db_path) = prev_state_db_path {
                     if db_path.exists() { let _ = repack_uix(&prev_path, &db_path); }
@@ -1139,6 +1154,7 @@ fn complete_load(
     }
 
     clear_temp_web_root(state);
+    clear_temp_data_db(state);
 
     // --- Per-app data directory (created early — needed for license file lookup) ---
     let data_dir = app
@@ -1217,7 +1233,15 @@ fn complete_load(
 
     // --- data.db (read-only copy) ---
     let data_conn = if let Some(bytes) = files.get("data.db") {
-        let tmp = std::env::temp_dir().join(format!("dotuix_{app_id}_data.db"));
+        let safe_app_id: String = app_id
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+            .collect();
+        let tmp = std::env::temp_dir().join(format!(
+            "dotuix_{safe_app_id}_{}_{}_data.db",
+            std::process::id(),
+            now_ms()
+        ));
         std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
         *state.data_db_path.lock().unwrap() = Some(tmp.clone());
         Some(rusqlite::Connection::open_with_flags(&tmp, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
@@ -2019,7 +2043,11 @@ fn focus_main_window(window: tauri::WebviewWindow) -> Result<(), String> {
 #[tauri::command]
 fn close_uix(state: State<'_, AppState>) {
     let uix_path = state.uix_path.lock().unwrap().clone();
-    if uix_path.is_empty() { return; }
+    if uix_path.is_empty() {
+        clear_temp_web_root(&state);
+        clear_temp_data_db(&state);
+        return;
+    }
     let state_db_path = state.state_db_path.lock().unwrap().clone();
     let state_mode = state.state_mode.lock().unwrap().clone();
     { let _ = state.state_db.lock().unwrap().take(); }
@@ -2036,6 +2064,7 @@ fn close_uix(state: State<'_, AppState>) {
     *state.content_security_policy.lock().unwrap() = csp_for_network(false).to_string();
     state.files.lock().unwrap().clear();
     clear_temp_web_root(&state);
+    clear_temp_data_db(&state);
 }
 
 /// Returns (and clears) the .uix path that was passed as a CLI argument on launch.
@@ -2154,7 +2183,12 @@ fn prepare_iframe_fallback_entry(
         .chars()
         .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
         .collect();
-    let root = std::env::temp_dir().join(format!("dotuix_{safe_app_id}_web_{}", now_ms()));
+    let root = std::env::temp_dir().join(format!(
+        "dotuix_{safe_app_id}_web_{}_{}_{}",
+        std::process::id(),
+        now_ms(),
+        gen_id()
+    ));
     std::fs::create_dir_all(&root)
         .map_err(|e| format!("Cannot create fallback web root {}: {e}", root.display()))?;
 
@@ -3725,9 +3759,15 @@ pub fn run() {
             // --- File association: handle .uix path passed as a CLI argument ---
             // On Windows/Linux, double-clicking a .uix sends it as argv[1].
             // On macOS, the deep-link plugin is needed; argv works in dev mode.
-            let args: Vec<String> = std::env::args().collect();
-            if let Some(path) = args.get(1).filter(|p| p.ends_with(".uix")) {
-                let normalized_path = canonical_uix_path(path);
+            let mut seen = HashSet::<String>::new();
+            let launch_paths: Vec<String> = std::env::args()
+                .skip(1)
+                .filter(|p| p.to_ascii_lowercase().ends_with(".uix"))
+                .map(|p| canonical_uix_path(&p))
+                .filter(|p| seen.insert(p.clone()))
+                .collect();
+
+            if let Some(normalized_path) = launch_paths.first().cloned() {
                 if let Some(owner_pid) = running_lock_owner(&normalized_path) {
                     if owner_pid != std::process::id() && focus_process_by_pid(owner_pid) {
                         app.handle().exit(0);
@@ -3735,6 +3775,10 @@ pub fn run() {
                     }
                 }
                 *app.state::<AppState>().initial_path.lock().unwrap() = Some(normalized_path);
+
+                for path in launch_paths.into_iter().skip(1) {
+                    let _ = open_uix_in_new_process(path);
+                }
             }
 
             // --- Window refs ---
@@ -3747,7 +3791,11 @@ pub fn run() {
                 if let tauri::WindowEvent::Destroyed = event {
                     let state = handle.state::<AppState>();
                     let uix_path = state.uix_path.lock().unwrap().clone();
-                    if uix_path.is_empty() { return; }
+                    if uix_path.is_empty() {
+                        clear_temp_web_root(&state);
+                        clear_temp_data_db(&state);
+                        return;
+                    }
 
                     let state_db_path = state.state_db_path.lock().unwrap().clone();
                     let state_mode = state.state_mode.lock().unwrap().clone();
@@ -3755,6 +3803,7 @@ pub fn run() {
                     // Drop DB connections before touching the files (important for WAL mode).
                     { let _ = state.state_db.lock().unwrap().take(); }
                     { let _ = state.data_db.lock().unwrap().take(); }
+                    clear_temp_data_db(&state);
 
                     // Repack state.db back into the .uix file so state travels with it.
                     // Skipped when state.mode is "device" — archive must stay clean.
@@ -3781,6 +3830,7 @@ pub fn run() {
                     // Always delete the lock file, even if repack failed.
                     let _ = std::fs::remove_file(format!("{uix_path}.lock"));
                     clear_temp_web_root(&state);
+                    clear_temp_data_db(&state);
                 }
             });
 

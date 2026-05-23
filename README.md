@@ -46,7 +46,16 @@ Any interactive experience that benefits from portability, offline operation, or
 
 ## Try it now
 
-Download a pre-built demo from [dotuix.uts.qa](https://dotuix.uts.qa), then open it in the desktop viewer.
+Download a pre-built demo from [dotuix.uts.qa](https://dotuix.uts.qa), then open it in either:
+
+- Web viewer: [view.dotuix.uts.qa](https://view.dotuix.uts.qa)
+- Desktop viewer: [GitHub Releases](https://github.com/dotuix/dotuix/releases/latest)
+
+Quick browser test URL pattern:
+
+```text
+https://view.dotuix.uts.qa/?src=https%3A%2F%2Fraw.githubusercontent.com%2Fdotuix%2Fdotuix%2Fmain%2Fdemos%2Fintake-form.uix
+```
 
 Download the latest desktop viewer binaries from [GitHub Releases](https://github.com/dotuix/dotuix/releases/latest).
 
@@ -244,6 +253,7 @@ Regular apps omit the `security` field entirely. For classified or access-contro
 | [`apps/viewer`](apps/viewer)                   | Desktop viewer — Tauri + Rust, full bridge, signature verification, PIN decryption                                                                                           | ✅ Stable                                                                                       |
 | Hosted MCP server                              | Remote HTTP MCP server at `mcp.dotuix.uts.qa` — `get_spec`, `create`, `validate` + REST API (operated from private internal repo)                                            | ✅ Live                                                                                         |
 | Public website                                 | Public website at [dotuix.uts.qa](https://dotuix.uts.qa) (code hosted in private internal repo)                                                                              | ✅ Live                                                                                         |
+| Web viewer                                     | Browser viewer at [view.dotuix.uts.qa](https://view.dotuix.uts.qa) for opening public or local `.uix` files                                                                  | ✅ Live                                                                                         |
 | Sync Server desktop app                        | Local sync endpoint app for manifests using `"local-sync"` (distributed as private binaries; source remains in private internal repo)                                        | Private                                                                                         |
 
 ---
